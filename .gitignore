@@ -1,0 +1,45 @@
+# System files
+.DS_Store
+._*
+.Spotlight-V100/
+.Trashes/
+
+# Local Python environments
+.venv*/
+
+# Python caches and reports
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+__pycache__/
+*.py[cod]
+
+# Build artifacts
+build/
+dist/*
+!dist/.gitignore
+*.egg-info/
+
+# Generated outputs
+outputs/*
+!outputs/.gitignore
+
+# Local model and reference assets
+models/*
+!models/README.md
+.references/
+
+# Misc local noise
+*.log
+*.swp
+*.swo
+*~
+*.tmp
+.ipynb_checkpoints/
+.idea/
+.vscode/
+.zed/
