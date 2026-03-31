@@ -28,6 +28,9 @@ class ParakeetEncoderConfig:
     attention_bias: bool = True
     convolution_bias: bool = True
     dropout: float = 0.0
+    dropout_positions: float = 0.0
+    layerdrop: float = 0.0
+    activation_dropout: float = 0.0
     attention_dropout: float = 0.0
 
     @property
@@ -55,6 +58,9 @@ class ParakeetEncoderConfig:
             max_position_embeddings=enc.get("pos_emb_max_len", 5000),
             scale_input=bool(enc.get("xscaling", False)),
             dropout=float(enc.get("dropout", 0.0)),
+            dropout_positions=float(enc.get("dropout_emb", 0.0)),
+            layerdrop=float(enc.get("layerdrop", 0.0)),
+            activation_dropout=float(enc.get("activation_dropout", 0.0)),
             attention_dropout=float(enc.get("dropout_att", 0.0)),
         )
 
@@ -78,6 +84,9 @@ class ParakeetEncoderConfig:
             attention_bias=bool(enc.get("attention_bias", True)),
             convolution_bias=bool(enc.get("convolution_bias", True)),
             dropout=float(enc.get("dropout", 0.0)),
+            dropout_positions=float(enc.get("dropout_positions", 0.0)),
+            layerdrop=float(enc.get("layerdrop", 0.0)),
+            activation_dropout=float(enc.get("activation_dropout", 0.0)),
             attention_dropout=float(enc.get("attention_dropout", 0.0)),
         )
 
@@ -99,6 +108,9 @@ class ParakeetEncoderConfig:
             "attention_bias": self.attention_bias,
             "convolution_bias": self.convolution_bias,
             "dropout": self.dropout,
+            "dropout_positions": self.dropout_positions,
+            "layerdrop": self.layerdrop,
+            "activation_dropout": self.activation_dropout,
             "attention_dropout": self.attention_dropout,
         }
 

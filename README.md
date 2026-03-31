@@ -86,7 +86,7 @@ python scripts/generate_vibevoice.py \
 
 ## Exploring the Codebase
 
-The PyPI package is still in progress. The best way to explore right now is to drop the repo into an agentic coding tool like [Claude Code](https://claude.ai/code) or Cursor — the codebase is structured and self-describing, and an agent can walk you through it quickly.
+The PyPI package is still in progress. The best way to explore right now is to drop the repo into an agentic coding tool like [Claude Code](https://claude.ai/code) or [Codex](https://openai.com/codex) — the codebase is structured and self-describing, and an agent can walk you through it quickly.
 
 ## Model Guides
 
@@ -114,10 +114,10 @@ mlx-speech/
   docs/             model-family behavior guides
 ```
 
-## Acknowledgements
-
-This project wouldn't exist without the inspiration and generous support of the incredible community at [linux.do](https://linux.do/). You know who you are — thank you for everything.
-
 ## License
 
 MIT — see [LICENSE](LICENSE)
+
+---
+
+> ⚫⚪🟡 This project wouldn't exist without the inspiration and generous support of the incredible community at [linux.do](https://linux.do/). 💙

@@ -20,6 +20,7 @@ class ParakeetRelPosEncoding(nn.Module):
     def __init__(self, config: ParakeetEncoderConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
+        self.max_position_embeddings = config.max_position_embeddings
         # inv_freq is a buffer — not a learned parameter
         d = config.hidden_size
         inv_freq = 1.0 / (
@@ -28,25 +29,27 @@ class ParakeetRelPosEncoding(nn.Module):
         self._inv_freq = inv_freq  # (d/2,)
 
     def __call__(self, hidden_states: mx.array) -> mx.array:
-        """Compute relative position embeddings for the given sequence.
+        """Compute relative position embeddings for the given sequence."""
+        batch_size, seq_length = hidden_states.shape[:2]
+        if seq_length > self.max_position_embeddings:
+            raise ValueError(
+                f"Sequence Length: {seq_length} has to be less or equal than "
+                f"config.max_position_embeddings {self.max_position_embeddings}."
+            )
 
-        Args:
-            hidden_states: (batch, T, hidden) — only T is used.
+        position_ids = mx.arange(seq_length - 1, -seq_length, -1, dtype=mx.float32)
+        inv_freq_expanded = mx.broadcast_to(
+            self._inv_freq[None, :, None],
+            (batch_size, self._inv_freq.shape[0], 1),
+        ).astype(mx.float32)
+        position_ids_expanded = position_ids[None, None, :].astype(mx.float32)
 
-        Returns:
-            (1, 2T-1, hidden) position embeddings (interleaved sin/cos).
-        """
-        T = hidden_states.shape[1]
-        # Positions from (T-1) down to -(T-1), total 2T-1 values
-        positions = mx.arange(T - 1, -T, -1, dtype=mx.float32)  # (2T-1,)
-        # (2T-1, d/2)
-        angles = positions[:, None] * self._inv_freq[None, :]
-        sin = mx.sin(angles)
-        cos = mx.cos(angles)
-        # Interleave: [sin0, cos0, sin1, cos1, ...] → (2T-1, d)
-        pos_emb = mx.stack([sin, cos], axis=-1)  # (2T-1, d/2, 2)
-        pos_emb = pos_emb.reshape(2 * T - 1, self.hidden_size)
-        return pos_emb[None]  # (1, 2T-1, hidden)
+        freqs = mx.matmul(inv_freq_expanded, position_ids_expanded).transpose(0, 2, 1)
+        sin = mx.sin(freqs)
+        cos = mx.cos(freqs)
+        pos_emb = mx.stack([sin, cos], axis=-1)
+        pos_emb = pos_emb.reshape(batch_size, 2 * seq_length - 1, self.hidden_size)
+        return pos_emb.astype(hidden_states.dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -180,9 +183,15 @@ class ParakeetFeedForward(nn.Module):
         super().__init__()
         self.linear1 = nn.Linear(config.hidden_size, config.intermediate_size, bias=config.attention_bias)
         self.linear2 = nn.Linear(config.intermediate_size, config.hidden_size, bias=config.attention_bias)
+        self.hidden_act = config.hidden_act
+        self.activation_dropout = config.activation_dropout
 
     def __call__(self, x: mx.array) -> mx.array:
-        return self.linear2(nn.silu(self.linear1(x)))
+        x = self.linear1(x)
+        if self.hidden_act != "silu":
+            raise ValueError(f"Unsupported Parakeet hidden_act: {self.hidden_act}")
+        x = nn.silu(x)
+        return self.linear2(x)
 
 
 # ---------------------------------------------------------------------------
@@ -287,46 +296,45 @@ class ParakeetAttention(nn.Module):
 
     def __call__(
         self,
-        x: mx.array,
-        pos_emb: mx.array,
+        hidden_states: mx.array,
+        position_embeddings: mx.array,
         attention_mask: mx.array | None = None,
     ) -> mx.array:
-        """
-        Args:
-            x:            (batch, T, hidden)
-            pos_emb:      (1, 2T-1, hidden)
-            attention_mask: (batch, 1, T, T) float additive mask or None
-        Returns:
-            (batch, T, hidden)
-        """
-        batch, T, _ = x.shape
-        h, d = self.num_heads, self.head_dim
+        batch_size, seq_length = hidden_states.shape[:2]
+        hidden_shape = (batch_size, seq_length, -1, self.head_dim)
 
-        q = self.q_proj(x).reshape(batch, T, h, d).transpose(0, 2, 1, 3)  # (B, h, T, d)
-        k = self.k_proj(x).reshape(batch, T, h, d).transpose(0, 2, 1, 3)
-        v = self.v_proj(x).reshape(batch, T, h, d).transpose(0, 2, 1, 3)
+        query_states = self.q_proj(hidden_states).reshape(hidden_shape).transpose(0, 2, 1, 3)
+        key_states = self.k_proj(hidden_states).reshape(hidden_shape).transpose(0, 2, 1, 3)
+        value_states = self.v_proj(hidden_states).reshape(hidden_shape).transpose(0, 2, 1, 3)
 
-        # bias_u: (h, d) → (1, h, 1, d)
-        bu = self.bias_u[None, :, None, :]
-        bv = self.bias_v[None, :, None, :]
+        query_states_with_bias_u = query_states + self.bias_u.reshape(1, self.num_heads, 1, self.head_dim)
+        query_states_with_bias_v = query_states + self.bias_v.reshape(1, self.num_heads, 1, self.head_dim)
 
-        # matrix_ac: (q + bias_u) @ k.T — content-to-content
-        matrix_ac = ((q + bu) @ k.transpose(0, 1, 3, 2)) * self.scale  # (B, h, T, T)
+        relative_key_states = self.relative_k_proj(position_embeddings)
+        relative_key_states = relative_key_states.reshape(
+            batch_size,
+            -1,
+            self.num_heads,
+            self.head_dim,
+        )
 
-        # matrix_bd: (q + bias_v) @ rel_k.T — content-to-position
-        # pos_emb: (1, 2T-1, hidden)
-        rel_k = self.relative_k_proj(pos_emb)  # (1, 2T-1, hidden)
-        rel_k = rel_k.reshape(1, 2 * T - 1, h, d).transpose(0, 2, 3, 1)  # (1, h, d, 2T-1)
-        matrix_bd = ((q + bv) @ rel_k) * self.scale  # (B, h, T, 2T-1)
-        matrix_bd = self._rel_shift(matrix_bd)[:, :, :, :T]  # (B, h, T, T)
-
-        scores = matrix_ac + matrix_bd  # (B, h, T, T)
+        matrix_bd = query_states_with_bias_v @ relative_key_states.transpose(0, 2, 3, 1)
+        matrix_bd = self._rel_shift(matrix_bd)
+        matrix_bd = matrix_bd[..., :seq_length]
+        matrix_bd = matrix_bd * self.scale
 
         if attention_mask is not None:
-            scores = scores + attention_mask
+            neg_inf = mx.array(mx.finfo(mx.float32).min, dtype=matrix_bd.dtype)
+            if attention_mask.dtype == mx.bool_:
+                matrix_bd = mx.where(attention_mask, matrix_bd, neg_inf)
+            else:
+                matrix_bd = mx.where(attention_mask == 0.0, matrix_bd, neg_inf)
 
-        weights = mx.softmax(scores.astype(mx.float32), axis=-1).astype(x.dtype)
-        out = (weights @ v).transpose(0, 2, 1, 3).reshape(batch, T, -1)
+        attention_scores = (query_states_with_bias_u @ key_states.transpose(0, 1, 3, 2)) * self.scale
+        attention_scores = attention_scores + matrix_bd
+
+        weights = mx.softmax(attention_scores.astype(mx.float32), axis=-1).astype(hidden_states.dtype)
+        out = (weights @ value_states).transpose(0, 2, 1, 3).reshape(batch_size, seq_length, -1)
         return self.o_proj(out)
 
 
@@ -352,17 +360,29 @@ class ParakeetConformerBlock(nn.Module):
 
     def __call__(
         self,
-        x: mx.array,
-        pos_emb: mx.array,
-        attention_bias: mx.array | None = None,
-        conv_attention_mask: mx.array | None = None,
+        hidden_states: mx.array,
+        attention_mask: mx.array | None = None,
+        position_embeddings: mx.array | None = None,
     ) -> mx.array:
-        x = x + 0.5 * self.feed_forward1(self.norm_feed_forward1(x))
-        x = x + self.self_attn(self.norm_self_att(x), pos_emb, attention_bias)
-        x = x + self.conv(self.norm_conv(x), attention_mask=conv_attention_mask)
-        x = x + 0.5 * self.feed_forward2(self.norm_feed_forward2(x))
-        x = self.norm_out(x)
-        return x
+        residual = hidden_states
+        hidden_states = self.feed_forward1(self.norm_feed_forward1(hidden_states))
+        hidden_states = residual + 0.5 * hidden_states
+
+        normalized_hidden_states = self.norm_self_att(hidden_states)
+        hidden_states = hidden_states + self.self_attn(
+            normalized_hidden_states,
+            position_embeddings,
+            attention_mask,
+        )
+
+        hidden_states = hidden_states + self.conv(
+            self.norm_conv(hidden_states),
+            attention_mask=attention_mask,
+        )
+
+        hidden_states = hidden_states + 0.5 * self.feed_forward2(self.norm_feed_forward2(hidden_states))
+        hidden_states = self.norm_out(hidden_states)
+        return hidden_states
 
 
 # ---------------------------------------------------------------------------
@@ -375,6 +395,9 @@ class ParakeetEncoder(nn.Module):
     def __init__(self, config: ParakeetEncoderConfig):
         super().__init__()
         self.config = config
+        self.dropout = config.dropout
+        self.dropout_positions = config.dropout_positions
+        self.layerdrop = config.layerdrop
         self.input_scale = math.sqrt(config.hidden_size) if config.scale_input else 1.0
 
         self.subsampling = ParakeetSubsampling(config)
@@ -398,29 +421,29 @@ class ParakeetEncoder(nn.Module):
             hidden_states:       (batch, T', hidden_size)
             output_attention_mask: (batch, T') bool or None
         """
-        x = self.subsampling(features)  # (batch, T', hidden)
-        x = x * self.input_scale
+        hidden_states = self.subsampling(features, attention_mask)
+        hidden_states = hidden_states * self.input_scale
+        position_embeddings = self.pos_encoding(hidden_states)
 
-        # Compute subsampled attention mask
         output_mask: mx.array | None = None
-        attn_bias: mx.array | None = None
-        pairwise_mask: mx.array | None = None
+        encoder_attention_mask: mx.array | None = None
         if attention_mask is not None:
             input_lengths = attention_mask.sum(axis=-1).astype(mx.int32)
-            out_lengths = self.subsampling.output_lengths(input_lengths)
-            T_out = x.shape[1]
-            output_mask = mx.arange(T_out)[None, :] < out_lengths[:, None]
-            # Expand to (batch, 1, T', T') additive mask
-            row = output_mask[:, None, :, None]   # (B, 1, T', 1)
-            col = output_mask[:, None, None, :]   # (B, 1, 1, T')
-            pairwise_mask = row & col
-            neg_inf = mx.array(mx.finfo(mx.float32).min, dtype=mx.float32)
-            attn_bias = mx.where(pairwise_mask, mx.zeros_like(neg_inf), neg_inf)
-            attn_bias = attn_bias.astype(features.dtype)
+            output_lengths = self.subsampling.output_lengths(input_lengths)
+            target_length = hidden_states.shape[1]
+            output_mask = mx.arange(target_length)[None, :] < output_lengths[:, None]
+            encoder_attention_mask = mx.broadcast_to(
+                output_mask[:, None, :],
+                (output_mask.shape[0], target_length, target_length),
+            )
+            encoder_attention_mask = encoder_attention_mask & encoder_attention_mask.transpose(0, 2, 1)
+            encoder_attention_mask = encoder_attention_mask[:, None, :, :]
 
-        pos_emb = self.pos_encoding(x)
+        for encoder_layer in self.layers:
+            hidden_states = encoder_layer(
+                hidden_states,
+                attention_mask=encoder_attention_mask,
+                position_embeddings=position_embeddings,
+            )
 
-        for block in self.layers:
-            x = block(x, pos_emb, attn_bias, pairwise_mask)
-
-        return x, output_mask
+        return hidden_states, output_mask
