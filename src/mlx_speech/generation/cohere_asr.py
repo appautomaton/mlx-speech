@@ -66,6 +66,16 @@ class CohereAsrModel:
             config=ckpt.config,
         )
 
+    @classmethod
+    def from_path(
+        cls,
+        model_dir: str | Path,
+        *,
+        dtype: mx.Dtype = mx.bfloat16,
+    ) -> "CohereAsrModel":
+        """Alias for from_dir() for consistency with other local loaders."""
+        return cls.from_dir(model_dir, dtype=dtype)
+
     def transcribe(
         self,
         audio: np.ndarray,
@@ -73,6 +83,7 @@ class CohereAsrModel:
         sample_rate: int = 16000,
         language: str = "en",
         punctuation: bool = True,
+        itn: bool = False,
         max_new_tokens: int = 448,
     ) -> CohereAsrResult:
         """Transcribe a single audio waveform.
@@ -82,6 +93,7 @@ class CohereAsrModel:
             sample_rate:  input sample rate (resampled to 16 kHz if needed)
             language:     ISO 639-1 language code (see tokenizer.LANGUAGES)
             punctuation:  include punctuation in the output
+            itn:          request inverse text normalization in the decoder prompt
             max_new_tokens: maximum number of tokens to generate
 
         Returns:
@@ -107,6 +119,7 @@ class CohereAsrModel:
                     mask_mx,
                     language=language,
                     punctuation=punctuation,
+                    itn=itn,
                     max_new_tokens=max_new_tokens,
                 )
             )
@@ -121,6 +134,29 @@ class CohereAsrModel:
         tokens = [token for result in chunk_results for token in result.tokens]
         return CohereAsrResult(text=text, tokens=tokens, language=language)
 
+    def transcribe_batch(
+        self,
+        audios: list[np.ndarray],
+        *,
+        sample_rate: int = 16000,
+        language: str = "en",
+        punctuation: bool = True,
+        itn: bool = False,
+        max_new_tokens: int = 448,
+    ) -> list[CohereAsrResult]:
+        """Transcribe multiple waveforms sequentially while preserving order."""
+        return [
+            self.transcribe(
+                audio,
+                sample_rate=sample_rate,
+                language=language,
+                punctuation=punctuation,
+                itn=itn,
+                max_new_tokens=max_new_tokens,
+            )
+            for audio in audios
+        ]
+
     def _decode(
         self,
         features: mx.array,
@@ -128,6 +164,7 @@ class CohereAsrModel:
         *,
         language: str,
         punctuation: bool,
+        itn: bool,
         max_new_tokens: int,
     ) -> CohereAsrResult:
         dec_cfg = self.config.decoder
@@ -139,7 +176,7 @@ class CohereAsrModel:
         # --- Build decoder prompt ---
         # Reference: decoder_input_ids = get_decoder_prompt_ids(...) directly.
         # The ▁ token that starts the prompt IS the decoder start token; do not prepend it again.
-        prompt_ids = self.tokenizer.get_decoder_prompt_ids(language, punctuation)
+        prompt_ids = self.tokenizer.get_decoder_prompt_ids(language, punctuation, itn=itn)
         prompt_tensor = mx.array([prompt_ids], dtype=mx.int32)  # (1, L_prompt)
 
         # --- Prefill ---

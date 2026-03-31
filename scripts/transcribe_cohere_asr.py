@@ -5,6 +5,7 @@ Examples:
     python scripts/transcribe_cohere_asr.py --audio speech.wav
     python scripts/transcribe_cohere_asr.py --audio speech.wav --language fr
     python scripts/transcribe_cohere_asr.py --audio speech.wav --no-punctuation
+    python scripts/transcribe_cohere_asr.py --audio speech.wav --itn
 """
 
 from __future__ import annotations
@@ -65,6 +66,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--language", default="en", help="ISO 639-1 language code (default: en)")
     p.add_argument("--no-punctuation", action="store_true", help="Disable punctuation")
+    p.add_argument("--itn", action="store_true", help="Enable inverse text normalization")
     p.add_argument("--max-new-tokens", type=int, default=448)
     p.add_argument("-o", "--output", help="Write transcript to this file instead of stdout")
     return p.parse_args()
@@ -100,6 +102,7 @@ def main() -> None:
         audio,
         language=args.language,
         punctuation=not args.no_punctuation,
+        itn=args.itn,
         max_new_tokens=args.max_new_tokens,
     )
 

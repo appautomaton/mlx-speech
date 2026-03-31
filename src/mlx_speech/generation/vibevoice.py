@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import mlx.core as mx
+import re
 
 from ..models.vibevoice.acoustic import VibeVoiceConvCache
 from ..models.vibevoice.model import VibeVoiceForConditionalGeneration
@@ -110,6 +111,35 @@ def _sample_next_token(
 
 
 # --------------------------------------------------------------------------- #
+# Prompt formatting
+# --------------------------------------------------------------------------- #
+
+_SPEAKER_LABEL_RE = re.compile(r"^\s*Speaker\s+\d+\s*:", re.IGNORECASE)
+_BRACKET_SPEAKER_RE = re.compile(r"\[(\d+)\]\s*:")
+
+
+def _format_text_input(text: str) -> str:
+    """Format user text for the VibeVoice prompt.
+
+    - Preserve explicit `Speaker N:` multi-speaker scripts as-is.
+    - Convert `[N]:` tags to `Speaker N:`.
+    - For plain text, assign it to `Speaker 1:`.
+    """
+    text = text.strip()
+    if not text:
+        raise ValueError("text must not be empty")
+
+    if _SPEAKER_LABEL_RE.match(text):
+        return text
+
+    if _BRACKET_SPEAKER_RE.search(text):
+        return _BRACKET_SPEAKER_RE.sub(lambda m: f"Speaker {int(m.group(1))}:", text)
+
+    text = re.sub(r"\s+", " ", text)
+    return f"Speaker 1: {text}"
+
+
+# --------------------------------------------------------------------------- #
 # Main generation function
 # --------------------------------------------------------------------------- #
 
@@ -204,8 +234,7 @@ def generate_vibevoice(
             speech_input_mask.extend([False] * len(nl_toks))
 
         # Text input section — rewrite Speaker N labels to 0-based
-        import re
-        text_lines = text.strip()
+        text_lines = _format_text_input(text)
         # Normalize "Speaker N:" to 0-based indexing
         def _reindex(m: re.Match) -> str:
             n = int(m.group(1))
@@ -229,11 +258,12 @@ def generate_vibevoice(
             spk_idx, frame_idx = mask_to_ref[i]
             inputs_embeds[:, idx, :] = all_ref_latents[spk_idx][:, frame_idx, :]
     else:
-        # No voice cloning — simple prompt
+        # No voice cloning — preserve explicit speaker labels when provided.
+        text_input = _format_text_input(text)
         prompt_parts = [
             system_prompt,
             " Text input:\n",
-            f" Speaker 1: {text.strip()}\n",
+            f" {text_input}\n",
             " Speech output:\n",
         ]
         prompt_tokens = []

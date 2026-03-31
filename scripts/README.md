@@ -30,6 +30,9 @@ Current v0 scripts:
 - `generate_moss_ttsd.py` — run TTSD generation / continuation from local
   TTSD weights; uses `mlx-int8` by default and supports explicit `--model-dir`
   / `--codec-dir` overrides for custom checkpoint paths
+- `run_local_speech_smoke_eval.py` — run a small sequential local smoke-eval
+  across Cohere ASR, Moss local, TTSD, and VibeVoice, then write generated
+  artifacts plus back-transcribed summaries under `outputs/tests/`
 - `materialize_clone_eval_macos.py` — generate the fixed English clone-eval
   reference set from macOS built-in voices
 - `sweep_clone_presets.py` — run clone preset sweeps over the fixed eval set

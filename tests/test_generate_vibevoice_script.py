@@ -28,6 +28,8 @@ def _args(**overrides):
         "output": "outputs/vibevoice_test.wav",
         "cfg_scale": 1.3,
         "diffusion_steps": 20,
+        "diffusion_steps_fast": None,
+        "diffusion_warmup_frames": 10,
         "max_new_tokens": 2048,
         "temperature": 1.0,
         "top_p": 1.0,
@@ -43,6 +45,8 @@ def test_parser_help_documents_sampling_controls() -> None:
 
     help_text = module._build_parser().format_help()
 
+    assert "--diffusion-steps-fast" in help_text
+    assert "--diffusion-warmup-frames" in help_text
     assert "--temperature" in help_text
     assert "--top-p" in help_text
     assert "--seed" in help_text
@@ -58,6 +62,8 @@ def test_build_generation_config_uses_sampling_defaults() -> None:
     assert config.temperature == 1.0
     assert config.top_p == 1.0
     assert config.seed is None
+    assert config.diffusion_steps_fast is None
+    assert config.diffusion_warmup_frames == 10
 
 
 def test_build_generation_config_can_force_greedy_with_seed() -> None:
@@ -69,3 +75,15 @@ def test_build_generation_config_can_force_greedy_with_seed() -> None:
     assert config.temperature == 0.0
     assert config.top_p == 0.8
     assert config.seed == 123
+
+
+def test_build_generation_config_supports_adaptive_diffusion() -> None:
+    module = _load_script_module()
+
+    config = module._build_generation_config(
+        _args(diffusion_steps=20, diffusion_steps_fast=8, diffusion_warmup_frames=12)
+    )
+
+    assert config.diffusion_steps == 20
+    assert config.diffusion_steps_fast == 8
+    assert config.diffusion_warmup_frames == 12

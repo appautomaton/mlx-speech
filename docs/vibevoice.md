@@ -61,6 +61,8 @@ Current flags:
 - `--output`
 - `--cfg-scale`
 - `--diffusion-steps`
+- `--diffusion-steps-fast`
+- `--diffusion-warmup-frames`
 - `--max-new-tokens`
 - `--temperature`
 - `--top-p`
@@ -73,6 +75,17 @@ Important current semantics:
 - the current CLI defaults to sampling unless `--greedy` is set
 - `--greedy` bypasses sampling controls
 - `--seed` matters only when sampling is enabled
+- `--diffusion-steps` is the full diffusion budget
+- when `--diffusion-steps-fast` is set, the runtime uses the full budget for the
+  first `--diffusion-warmup-frames` speech frames, then switches to the reduced
+  step count for later frames
+
+Recommended diffusion usage:
+
+- default quality path: omit `--diffusion-steps-fast`
+- adaptive speed path: keep `--diffusion-steps` at the quality target, then set
+  `--diffusion-steps-fast` lower for later frames
+- example: `--diffusion-steps 20 --diffusion-steps-fast 8 --diffusion-warmup-frames 10`
 
 ## Recommended Usage
 
@@ -90,6 +103,20 @@ Multi-speaker:
 - prefer `voice_samples=[...]`
 - one voice sample per speaker
 - speaker-labeled text like `Speaker 1: ...` / `Speaker 2: ...`
+- keep one speaker turn per line for the prompt
+- use `Speaker N:` labels directly; do not wrap an already-labeled dialogue in an
+  extra `Speaker 1: ...` prefix
+- `[N]: ...` style tags can be normalized, but `Speaker N:` is the clearest
+  documented format
+
+Example multi-speaker prompt:
+
+```text
+Speaker 1: Welcome back to the local speech lab.
+Speaker 2: Today we are checking the multi-speaker runtime path.
+Speaker 3: Keep the turns short and easy to distinguish.
+Speaker 4: End the clip before the dialogue starts to drift.
+```
 
 ## Important Limitation
 
@@ -100,6 +127,8 @@ That means:
 
 - multi-speaker with explicit `voice_samples` works better than non-reference use
 - non-reference multi-speaker behavior is still weaker and easier to misread
+- no-reference multi-speaker prompts should still use explicit newline-separated
+  `Speaker N:` turns
 - the current CLI only supports one `--reference-audio`, not full multi-speaker
   `voice_samples`
 

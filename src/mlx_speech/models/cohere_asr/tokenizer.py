@@ -19,8 +19,11 @@ _SPECIAL_IDS = {
     "<|pnc|>": 5,
     "<|nopnc|>": 6,
     "<|startofcontext|>": 7,
+    "<|itn|>": 8,
     "<|noitn|>": 9,
+    "<|timestamp|>": 10,
     "<|notimestamp|>": 11,
+    "<|diarize|>": 12,
     "<|nodiarize|>": 13,
     "<|emo:undefined|>": 16,
 }
@@ -72,11 +75,17 @@ class CohereAsrTokenizer:
         """Decode token IDs to text."""
         return self._tok.decode(ids, skip_special_tokens=skip_special_tokens)
 
-    def get_decoder_prompt_ids(self, language: str, punctuation: bool = True) -> list[int]:
+    def get_decoder_prompt_ids(
+        self,
+        language: str,
+        punctuation: bool = True,
+        *,
+        itn: bool = False,
+    ) -> list[int]:
         """Build the fixed decoder prompt for the given language.
 
         The full decoder input at generation start is:
-            [DECODER_START_TOKEN_ID] + get_decoder_prompt_ids(language, punctuation)
+            [DECODER_START_TOKEN_ID] + get_decoder_prompt_ids(...)
 
         Matches upstream CohereAsrProcessor.get_decoder_prompt_ids.
         """
@@ -89,6 +98,7 @@ class CohereAsrTokenizer:
             raise ValueError(f"Language token <|{language}|> not found in tokenizer vocab.")
 
         pnc_id = self._special_ids["<|pnc|>"] if punctuation else self._special_ids["<|nopnc|>"]
+        itn_id = self._special_ids["<|itn|>"] if itn else self._special_ids["<|noitn|>"]
 
         prompt: list[int] = []
         # "▁" — word-initial space token
@@ -101,7 +111,7 @@ class CohereAsrTokenizer:
             lang_id,
             lang_id,  # language token appears twice (upstream)
             pnc_id,
-            self._special_ids["<|noitn|>"],
+            itn_id,
             self._special_ids["<|notimestamp|>"],
             self._special_ids["<|nodiarize|>"],
         ])

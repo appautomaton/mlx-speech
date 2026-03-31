@@ -81,6 +81,7 @@ def test_from_dir_reads_preprocessor_and_chunk_settings(tmp_path: Path) -> None:
                 "n_window_stride": 256,
                 "n_window_size": 800,
                 "feature_size": 80,
+                "highfreq": 7000.0,
                 "preemphasis": 0.95,
                 "dither": 2e-5,
             }
@@ -93,6 +94,7 @@ def test_from_dir_reads_preprocessor_and_chunk_settings(tmp_path: Path) -> None:
                 "sample_rate": 22050,
                 "max_audio_clip_s": 12.5,
                 "overlap_chunk_second": 1.5,
+                "min_energy_window_samples": 2048,
             }
         ),
         encoding="utf-8",
@@ -105,7 +107,9 @@ def test_from_dir_reads_preprocessor_and_chunk_settings(tmp_path: Path) -> None:
     assert extractor.hop_length == 256
     assert extractor.win_length == 800
     assert extractor.n_mels == 80
+    assert extractor.fmax == 7000.0
     assert extractor.preemphasis == 0.95
     assert extractor.dither == 2e-5
     assert extractor.max_audio_clip_s == 12.5
     assert extractor.overlap_chunk_s == 1.5
+    assert extractor.min_energy_window_samples == 2048

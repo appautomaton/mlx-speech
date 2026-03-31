@@ -36,13 +36,28 @@ Via [mlx-speech](https://github.com/appautomaton/mlx-speech):
 ```bash
 python scripts/generate_vibevoice.py \
   --text "Hello from VibeVoice." \
+  --diffusion-steps 20 \
+  --diffusion-steps-fast 8 \
+  --diffusion-warmup-frames 10 \
   --output outputs/vibevoice.wav
 ```
 
 ```python
-from mlx_speech.generation import VibeVoiceModel
+from mlx_speech.generation.vibevoice import (
+    VibeVoiceGenerationConfig,
+    synthesize_vibevoice,
+)
+from mlx_speech.models.vibevoice.checkpoint import load_vibevoice_model
+from mlx_speech.models.vibevoice.tokenizer import VibeVoiceTokenizer
 
-model = VibeVoiceModel.from_path("mlx-int8")
+loaded = load_vibevoice_model("mlx-int8", strict=False)
+tokenizer = VibeVoiceTokenizer.from_path("mlx-int8")
+result = synthesize_vibevoice(
+    loaded.model,
+    tokenizer,
+    "Hello from VibeVoice.",
+    config=VibeVoiceGenerationConfig(max_new_tokens=256),
+)
 ```
 
 ## Model Details

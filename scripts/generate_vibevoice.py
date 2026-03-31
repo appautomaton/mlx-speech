@@ -30,7 +30,24 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--reference-audio", default=None, help="Reference audio for cloning")
     parser.add_argument("-o", "--output", default="outputs/vibevoice_test.wav")
     parser.add_argument("--cfg-scale", type=float, default=1.3)
-    parser.add_argument("--diffusion-steps", type=int, default=20)
+    parser.add_argument(
+        "--diffusion-steps",
+        type=int,
+        default=20,
+        help="Base diffusion step count. Used for all frames unless --diffusion-steps-fast is set.",
+    )
+    parser.add_argument(
+        "--diffusion-steps-fast",
+        type=int,
+        default=None,
+        help="Optional reduced diffusion step count used after the warmup window.",
+    )
+    parser.add_argument(
+        "--diffusion-warmup-frames",
+        type=int,
+        default=10,
+        help="Number of early generated frames that keep the full --diffusion-steps budget.",
+    )
     parser.add_argument("--max-new-tokens", type=int, default=2048)
     parser.add_argument(
         "--temperature",
@@ -59,6 +76,8 @@ def _build_generation_config(args: argparse.Namespace) -> VibeVoiceGenerationCon
         max_new_tokens=args.max_new_tokens,
         cfg_scale=args.cfg_scale,
         diffusion_steps=args.diffusion_steps,
+        diffusion_steps_fast=args.diffusion_steps_fast,
+        diffusion_warmup_frames=args.diffusion_warmup_frames,
         do_sample=not args.greedy,
         temperature=0.0 if args.greedy else args.temperature,
         top_p=args.top_p,

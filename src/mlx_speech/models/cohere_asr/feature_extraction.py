@@ -17,12 +17,22 @@ _EPSILON = 1e-5
 # Mel filterbank (replicates librosa.filters.mel with norm="slaney")
 # ---------------------------------------------------------------------------
 
+_SLANEY_F_SP = 200.0 / 3.0
+_SLANEY_MIN_LOG_HZ = 1000.0
+_SLANEY_MIN_LOG_MEL = _SLANEY_MIN_LOG_HZ / _SLANEY_F_SP
+_SLANEY_LOGSTEP = math.log(6.4) / 27.0
+
+
 def _hz_to_mel(freq: float) -> float:
-    return 2595.0 * math.log10(1.0 + freq / 700.0)
+    if freq < _SLANEY_MIN_LOG_HZ:
+        return freq / _SLANEY_F_SP
+    return _SLANEY_MIN_LOG_MEL + math.log(freq / _SLANEY_MIN_LOG_HZ) / _SLANEY_LOGSTEP
 
 
 def _mel_to_hz(mel: float) -> float:
-    return 700.0 * (10.0 ** (mel / 2595.0) - 1.0)
+    if mel < _SLANEY_MIN_LOG_MEL:
+        return mel * _SLANEY_F_SP
+    return _SLANEY_MIN_LOG_HZ * math.exp(_SLANEY_LOGSTEP * (mel - _SLANEY_MIN_LOG_MEL))
 
 
 def _mel_filters(
@@ -37,30 +47,23 @@ def _mel_filters(
     Returns shape (n_mels, n_fft // 2 + 1) float32.
     """
     n_freqs = n_fft // 2 + 1
-    freqs = np.linspace(0, sr / 2, n_freqs, dtype=np.float64)
+    fftfreqs = np.linspace(0, sr / 2, n_freqs, dtype=np.float64)
 
     mel_min = _hz_to_mel(fmin)
     mel_max = _hz_to_mel(fmax)
     mel_points = np.linspace(mel_min, mel_max, n_mels + 2, dtype=np.float64)
-    hz_points = np.array([_mel_to_hz(m) for m in mel_points])
+    hz_points = np.array([_mel_to_hz(m) for m in mel_points], dtype=np.float64)
 
     filters = np.zeros((n_mels, n_freqs), dtype=np.float64)
+    ramps = hz_points[:, None] - fftfreqs[None, :]
     for i in range(n_mels):
-        f_left = hz_points[i]
-        f_center = hz_points[i + 1]
-        f_right = hz_points[i + 2]
+        lower = -ramps[i] / (hz_points[i + 1] - hz_points[i])
+        upper = ramps[i + 2] / (hz_points[i + 2] - hz_points[i + 1])
+        filters[i] = np.maximum(0.0, np.minimum(lower, upper))
 
-        # Rising slope
-        rising = (freqs - f_left) / (f_center - f_left)
-        # Falling slope
-        falling = (f_right - freqs) / (f_right - f_center)
-
-        filters[i] = np.maximum(0.0, np.minimum(rising, falling))
-
-        # Slaney normalisation: divide by bandwidth (area under triangle in Hz)
-        bandwidth = f_right - f_left
-        if bandwidth > 0:
-            filters[i] /= bandwidth / 2.0
+    # Slaney area normalization in Hz.
+    enorm = 2.0 / (hz_points[2 : n_mels + 2] - hz_points[:n_mels])
+    filters *= enorm[:, None]
 
     return filters.astype(np.float32)
 
@@ -190,6 +193,7 @@ def split_audio_chunks(
     sr: int = 16000,
     max_clip_s: float = 35.0,
     overlap_s: float = 5.0,
+    min_energy_window_samples: int = 1600,
 ) -> list[np.ndarray]:
     """Split long audio at energy-based boundaries.
 
@@ -213,7 +217,12 @@ def split_audio_chunks(
         if search_end <= search_start:
             split = idx + chunk_size
         else:
-            split = _find_split_energy(waveform, search_start, search_end)
+            split = _find_split_energy(
+                waveform,
+                search_start,
+                search_end,
+                window_samples=min_energy_window_samples,
+            )
         split = max(idx + 1, min(split, total))
         chunks.append(waveform[idx:split])
         idx = split
@@ -243,6 +252,7 @@ class CohereAsrFeatureExtractor:
         dither: float = 1e-5,
         max_audio_clip_s: float = 35.0,
         overlap_chunk_s: float = 5.0,
+        min_energy_window_samples: int = 1600,
     ):
         self.sr = sr
         self.n_fft = n_fft
@@ -254,6 +264,7 @@ class CohereAsrFeatureExtractor:
         self.dither = dither
         self.max_audio_clip_s = max_audio_clip_s
         self.overlap_chunk_s = overlap_chunk_s
+        self.min_energy_window_samples = min_energy_window_samples
         # Pre-build mel filterbank
         _ = _get_mel_filters(sr, n_fft, n_mels, 0.0, fmax)
 
@@ -285,10 +296,12 @@ class CohereAsrFeatureExtractor:
             n_mels=int(preprocessor_payload.get("feature_size", preprocessor_payload.get("features", 128))),
             preemphasis=float(preprocessor_payload.get("preemphasis", 0.97)),
             dither=float(preprocessor_payload.get("dither", 1e-5)),
+            fmax=float(preprocessor_payload.get("highfreq", 8000.0)),
             max_audio_clip_s=float(config_payload.get("max_audio_clip_s", 35.0)),
             overlap_chunk_s=float(
                 config_payload.get("overlap_chunk_s", config_payload.get("overlap_chunk_second", 5.0))
             ),
+            min_energy_window_samples=int(config_payload.get("min_energy_window_samples", 1600)),
         )
 
     def _features_length(self, audio_length: int) -> int:
@@ -354,10 +367,15 @@ class CohereAsrFeatureExtractor:
 
         Returns a list of (features, attention_mask) per chunk.
         """
+        fast_path_threshold_s = max(0.0, self.max_audio_clip_s - self.overlap_chunk_s)
+        if len(waveform) / self.sr <= fast_path_threshold_s:
+            return [self(waveform)]
+
         chunks = split_audio_chunks(
             waveform,
             sr=self.sr,
             max_clip_s=self.max_audio_clip_s,
             overlap_s=self.overlap_chunk_s,
+            min_energy_window_samples=self.min_energy_window_samples,
         )
         return [self(chunk) for chunk in chunks]

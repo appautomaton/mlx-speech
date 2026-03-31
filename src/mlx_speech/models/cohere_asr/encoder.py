@@ -157,9 +157,11 @@ class ParakeetSubsampling(nn.Module):
                 ).astype(mx.int32) + 1
                 x = apply_time_mask(x, current_lengths)
 
-        # x: (batch, T', freq_out, ch)
+        # HF flattens (channels, freq_out) per timestep after transpose(1, 2),
+        # so reorder from MLX channels-last (T, freq_out, ch) to (T, ch, freq_out)
+        # before the final projection.
         batch, t_out, freq_out, ch = x.shape
-        x = x.reshape(batch, t_out, freq_out * ch)
+        x = x.transpose(0, 1, 3, 2).reshape(batch, t_out, ch * freq_out)
         x = self.linear(x)  # (batch, T', hidden_size)
         return x
 

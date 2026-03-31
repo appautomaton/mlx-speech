@@ -37,10 +37,21 @@ python scripts/transcribe_cohere_asr.py \
 ```
 
 ```python
+import numpy as np
+import soundfile as sf
+
 from mlx_speech.generation import CohereAsrModel
 
+audio, sr = sf.read("input.wav", dtype="float32", always_2d=False)
+if audio.ndim > 1:
+    audio = audio.mean(axis=1)
+if sr != 16000:
+    old_len = len(audio)
+    new_len = int(round(old_len * 16000 / sr))
+    audio = np.interp(np.linspace(0, old_len - 1, new_len), np.arange(old_len), audio).astype(np.float32)
+
 model = CohereAsrModel.from_path("mlx-int8")
-transcript = model.transcribe("input.wav")
+transcript = model.transcribe(audio, sample_rate=16000, language="en")
 ```
 
 ## Model Details

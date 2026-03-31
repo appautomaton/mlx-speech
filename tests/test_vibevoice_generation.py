@@ -10,6 +10,7 @@ from mlx_speech.generation.vibevoice import (
     VibeVoiceSynthesisOutput,
     _apply_top_p,
     _constrain_logits,
+    _format_text_input,
     _sample_next_token,
 )
 
@@ -98,6 +99,19 @@ class TestSamplingHelpers:
         )
 
         assert token.tolist() == [2]
+
+
+class TestPromptFormatting:
+    def test_plain_text_defaults_to_speaker_one(self):
+        assert _format_text_input("Hello there.") == "Speaker 1: Hello there."
+
+    def test_existing_speaker_labels_are_preserved(self):
+        text = "Speaker 1: Hello.\nSpeaker 2: Hi."
+        assert _format_text_input(text) == text
+
+    def test_bracket_speaker_labels_are_converted(self):
+        text = "[1]: Hello.\n[2]: Hi."
+        assert _format_text_input(text) == "Speaker 1: Hello.\nSpeaker 2: Hi."
 
 
 @pytest.mark.skipif(not HAS_MODEL, reason="model not available")
