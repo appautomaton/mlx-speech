@@ -7,10 +7,15 @@ Sample outputs generated locally on Apple Silicon using mlx-speech.
 Four-speaker conversation generated with VibeVoice. Demonstrates natural
 multi-speaker turn-taking and voice variation at longer form lengths.
 
-VibeVoice uses `Speaker N:` tags to distinguish voices. A 4-speaker prompt looks like:
+VibeVoice uses `Speaker N:` tags to distinguish voices — up to 4 speakers in a single pass.
 
 ```bash
+TEXT="Speaker 1: {line for speaker 1} \
+Speaker 2: {line for speaker 2} \
+Speaker 3: {line for speaker 3} \
+Speaker 4: {line for speaker 4}"
+
 python scripts/generate_vibevoice.py \
-  --text "Speaker 1: Have you tried the new mlx-speech library? Speaker 2: Not yet, what does it do? Speaker 3: It runs TTS models locally on Apple Silicon. Speaker 4: No cloud, no PyTorch — sounds good to me." \
+  --text "$TEXT" \
   --output outputs/vibevoice_4speaker_convo.wav
 ```
