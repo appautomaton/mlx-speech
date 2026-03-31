@@ -1,10 +1,10 @@
 [project]
-name = "mlx-voice"
+name = "mlx-speech"
 version = "0.1.0"
 description = "MLX-native speech library for Apple Silicon."
 license = { file = "LICENSE" }
 authors = [{ name = "AppAutomaton" }]
-urls = { Repository = "https://github.com/appautomaton/mlx-voice" }
+urls = { Repository = "https://github.com/appautomaton/mlx-speech" }
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
