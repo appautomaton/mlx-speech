@@ -11,6 +11,10 @@ from mlx_voice.models.moss_audio_tokenizer.config import MossAudioTokenizerConfi
 from mlx_voice.models.moss_local import MossTTSLocalProcessor
 from mlx_voice.models.moss_local.tokenizer import DEFAULT_MOSS_CHAT_TEMPLATE
 
+pytestmark = pytest.mark.local_integration
+
+MODEL_DIR = "models/openmoss/moss_tts_local/mlx-int8"
+
 
 def _tiny_codec_config() -> MossAudioTokenizerConfig:
     return MossAudioTokenizerConfig.from_dict(
@@ -88,7 +92,7 @@ def _load_upstream_processor():
     from moss_tts_local.configuration_moss_tts import MossTTSDelayConfig
     from moss_tts_local.processing_moss_tts import MossTTSDelayProcessor
 
-    model_dir = repo_root / "models" / "openmoss" / "moss_tts_local" / "original"
+    model_dir = repo_root / "models" / "openmoss" / "moss_tts_local" / "mlx-int8"
     tokenizer = transformers.AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=True)
     tokenizer.chat_template = DEFAULT_MOSS_CHAT_TEMPLATE
     config = MossTTSDelayConfig.from_pretrained(str(model_dir), trust_remote_code=True)
@@ -106,7 +110,7 @@ def _assert_processor_parity(
     *,
     mode: str,
 ) -> None:
-    processor = MossTTSLocalProcessor.from_path("models/openmoss/moss_tts_local/original")
+    processor = MossTTSLocalProcessor.from_path(MODEL_DIR)
     upstream_processor, _ = _load_upstream_processor()
 
     our_batch = processor([our_conversation], mode=mode)
@@ -117,14 +121,14 @@ def _assert_processor_parity(
 
 
 def test_processor_loads_local_tokenizer_assets() -> None:
-    processor = MossTTSLocalProcessor.from_path("models/openmoss/moss_tts_local/original")
+    processor = MossTTSLocalProcessor.from_path(MODEL_DIR)
 
     assert processor.model_config.vocab_size == 155648
     assert processor.tokenizer.token_to_id("<|audio_start|>") == 151652
 
 
 def test_text_only_generation_builds_expected_tensor_shapes() -> None:
-    processor = MossTTSLocalProcessor.from_path("models/openmoss/moss_tts_local/original")
+    processor = MossTTSLocalProcessor.from_path(MODEL_DIR)
     message = processor.build_user_message(text="Hello from MLX.")
 
     batch = processor([message], mode="generation")
@@ -139,7 +143,7 @@ def test_text_only_generation_builds_expected_tensor_shapes() -> None:
 
 
 def test_tokenizer_applies_moss_chat_template_with_generation_prompt() -> None:
-    processor = MossTTSLocalProcessor.from_path("models/openmoss/moss_tts_local/original")
+    processor = MossTTSLocalProcessor.from_path(MODEL_DIR)
     rendered = processor.tokenizer.apply_chat_template(
         [
             {
@@ -157,7 +161,7 @@ def test_tokenizer_applies_moss_chat_template_with_generation_prompt() -> None:
 
 
 def test_processor_generation_parity_with_upstream_direct() -> None:
-    processor = MossTTSLocalProcessor.from_path("models/openmoss/moss_tts_local/original")
+    processor = MossTTSLocalProcessor.from_path(MODEL_DIR)
     our_message = processor.build_user_message(text="Hello from MLX.")
     upstream_processor, _ = _load_upstream_processor()
     upstream_message = upstream_processor.build_user_message(text="Hello from MLX.")
@@ -166,7 +170,7 @@ def test_processor_generation_parity_with_upstream_direct() -> None:
 
 
 def test_processor_generation_parity_with_upstream_clone() -> None:
-    processor = MossTTSLocalProcessor.from_path("models/openmoss/moss_tts_local/original")
+    processor = MossTTSLocalProcessor.from_path(MODEL_DIR)
     reference_codes = _make_reference_codes()
     our_message = processor.build_user_message(text="Clone this.", reference=[reference_codes])
     upstream_processor, torch = _load_upstream_processor()
@@ -179,7 +183,7 @@ def test_processor_generation_parity_with_upstream_clone() -> None:
 
 
 def test_processor_continuation_parity_with_upstream() -> None:
-    processor = MossTTSLocalProcessor.from_path("models/openmoss/moss_tts_local/original")
+    processor = MossTTSLocalProcessor.from_path(MODEL_DIR)
     prefix_codes = _make_reference_codes()
     our_conversation = [
         processor.build_user_message(text="Continue this."),
@@ -197,7 +201,7 @@ def test_processor_continuation_parity_with_upstream() -> None:
 
 
 def test_processor_continue_clone_parity_with_upstream() -> None:
-    processor = MossTTSLocalProcessor.from_path("models/openmoss/moss_tts_local/original")
+    processor = MossTTSLocalProcessor.from_path(MODEL_DIR)
     prefix_codes = _make_reference_codes()
     our_conversation = [
         processor.build_user_message(text="Continue clone.", reference=[prefix_codes]),
@@ -246,7 +250,7 @@ def test_processor_continue_clone_parity_with_upstream() -> None:
     ],
 )
 def test_processor_continuation_modes_ignore_tokens_conditioning(with_tokens, without_tokens) -> None:
-    processor = MossTTSLocalProcessor.from_path("models/openmoss/moss_tts_local/original")
+    processor = MossTTSLocalProcessor.from_path(MODEL_DIR)
     prefix_codes = _make_reference_codes()
     with_tokens_batch = processor([with_tokens(processor, prefix_codes)], mode="continuation")
     without_tokens_batch = processor([without_tokens(processor, prefix_codes)], mode="continuation")
@@ -258,7 +262,7 @@ def test_processor_continuation_modes_ignore_tokens_conditioning(with_tokens, wi
 def test_processor_audio_helpers_encode_and_decode_with_bound_codec() -> None:
     codec = MossAudioTokenizerModel(_tiny_codec_config())
     processor = MossTTSLocalProcessor.from_path(
-        "models/openmoss/moss_tts_local/original",
+        MODEL_DIR,
         audio_tokenizer=codec,
     )
     wav = mx.sin(mx.arange(0, 16, dtype=mx.float32) * 0.2)

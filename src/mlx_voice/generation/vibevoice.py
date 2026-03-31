@@ -28,6 +28,8 @@ class VibeVoiceGenerationConfig:
     diffusion_warmup_frames: int = 10
     do_sample: bool = False
     temperature: float = 1.0
+    top_p: float | None = 1.0
+    seed: int | None = None
     safety_max_new_tokens: int = 8192
 
 
@@ -66,6 +68,47 @@ def _constrain_logits(logits: mx.array, valid_ids: list[int]) -> mx.array:
     return logits.astype(mx.float32) + mask
 
 
+def _apply_top_p(logits: mx.array, top_p: float | None) -> mx.array:
+    if top_p is None or top_p >= 1.0:
+        return logits
+    if top_p <= 0.0:
+        raise ValueError("top_p must be > 0 when provided.")
+
+    sorted_indices = mx.argsort(-logits, axis=-1)
+    sorted_logits = mx.take_along_axis(logits, sorted_indices, axis=-1)
+    sorted_probs = mx.softmax(sorted_logits, axis=-1)
+    cumulative_probs = mx.cumsum(sorted_probs, axis=-1)
+    to_remove = cumulative_probs > top_p
+    to_remove = mx.concatenate(
+        [
+            mx.zeros_like(to_remove[..., :1]),
+            to_remove[..., :-1],
+        ],
+        axis=-1,
+    )
+    neg_inf = mx.array(mx.finfo(logits.dtype).min, dtype=logits.dtype)
+    filtered_sorted_logits = mx.where(to_remove, neg_inf, sorted_logits)
+    filtered_logits = mx.full(logits.shape, neg_inf, dtype=logits.dtype)
+    return mx.put_along_axis(filtered_logits, sorted_indices, filtered_sorted_logits, axis=-1)
+
+
+def _sample_next_token(
+    logits: mx.array,
+    *,
+    valid_ids: list[int],
+    temperature: float,
+    top_p: float | None,
+    do_sample: bool,
+) -> mx.array:
+    constrained = _constrain_logits(logits, valid_ids)
+    if not do_sample or temperature <= 0.0:
+        return mx.argmax(constrained, axis=-1)
+
+    warped = constrained / temperature
+    warped = _apply_top_p(warped, top_p)
+    return mx.random.categorical(warped, axis=-1)
+
+
 # --------------------------------------------------------------------------- #
 # Main generation function
 # --------------------------------------------------------------------------- #
@@ -96,6 +139,8 @@ def generate_vibevoice(
     """
     if config is None:
         config = VibeVoiceGenerationConfig()
+    if config.seed is not None:
+        mx.random.seed(int(config.seed))
 
     system_prompt = " Transform the text provided by various speakers into speech output, utilizing the distinct voice of each respective speaker.\n"
     B = 1
@@ -219,14 +264,13 @@ def generate_vibevoice(
     last_hidden = hidden[:, -1:, :]  # (1, 1, H)
 
     for step in range(max_steps):
-        # Constrain and sample
-        constrained = _constrain_logits(last_logits[:, -1, :], valid_ids)
-
-        if config.do_sample and config.temperature > 0:
-            probs = mx.softmax(constrained / config.temperature, axis=-1)
-            next_token = mx.random.categorical(mx.log(probs + 1e-10))
-        else:
-            next_token = mx.argmax(constrained, axis=-1)
+        next_token = _sample_next_token(
+            last_logits[:, -1, :],
+            valid_ids=valid_ids,
+            temperature=config.temperature,
+            top_p=config.top_p,
+            do_sample=config.do_sample,
+        )
 
         next_token_id = next_token.item()
         generated_tokens += 1

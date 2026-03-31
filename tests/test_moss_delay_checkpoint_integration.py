@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import pytest
+
 from mlx_voice.models.moss_delay import (
     load_moss_tts_delay_model,
     resolve_moss_tts_delay_model_dir,
 )
+
+pytestmark = pytest.mark.local_integration
 
 
 def test_resolve_moss_tts_delay_model_dir_defaults_to_local_quantized_runtime() -> None:

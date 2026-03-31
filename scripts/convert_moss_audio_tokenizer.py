@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--input-dir",
-        default=str(layouts.audio_tokenizer.original_dir),
+        required=True,
         help="Directory containing the original upstream codec checkpoint.",
     )
     parser.add_argument(

@@ -22,7 +22,7 @@ from mlx_voice.models.vibevoice.checkpoint import load_vibevoice_model
 from mlx_voice.models.vibevoice.tokenizer import VibeVoiceTokenizer
 
 
-def main() -> None:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="VibeVoice Large TTS smoke test")
     parser.add_argument("--text", required=True, help="Text to synthesize")
     parser.add_argument("--model-dir", default=None, help="Model checkpoint directory")
@@ -32,7 +32,42 @@ def main() -> None:
     parser.add_argument("--cfg-scale", type=float, default=1.3)
     parser.add_argument("--diffusion-steps", type=int, default=20)
     parser.add_argument("--max-new-tokens", type=int, default=2048)
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=1.0,
+        help="Sampling temperature. Ignored when --greedy is set.",
+    )
+    parser.add_argument(
+        "--top-p",
+        type=float,
+        default=1.0,
+        help="Top-p sampling filter. Ignored when --greedy is set.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Optional RNG seed for reproducible sampled generation.",
+    )
     parser.add_argument("--greedy", action="store_true")
+    return parser
+
+
+def _build_generation_config(args: argparse.Namespace) -> VibeVoiceGenerationConfig:
+    return VibeVoiceGenerationConfig(
+        max_new_tokens=args.max_new_tokens,
+        cfg_scale=args.cfg_scale,
+        diffusion_steps=args.diffusion_steps,
+        do_sample=not args.greedy,
+        temperature=0.0 if args.greedy else args.temperature,
+        top_p=args.top_p,
+        seed=args.seed,
+    )
+
+
+def main() -> None:
+    parser = _build_parser()
     args = parser.parse_args()
 
     print(f"Loading model from {args.model_dir or 'default'}...")
@@ -54,7 +89,7 @@ def main() -> None:
             for k, ms, cs in loaded.alignment_report.shape_mismatches[:5]:
                 print(f"    shape: {k} model={ms} ckpt={cs}")
 
-    tokenizer_dir = args.tokenizer_dir or args.model_dir or "models/vibevoice/original"
+    tokenizer_dir = args.tokenizer_dir or args.model_dir or str(loaded.model_dir)
     print(f"Loading tokenizer from {tokenizer_dir}...")
     tokenizer = VibeVoiceTokenizer.from_path(tokenizer_dir)
     print(f"  speech_start_id={tokenizer.speech_start_id}")
@@ -72,12 +107,7 @@ def main() -> None:
         ref_audio = ref_waveform.reshape(1, 1, -1)  # (1, 1, T)
         print(f"  {ref_audio.shape[2]} samples at 24000 Hz")
 
-    config = VibeVoiceGenerationConfig(
-        max_new_tokens=args.max_new_tokens,
-        cfg_scale=args.cfg_scale,
-        diffusion_steps=args.diffusion_steps,
-        do_sample=not args.greedy,
-    )
+    config = _build_generation_config(args)
 
     print(f"Generating: '{args.text}'")
     t0 = time.perf_counter()

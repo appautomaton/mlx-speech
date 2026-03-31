@@ -82,7 +82,7 @@ def _download_layout(
 
 
 def _print_layout_summary(layouts: OpenMossV0Layouts) -> None:
-    for asset in (layouts.moss_tts_local, layouts.audio_tokenizer):
+    for asset in (layouts.moss_tts_local, layouts.audio_tokenizer, layouts.moss_sound_effect):
         print(f"[{asset.model_name}]")
         print(f"  repo:      {asset.repo_id}")
         print(f"  original:  {asset.original_dir}")
@@ -93,7 +93,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--asset",
-        choices=("all", "moss-local", "audio-tokenizer"),
+        choices=("all", "moss-local", "audio-tokenizer", "sound-effect"),
         default="all",
         help="Which upstream asset to download.",
     )
@@ -137,6 +137,14 @@ def main() -> None:
     if args.asset in {"all", "audio-tokenizer"}:
         _download_layout(
             layouts.audio_tokenizer,
+            dry_run=args.dry_run,
+            metadata_only=args.metadata_only,
+            force_download=args.force_download,
+            max_workers=args.max_workers,
+        )
+    if args.asset in {"all", "sound-effect"}:
+        _download_layout(
+            layouts.moss_sound_effect,
             dry_run=args.dry_run,
             metadata_only=args.metadata_only,
             force_download=args.force_download,

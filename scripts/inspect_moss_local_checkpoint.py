@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 
-from mlx_voice.checkpoints import get_openmoss_v0_layouts, summarize_prefixes
+from mlx_voice.checkpoints import summarize_prefixes
 from mlx_voice.models.moss_local import load_moss_tts_local_checkpoint
 
 
@@ -13,7 +13,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model-dir",
-        default=str(get_openmoss_v0_layouts().moss_tts_local.original_dir),
+        required=True,
         help="Local checkpoint directory containing config.json and safetensors shards.",
     )
     parser.add_argument(

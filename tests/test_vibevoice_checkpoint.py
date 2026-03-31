@@ -52,6 +52,7 @@ class TestSanitize:
 
 
 @pytest.mark.skipif(not HAS_CHECKPOINT, reason="checkpoint not available")
+@pytest.mark.local_integration
 class TestRealCheckpoint:
     def test_load_checkpoint(self):
         ckpt = load_vibevoice_checkpoint(MODEL_DIR)

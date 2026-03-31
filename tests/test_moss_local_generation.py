@@ -15,7 +15,6 @@ from mlx_voice.generation.moss_local import _resolve_generation_limit
 from mlx_voice.models.moss_local import (
     MossTTSLocalConfig,
     MossTTSLocalModel,
-    MossTTSLocalProcessor,
     estimate_duration_tokens,
 )
 
@@ -52,6 +51,23 @@ def _tiny_config() -> MossTTSLocalConfig:
             },
         }
     )
+
+
+class _DummyLocalProcessor:
+    def build_user_message(self, **kwargs):
+        return {
+            "role": "user",
+            "content": (
+                f"- Text:\n{kwargs['text']}\n"
+                f"- Tokens:\n{kwargs['tokens']}\n"
+            ),
+        }
+
+    def build_assistant_message(self, *, audio_codes_list):
+        return {
+            "role": "assistant",
+            "audio_codes_list": list(audio_codes_list),
+        }
 
 
 def test_extract_audio_code_sequences_skips_all_pad_rows() -> None:
@@ -225,7 +241,7 @@ def test_resolve_generation_limit_uses_safety_cap_when_user_limit_is_unset() -> 
 
 def test_cli_continuation_modes_ignore_expected_tokens() -> None:
     module = _load_generate_script_module()
-    processor = MossTTSLocalProcessor.from_path("models/openmoss/moss_tts_local/original")
+    processor = _DummyLocalProcessor()
 
     for mode in ("continuation", "continue_clone"):
         args = argparse.Namespace(

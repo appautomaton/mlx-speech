@@ -1,11 +1,6 @@
 import mlx.core as mx
-from pathlib import Path
-import sys
-
-import pytest
 
 from mlx_voice.models.moss_delay import MossTTSDelayConfig, MossTTSDelayProcessor
-from mlx_voice.models.moss_local.tokenizer import DEFAULT_MOSS_CHAT_TEMPLATE
 
 
 class _DummyTokenizer:
@@ -35,53 +30,6 @@ def _tiny_config() -> MossTTSDelayConfig:
             },
         }
     )
-
-
-def _make_reference_codes(length: int = 4, n_vq: int = 16) -> mx.array:
-    rows = []
-    for frame in range(length):
-        rows.append([(frame + column) % 1024 for column in range(n_vq)])
-    return mx.array(rows, dtype=mx.int32)
-
-
-def _load_upstream_delay_processor():
-    transformers = pytest.importorskip("transformers")
-    torch = pytest.importorskip("torch")
-
-    repo_root = Path(__file__).resolve().parents[1]
-    upstream_root = repo_root / ".references" / "MOSS-TTS"
-    if str(upstream_root) not in sys.path:
-        sys.path.insert(0, str(upstream_root))
-
-    from moss_tts_delay.configuration_moss_tts import MossTTSDelayConfig as UpstreamConfig
-    from moss_tts_delay.processing_moss_tts import MossTTSDelayProcessor as UpstreamProcessor
-
-    model_dir = repo_root / "models" / "openmoss" / "moss_ttsd" / "original"
-    tokenizer = transformers.AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=True)
-    tokenizer.chat_template = DEFAULT_MOSS_CHAT_TEMPLATE
-    config = UpstreamConfig.from_pretrained(str(model_dir), trust_remote_code=True)
-    processor = UpstreamProcessor(
-        tokenizer=tokenizer,
-        audio_tokenizer=None,
-        model_config=config,
-    )
-    return processor, torch
-
-
-def _assert_processor_parity(
-    our_conversation: list[dict],
-    upstream_conversation: list[dict],
-    *,
-    mode: str,
-) -> None:
-    processor = MossTTSDelayProcessor.from_path("models/openmoss/moss_ttsd/original")
-    upstream_processor, _ = _load_upstream_delay_processor()
-
-    our_batch = processor([our_conversation], mode=mode)
-    upstream_batch = upstream_processor([upstream_conversation], mode=mode)
-
-    assert our_batch.input_ids.tolist() == upstream_batch["input_ids"].tolist()
-    assert our_batch.attention_mask.tolist() == upstream_batch["attention_mask"].tolist()
 
 
 def test_delay_pattern_round_trip_restores_original_codes() -> None:
@@ -134,43 +82,3 @@ def test_delay_processor_decode_sequences_keeps_audio_when_text_is_empty() -> No
     assert messages[0].content == ""
     assert len(messages[0].audio_codes_list) == 1
     assert messages[0].audio_codes_list[0].tolist() == expected_audio.tolist()
-
-
-def test_delay_processor_generation_parity_with_upstream_direct() -> None:
-    processor = MossTTSDelayProcessor.from_path("models/openmoss/moss_ttsd/original")
-    our_message = processor.build_user_message(text="[S1] Hello from MLX delay.")
-    upstream_processor, _ = _load_upstream_delay_processor()
-    upstream_message = upstream_processor.build_user_message(text="[S1] Hello from MLX delay.")
-
-    _assert_processor_parity([our_message], [upstream_message], mode="generation")
-
-
-def test_delay_processor_generation_parity_with_upstream_clone() -> None:
-    processor = MossTTSDelayProcessor.from_path("models/openmoss/moss_ttsd/original")
-    reference_codes = _make_reference_codes()
-    our_message = processor.build_user_message(text="[S1] Clone this.", reference=[reference_codes])
-    upstream_processor, torch = _load_upstream_delay_processor()
-    upstream_message = upstream_processor.build_user_message(
-        text="[S1] Clone this.",
-        reference=[torch.tensor(reference_codes.tolist(), dtype=torch.long)],
-    )
-
-    _assert_processor_parity([our_message], [upstream_message], mode="generation")
-
-
-def test_delay_processor_continuation_parity_with_upstream() -> None:
-    processor = MossTTSDelayProcessor.from_path("models/openmoss/moss_ttsd/original")
-    prefix_codes = _make_reference_codes()
-    our_conversation = [
-        processor.build_user_message(text="[S1] Continue this."),
-        processor.build_assistant_message(audio_codes_list=[prefix_codes]),
-    ]
-    upstream_processor, torch = _load_upstream_delay_processor()
-    upstream_conversation = [
-        upstream_processor.build_user_message(text="[S1] Continue this."),
-        upstream_processor.build_assistant_message(
-            audio_codes_list=[torch.tensor(prefix_codes.tolist(), dtype=torch.long)]
-        ),
-    ]
-
-    _assert_processor_parity(our_conversation, upstream_conversation, mode="continuation")

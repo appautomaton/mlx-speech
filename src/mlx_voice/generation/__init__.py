@@ -1,5 +1,6 @@
 """Generation utilities for mlx-voice."""
 
+from .cohere_asr import CohereAsrModel, CohereAsrResult
 from .moss_delay import (
     MossTTSDelayBatchSynthesisOutput,
     MossTTSDelayGenerationConfig,
@@ -21,6 +22,8 @@ from .moss_local import (
 )
 
 __all__ = [
+    "CohereAsrModel",
+    "CohereAsrResult",
     "MossTTSDelayBatchSynthesisOutput",
     "MossTTSDelayGenerationConfig",
     "MossTTSDelayGenerationOutput",

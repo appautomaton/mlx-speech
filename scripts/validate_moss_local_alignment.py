@@ -17,8 +17,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model-dir",
-        default="models/openmoss/moss_tts_local/original",
-        help="Local MossTTSLocal checkpoint directory.",
+        required=True,
+        help="Explicit MossTTSLocal checkpoint directory to inspect.",
     )
     parser.add_argument(
         "--show-limit",

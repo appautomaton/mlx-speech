@@ -7,6 +7,8 @@ Current v0 scripts:
 
 - `download_openmoss_v0_assets.py` — download the upstream local checkpoints
   into `models/openmoss/.../original/`
+- `convert_moss_sound_effect.py` — convert the upstream `MOSS-SoundEffect`
+  checkpoint into `models/openmoss/moss_sound_effect/mlx-4bit/`
 - `inspect_moss_local_checkpoint.py` — inspect the original upstream speech
   checkpoint layout
 - `validate_moss_local_alignment.py` — validate original checkpoint keys and
@@ -22,6 +24,9 @@ Current v0 scripts:
   and codec decode
 - `convert_moss_ttsd.py` — convert the upstream `MossTTSDelay` / TTSD
   checkpoint into `models/openmoss/moss_ttsd/mlx-int8/`
+- `generate_moss_sound_effect.py` — run MOSS-SoundEffect generation from
+  local sound-effect weights; expects `models/openmoss/moss_sound_effect/mlx-4bit/`
+  by default and supports explicit `--model-dir` / `--codec-dir` overrides
 - `generate_moss_ttsd.py` — run TTSD generation / continuation from local
   TTSD weights; uses `mlx-int8` by default and supports explicit `--model-dir`
   / `--codec-dir` overrides for custom checkpoint paths

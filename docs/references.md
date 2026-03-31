@@ -29,6 +29,7 @@ As of March 29, 2026:
 - `.references/MOSS-TTS`: `main` at `c74844ef6c08161160483c1bf3682235bdccae41`
 - `.references/MOSS-TTSD`: `main` at `20dbb4fc44819435fee894d644a0402a0fee736a`
 - `.references/mlx-audio`: `main` at `6408d2a410eb8c57464e07725b92271860199250`
+- `.references/transformers`: `main` at `8213e0d920d52cb00dcade16b6d1f6e952ac0a8c` (sparse: `src/transformers/models/cohere_asr`, `src/transformers/models/moonshine`, `src/transformers/models/parakeet`)
 
 ## Notes
 

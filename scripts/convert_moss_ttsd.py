@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--input-dir",
-        default="models/openmoss/moss_ttsd/original",
+        required=True,
         help="Directory containing the original upstream MossTTSDelay checkpoint.",
     )
     parser.add_argument(

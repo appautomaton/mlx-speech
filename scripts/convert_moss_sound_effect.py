@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert upstream MossTTSLocal safetensors into MLX-native int8 weights."""
+"""Convert upstream MOSS-SoundEffect safetensors into MLX-native 4-bit weights."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ import shutil
 from pathlib import Path
 
 from mlx_voice.checkpoints import INDEX_FILENAME, get_openmoss_v0_layouts
-from mlx_voice.models.moss_local import (
-    MossTTSLocalModel,
+from mlx_voice.models.moss_delay import (
+    MossTTSDelayModel,
     QuantizationConfig,
-    load_checkpoint_into_model,
-    load_moss_tts_local_checkpoint,
-    quantize_moss_tts_local_model,
-    save_moss_tts_local_model,
+    load_moss_tts_delay_checkpoint,
+    quantize_moss_tts_delay_model,
+    save_moss_tts_delay_model,
 )
+from mlx_voice.models.moss_local.checkpoint import load_checkpoint_into_model
 
 
 def parse_args() -> argparse.Namespace:
@@ -23,18 +23,18 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--input-dir",
-        required=True,
-        help="Directory containing the original upstream MossTTSLocal checkpoint.",
+        default=str(layouts.moss_sound_effect.original_dir),
+        help="Directory containing the upstream MOSS-SoundEffect checkpoint.",
     )
     parser.add_argument(
         "--output-dir",
-        default=str(layouts.moss_tts_local.mlx_int8_dir),
+        default=str(layouts.moss_sound_effect.root_dir / "mlx-4bit"),
         help="Directory to write the converted MLX checkpoint.",
     )
     parser.add_argument(
         "--bits",
         type=int,
-        default=8,
+        default=4,
         help="Quantization bit width for MLX quantized layers.",
     )
     parser.add_argument(
@@ -81,28 +81,30 @@ def main() -> None:
         mode=args.mode,
     )
 
-    checkpoint = load_moss_tts_local_checkpoint(input_dir)
-    model = MossTTSLocalModel(checkpoint.config)
+    checkpoint = load_moss_tts_delay_checkpoint(input_dir)
+    model = MossTTSDelayModel(checkpoint.config)
     report = load_checkpoint_into_model(model, checkpoint, strict=True)
     if not report.is_exact_match:
-        raise ValueError("Original checkpoint must align exactly before conversion.")
+        raise ValueError("Original MOSS-SoundEffect checkpoint must align exactly before conversion.")
 
-    quantize_moss_tts_local_model(model, quantization)
+    quantize_moss_tts_delay_model(model, quantization)
     output_dir.mkdir(parents=True, exist_ok=True)
-    copied_files = []
+    copied_files: list[Path] = []
     if not args.skip_supporting_files:
         copied_files = _copy_supporting_files(input_dir, output_dir)
-    save_moss_tts_local_model(
+    save_moss_tts_delay_model(
         model,
         output_dir,
         config=checkpoint.config,
         quantization=quantization,
     )
 
-    print("Converted MossTTSLocal checkpoint")
+    print("Converted MOSS-SoundEffect checkpoint")
     print(f"  input_dir: {input_dir}")
     print(f"  output_dir: {output_dir}")
-    print(f"  quantization: {quantization.mode} {quantization.bits}-bit group={quantization.group_size}")
+    print(
+        f"  quantization: {quantization.mode} {quantization.bits}-bit group={quantization.group_size}"
+    )
     print(f"  copied_supporting_files: {len(copied_files)}")
 
 

@@ -33,10 +33,12 @@ class OpenMossV0Layouts:
 
     moss_tts_local: ModelArtifactLayout
     audio_tokenizer: ModelArtifactLayout
+    moss_sound_effect: ModelArtifactLayout
 
     def ensure(self) -> "OpenMossV0Layouts":
         self.moss_tts_local.ensure()
         self.audio_tokenizer.ensure()
+        self.moss_sound_effect.ensure()
         return self
 
 
@@ -73,5 +75,11 @@ def get_openmoss_v0_layouts(models_root: Path | None = None) -> OpenMossV0Layout
             family="openmoss",
             model_name="moss_audio_tokenizer",
             repo_id="OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        ),
+        moss_sound_effect=_build_model_layout(
+            models_root=resolved_root,
+            family="openmoss",
+            model_name="moss_sound_effect",
+            repo_id="OpenMOSS-Team/MOSS-SoundEffect",
         ),
     )

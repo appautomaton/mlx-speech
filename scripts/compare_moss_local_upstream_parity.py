@@ -22,13 +22,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model-dir",
-        default="models/openmoss/moss_tts_local/original",
-        help="Local original MossTTSLocal checkpoint directory.",
+        required=True,
+        help="Explicit original-style MossTTSLocal checkpoint directory for upstream parity work.",
     )
     parser.add_argument(
         "--codec-dir",
-        default="models/openmoss/moss_audio_tokenizer/mlx-int8",
-        help="Local Moss audio tokenizer checkpoint directory.",
+        required=True,
+        help="Explicit original-style Moss audio tokenizer checkpoint directory for upstream parity work.",
     )
     parser.add_argument(
         "--max-new-tokens",

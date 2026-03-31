@@ -126,6 +126,28 @@ def resolve_moss_tts_delay_model_dir(
     )
 
 
+def resolve_moss_sound_effect_model_dir(
+    model_dir: str | Path | None = None,
+) -> Path:
+    """Resolve the default local MOSS-SoundEffect path for runtime loading.
+
+    The local default is the quantized MLX 4-bit runtime artifact. Use
+    ``model_dir`` explicitly if you want to load some other checkpoint path.
+    """
+
+    if model_dir is not None:
+        return Path(model_dir)
+
+    root_dir = MODELS_ROOT / "openmoss" / "moss_sound_effect"
+    quantized_dir = root_dir / "mlx-4bit"
+    if any(quantized_dir.glob("*.safetensors")):
+        return quantized_dir
+    raise FileNotFoundError(
+        "No local quantized MOSS-SoundEffect checkpoint found at "
+        f"{quantized_dir}. Pass `model_dir` explicitly to load some other checkpoint."
+    )
+
+
 def quantize_moss_tts_delay_model(
     model: MossTTSDelayModel,
     quantization: QuantizationConfig,
@@ -214,4 +236,18 @@ def load_moss_tts_delay_model(
         checkpoint=runtime_checkpoint,
         alignment_report=alignment_report,
         quantization=quantization,
+    )
+
+
+def load_moss_sound_effect_model(
+    model_dir: str | Path | None = None,
+    *,
+    strict: bool = True,
+) -> LoadedMossTTSDelayModel:
+    """Load MOSS-SoundEffect from a local checkpoint directory."""
+
+    resolved_dir = resolve_moss_sound_effect_model_dir(model_dir)
+    return load_moss_tts_delay_model(
+        resolved_dir,
+        strict=strict,
     )

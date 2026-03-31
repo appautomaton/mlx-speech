@@ -79,6 +79,10 @@ docs/               # Internal project notes
 - **Read upstream source before implementing.** Do not guess architecture from
   names or documentation alone.
 
+## Git
+
+- Do not add `Co-Authored-By` lines to git commits.
+
 ## Working Rules
 
 - Work from `/Users/ac/dev/ai/genai/mlx-voice`.

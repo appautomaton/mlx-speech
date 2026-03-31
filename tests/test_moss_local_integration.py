@@ -13,30 +13,10 @@ from mlx_voice.generation import (
 from mlx_voice.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
 from mlx_voice.models.moss_local import MossTTSLocalProcessor, load_moss_tts_local_model
 
-
-@pytest.fixture(scope="module")
-def original_runtime():
-    if not Path("models/openmoss/moss_tts_local/original").exists():
-        pytest.skip("original MossTTSLocal checkpoint not available")
-    if not Path("models/openmoss/moss_audio_tokenizer/original").exists():
-        pytest.skip("original Moss audio tokenizer checkpoint not available")
-    loaded_model = load_moss_tts_local_model(
-        "models/openmoss/moss_tts_local/original",
-        prefer_mlx_int8=False,
-    )
-    loaded_codec = load_moss_audio_tokenizer_model(
-        "models/openmoss/moss_audio_tokenizer/original",
-        prefer_mlx_int8=False,
-    )
-    processor = MossTTSLocalProcessor.from_path(
-        loaded_model.model_dir,
-        audio_tokenizer=loaded_codec.model,
-    )
-    return loaded_model.model, processor, loaded_codec.model
+pytestmark = pytest.mark.local_integration
 
 
-@pytest.fixture(scope="module")
-def quantized_runtime():
+def _runtime():
     loaded_model = load_moss_tts_local_model()
     loaded_codec = load_moss_audio_tokenizer_model()
     processor = MossTTSLocalProcessor.from_path(
@@ -65,13 +45,12 @@ def reference_audio_path(tmp_path: Path) -> Path:
         ("continue_clone", "continuation"),
     ],
 )
-def test_original_weights_support_main_inference_modes(
-    original_runtime,
+def test_default_quantized_runtime_supports_main_inference_modes(
     reference_audio_path: Path,
     mode: str,
     processor_mode: str,
 ) -> None:
-    model, processor, codec = original_runtime
+    model, processor, codec = _runtime()
     config = MossTTSLocalGenerationConfig(max_new_tokens=2, do_sample=False)
 
     user_kwargs: dict[str, object] = {"text": "Hello from MLX.", "tokens": 8}
@@ -112,8 +91,8 @@ def test_original_weights_support_main_inference_modes(
     assert result.outputs[0].sample_rate == 24000
 
 
-def test_batch_inference_preserves_output_order(original_runtime, reference_audio_path: Path) -> None:
-    model, processor, codec = original_runtime
+def test_batch_inference_preserves_output_order(reference_audio_path: Path) -> None:
+    model, processor, codec = _runtime()
     config = MossTTSLocalGenerationConfig(max_new_tokens=2, do_sample=False)
     conversations = [
         [processor.build_user_message(text="First sample.", tokens=6)],
@@ -144,12 +123,11 @@ def test_batch_inference_preserves_output_order(original_runtime, reference_audi
     ],
 )
 def test_cached_and_uncached_single_sample_paths_match(
-    quantized_runtime,
     reference_audio_path: Path,
     mode: str,
     processor_mode: str,
 ) -> None:
-    model, processor, codec = quantized_runtime
+    model, processor, codec = _runtime()
 
     user_kwargs: dict[str, object] = {"text": "Cache parity sample.", "tokens": 8}
     if mode in {"clone", "continue_clone"}:
@@ -201,10 +179,9 @@ def test_cached_and_uncached_single_sample_paths_match(
 
 
 def test_batch_kv_cache_flag_falls_back_to_uncached_path(
-    quantized_runtime,
     reference_audio_path: Path,
 ) -> None:
-    model, processor, codec = quantized_runtime
+    model, processor, codec = _runtime()
     conversations = [
         [processor.build_user_message(text="First cached batch item.", tokens=6)],
         [processor.build_user_message(text="Second cached batch item.", reference=[str(reference_audio_path)], tokens=6)],
@@ -237,10 +214,8 @@ def test_batch_kv_cache_flag_falls_back_to_uncached_path(
     assert cached.outputs[1].waveform.size > 0
 
 
-def test_default_cached_path_runs(
-    quantized_runtime,
-) -> None:
-    model, processor, codec = quantized_runtime
+def test_default_cached_path_runs() -> None:
+    model, processor, codec = _runtime()
     conversations = [[processor.build_user_message(text="Local cache sample.", tokens=6)]]
 
     mx.random.seed(0)

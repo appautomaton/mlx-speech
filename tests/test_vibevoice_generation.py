@@ -5,12 +5,12 @@ from pathlib import Path
 import mlx.core as mx
 import pytest
 
-from mlx_voice.models.vibevoice.config import VibeVoiceConfig
 from mlx_voice.generation.vibevoice import (
     VibeVoiceGenerationConfig,
-    VibeVoiceGenerationOutput,
     VibeVoiceSynthesisOutput,
+    _apply_top_p,
     _constrain_logits,
+    _sample_next_token,
 )
 
 MODEL_DIR = Path("models/vibevoice/mlx-int8")
@@ -48,9 +48,60 @@ class TestGenerationConfig:
         assert cfg.cfg_scale == 1.3
         assert cfg.diffusion_steps == 20
         assert cfg.do_sample is False
+        assert cfg.top_p == 1.0
+        assert cfg.seed is None
+
+
+class TestSamplingHelpers:
+    def test_top_p_masks_removed_logits(self):
+        logits = mx.array([[4.0, 3.0, 2.0, 1.0]], dtype=mx.float32)
+
+        filtered = _apply_top_p(logits, top_p=0.6)
+        mx.eval(filtered)
+
+        assert float(filtered[0, 0]) == 4.0
+        assert any(float(filtered[0, i]) < -1e30 for i in range(1, 4))
+
+    def test_sample_next_token_uses_seed_for_reproducible_sampling(self):
+        logits = mx.array([[1.0, 1.0, 1.0, 1.0]], dtype=mx.float32)
+        valid_ids = [0, 1, 2, 3]
+
+        mx.random.seed(123)
+        first = _sample_next_token(
+            logits,
+            valid_ids=valid_ids,
+            temperature=1.0,
+            top_p=1.0,
+            do_sample=True,
+        )
+
+        mx.random.seed(123)
+        second = _sample_next_token(
+            logits,
+            valid_ids=valid_ids,
+            temperature=1.0,
+            top_p=1.0,
+            do_sample=True,
+        )
+
+        assert first.tolist() == second.tolist()
+
+    def test_sample_next_token_greedy_ignores_temperature_and_top_p(self):
+        logits = mx.array([[1.0, 2.0, 5.0, 3.0]], dtype=mx.float32)
+
+        token = _sample_next_token(
+            logits,
+            valid_ids=[0, 1, 2, 3],
+            temperature=0.0,
+            top_p=0.2,
+            do_sample=False,
+        )
+
+        assert token.tolist() == [2]
 
 
 @pytest.mark.skipif(not HAS_MODEL, reason="model not available")
+@pytest.mark.local_integration
 class TestEndToEnd:
     def _get_model_dir(self):
         return MODEL_DIR if HAS_INT8 else ORIGINAL_DIR

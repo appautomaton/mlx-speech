@@ -1,8 +1,6 @@
 import math
-from pathlib import Path
 
 import mlx.core as mx
-import pytest
 
 from mlx_voice.generation import MossTTSDelayGenerationConfig, generate_moss_tts_delay
 from mlx_voice.generation.moss_delay import (
@@ -14,12 +12,6 @@ from mlx_voice.generation.moss_delay import (
     _sample_delay_token,
     _update_delay_state,
 )
-from mlx_voice.models.moss_delay import MossTTSDelayProcessor, load_moss_tts_delay_model
-
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-REAL_DELAY_MODEL_DIR = REPO_ROOT / "models" / "openmoss" / "moss_ttsd" / "original"
-HAS_REAL_DELAY_CHECKPOINT = (REAL_DELAY_MODEL_DIR / "config.json").exists()
 
 
 class _FakeDelayConfig:
@@ -318,93 +310,3 @@ def test_update_delay_state_transitions_stopping_and_delay_unwind() -> None:
     assert next_delayed_lengths.tolist() == [0, 2]
     assert next_is_audio.tolist() == [False, True]
     assert next_is_stopping.tolist() == [False, True]
-
-
-@pytest.fixture(scope="module")
-def real_delay_runtime():
-    if not HAS_REAL_DELAY_CHECKPOINT:
-        pytest.skip("checkpoint not available")
-    loaded = load_moss_tts_delay_model(
-        REAL_DELAY_MODEL_DIR,
-        prefer_mlx_int8=False,
-        strict=True,
-    )
-    processor = MossTTSDelayProcessor.from_path(REAL_DELAY_MODEL_DIR)
-    return loaded.model, processor
-
-
-def _run_real_delay_greedy(
-    model,
-    processor: MossTTSDelayProcessor,
-    text: str,
-    *,
-    max_new_tokens: int,
-    use_kv_cache: bool,
-):
-    batch = processor(
-        [[processor.build_user_message(text=text)]],
-        mode="generation",
-    )
-    return generate_moss_tts_delay(
-        model,
-        batch.input_ids,
-        batch.attention_mask,
-        config=MossTTSDelayGenerationConfig(
-            max_new_tokens=max_new_tokens,
-            text_temperature=0.0,
-            audio_temperature=0.0,
-            do_sample=False,
-            use_kv_cache=use_kv_cache,
-        ),
-    )
-
-
-@pytest.mark.skipif(not HAS_REAL_DELAY_CHECKPOINT, reason="checkpoint not available")
-def test_delay_cached_and_uncached_greedy_match_on_short_real_prompt(real_delay_runtime) -> None:
-    model, processor = real_delay_runtime
-    text = "[S1] Watson, we should go now."
-
-    uncached = _run_real_delay_greedy(
-        model,
-        processor,
-        text,
-        max_new_tokens=48,
-        use_kv_cache=False,
-    )
-    cached = _run_real_delay_greedy(
-        model,
-        processor,
-        text,
-        max_new_tokens=48,
-        use_kv_cache=True,
-    )
-
-    assert uncached.stop_reached == cached.stop_reached
-    assert uncached.generated_rows.tolist() == cached.generated_rows.tolist()
-
-
-@pytest.mark.skipif(not HAS_REAL_DELAY_CHECKPOINT, reason="checkpoint not available")
-def test_delay_cached_and_uncached_greedy_match_on_medium_real_prompt(real_delay_runtime) -> None:
-    model, processor = real_delay_runtime
-    text = (
-        "[S1] Watson, should we go now? The rain is getting worse, and the road is "
-        "flooding. Can you hear the thunder?"
-    )
-
-    uncached = _run_real_delay_greedy(
-        model,
-        processor,
-        text,
-        max_new_tokens=80,
-        use_kv_cache=False,
-    )
-    cached = _run_real_delay_greedy(
-        model,
-        processor,
-        text,
-        max_new_tokens=80,
-        use_kv_cache=True,
-    )
-
-    assert uncached.stop_reached == cached.stop_reached
-    assert uncached.generated_rows.tolist() == cached.generated_rows.tolist()

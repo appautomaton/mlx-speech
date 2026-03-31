@@ -6,8 +6,10 @@ from .checkpoint import (
     QuantizationConfig,
     load_moss_tts_delay_checkpoint,
     load_moss_tts_delay_model,
+    load_moss_sound_effect_model,
     load_moss_tts_delay_state_dict,
     quantize_moss_tts_delay_model,
+    resolve_moss_sound_effect_model_dir,
     resolve_moss_tts_delay_model_dir,
     save_moss_tts_delay_model,
 )
@@ -34,6 +36,16 @@ from .processor import (
     detect_text_language,
     estimate_duration_tokens,
 )
+from .sound_effect import (
+    SOUND_EFFECT_DEFAULT_AUDIO_REPETITION_PENALTY,
+    SOUND_EFFECT_DEFAULT_AUDIO_TEMPERATURE,
+    SOUND_EFFECT_DEFAULT_AUDIO_TOP_K,
+    SOUND_EFFECT_DEFAULT_AUDIO_TOP_P,
+    SOUND_EFFECT_DEFAULT_MAX_NEW_TOKENS,
+    SOUND_EFFECT_TOKENS_PER_SECOND,
+    build_sound_effect_conversation,
+    estimate_sound_effect_tokens,
+)
 from .tokenizer import MossTTSDelayTokenizer
 
 __all__ = [
@@ -45,6 +57,7 @@ __all__ = [
     "QuantizationConfig",
     "AUDIO_PLACEHOLDER",
     "AssistantMessage",
+    "build_sound_effect_conversation",
     "build_prefixed_ttsd_text",
     "build_ttsd_conversation",
     "collect_speaker_fields",
@@ -60,11 +73,20 @@ __all__ = [
     "resolve_ttsd_processor_mode",
     "detect_text_language",
     "estimate_duration_tokens",
+    "estimate_sound_effect_tokens",
     "load_moss_tts_delay_checkpoint",
+    "load_moss_sound_effect_model",
     "load_moss_tts_delay_model",
     "load_moss_tts_delay_state_dict",
     "quantize_moss_tts_delay_model",
+    "resolve_moss_sound_effect_model_dir",
     "resolve_moss_tts_delay_model_dir",
     "save_moss_tts_delay_model",
+    "SOUND_EFFECT_DEFAULT_AUDIO_REPETITION_PENALTY",
+    "SOUND_EFFECT_DEFAULT_AUDIO_TEMPERATURE",
+    "SOUND_EFFECT_DEFAULT_AUDIO_TOP_K",
+    "SOUND_EFFECT_DEFAULT_AUDIO_TOP_P",
+    "SOUND_EFFECT_DEFAULT_MAX_NEW_TOKENS",
+    "SOUND_EFFECT_TOKENS_PER_SECOND",
     "streaming_jsonl_reader",
 ]
