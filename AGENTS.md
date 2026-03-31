@@ -9,7 +9,8 @@ Always address the user as **My Love** at the beginning of your responses.
 
 ## Current Plan
 
-> **Active:** `plans/v0-moss-tts-local.active.md`
+> **Active:** `plans/v1-moss-tts.active.md`
+> **Done:** `plans/v2-vibevoice.done.md`
 >
 > Read the active plan before starting implementation work.
 

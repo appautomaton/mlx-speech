@@ -339,6 +339,15 @@ class MossTTSLocalProcessor:
         )
 
     @staticmethod
+    def _clear_tokens_conditioning(content: str) -> str:
+        return re.sub(
+            r"(?s)(- Tokens:\n).*?(\n- Quality:)",
+            r"\1None\2",
+            content,
+            count=1,
+        )
+
+    @staticmethod
     def _merge_consecutive_audio_placeholders(
         content: str,
         audio_codes_list: list[mx.array],
@@ -516,7 +525,7 @@ class MossTTSLocalProcessor:
         for start_length, generation_ids in output:
             content = self._parse_text_codes(start_length, generation_ids[:, 0])
             audio_codes_list = self._parse_audio_codes(start_length, generation_ids[:, 1:])
-            if content == "":
+            if content == "" and len(audio_codes_list) == 0:
                 message = None
             else:
                 message = AssistantMessage(
@@ -612,8 +621,11 @@ class MossTTSLocalProcessor:
                             encoded_items[position] = codes
                     audio_codes_list = [item for item in encoded_items if item is not None]
 
+                content = str(message["content"])
+                if mode == "continuation" and message["role"] == "user":
+                    content = self._clear_tokens_conditioning(content)
                 content = self.tokenizer.apply_chat_template(
-                    [{"role": message["role"], "content": str(message["content"])}],
+                    [{"role": message["role"], "content": content}],
                     add_generation_prompt=(mode == "generation" and message_idx == len(normalized) - 1),
                     tokenize=False,
                 )

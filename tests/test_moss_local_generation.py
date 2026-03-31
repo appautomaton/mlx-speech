@@ -1,3 +1,7 @@
+import argparse
+import importlib.util
+from pathlib import Path
+
 import mlx.core as mx
 
 from mlx_voice.generation import (
@@ -11,8 +15,19 @@ from mlx_voice.generation.moss_local import _resolve_generation_limit
 from mlx_voice.models.moss_local import (
     MossTTSLocalConfig,
     MossTTSLocalModel,
+    MossTTSLocalProcessor,
     estimate_duration_tokens,
 )
+
+
+def _load_generate_script_module():
+    script_path = Path(__file__).resolve().parents[1] / "scripts" / "generate_moss_local.py"
+    spec = importlib.util.spec_from_file_location("generate_moss_local_script", script_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load script module from {script_path}.")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _tiny_config() -> MossTTSLocalConfig:
@@ -141,6 +156,15 @@ def test_app_default_generation_config_matches_upstream_gradio_defaults() -> Non
     assert config.audio_repetition_penalty == 1.0
 
 
+def test_clone_v1_generation_config_matches_local_model_defaults() -> None:
+    config = MossTTSLocalGenerationConfig.clone_v1_defaults()
+
+    assert config.audio_temperature == 1.0
+    assert config.audio_top_p == 0.95
+    assert config.audio_top_k == 50
+    assert config.audio_repetition_penalty == 1.1
+
+
 def test_estimate_duration_tokens_matches_upstream_heuristic() -> None:
     assert estimate_duration_tokens("Hello") == ("en", 4, 2, 6)
     assert estimate_duration_tokens("你好世界") == ("zh", 12, 6, 18)
@@ -197,3 +221,26 @@ def test_resolve_generation_limit_uses_safety_cap_when_user_limit_is_unset() -> 
         )
         == 77
     )
+
+
+def test_cli_continuation_modes_ignore_expected_tokens() -> None:
+    module = _load_generate_script_module()
+    processor = MossTTSLocalProcessor.from_path("models/openmoss/moss_tts_local/original")
+
+    for mode in ("continuation", "continue_clone"):
+        args = argparse.Namespace(
+            text="Continue this.",
+            mode=mode,
+            reference_audio="reference.wav",
+            expected_tokens=123,
+            auto_estimate_expected_tokens=True,
+            instruction=None,
+            quality=None,
+            sound_event=None,
+            ambient_sound=None,
+            language=None,
+        )
+        conversations, processor_mode = module.build_conversation(args, processor)
+
+        assert processor_mode == "continuation"
+        assert "- Tokens:\nNone\n" in conversations[0][0]["content"]

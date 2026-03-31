@@ -1,0 +1,64 @@
+{
+  "name": "macos_builtin_en_v1",
+  "language": "en",
+  "description": "Fixed English clone eval set generated from macOS built-in single-speaker TTS voices.",
+  "references": [
+    {
+      "id": "samantha_us",
+      "voice": "Samantha",
+      "locale": "en_US",
+      "reference_text": "Hello, my name is Samantha. This is a clean reference clip for voice cloning. The pacing is steady and the tone is calm."
+    },
+    {
+      "id": "karen_au",
+      "voice": "Karen",
+      "locale": "en_AU",
+      "reference_text": "Hello, my name is Karen. This reference clip is short, clear, and easy to understand. The speaking style is natural and even."
+    },
+    {
+      "id": "moira_ie",
+      "voice": "Moira",
+      "locale": "en_IE",
+      "reference_text": "Hello, my name is Moira. This sample is meant for clone evaluation. The voice is clean, steady, and free from background noise."
+    },
+    {
+      "id": "tessa_za",
+      "voice": "Tessa",
+      "locale": "en_ZA",
+      "reference_text": "Hello, my name is Tessa. This spoken reference is clean and controlled. It should be suitable for a same-language cloning test."
+    }
+  ],
+  "prompts": [
+    {
+      "id": "short",
+      "kind": "short",
+      "text": "Welcome to mlx voice."
+    },
+    {
+      "id": "medium",
+      "kind": "medium",
+      "text": "Welcome to mlx voice. This sample checks whether the cloned voice stays natural and clear."
+    },
+    {
+      "id": "two_sentence",
+      "kind": "two_sentence",
+      "text": "Welcome to mlx voice. This sample checks whether the cloned voice stays natural and clear over two full sentences."
+    }
+  ],
+  "recommended_presets": [
+    {
+      "id": "clone-v1",
+      "audio_temperature": 1.0,
+      "audio_top_p": 0.95,
+      "audio_top_k": 50,
+      "audio_repetition_penalty": 1.1
+    },
+    {
+      "id": "app-defaults",
+      "audio_temperature": 1.7,
+      "audio_top_p": 0.8,
+      "audio_top_k": 25,
+      "audio_repetition_penalty": 1.0
+    }
+  ]
+}

@@ -213,6 +213,48 @@ def test_processor_continue_clone_parity_with_upstream() -> None:
     _assert_processor_parity(our_conversation, upstream_conversation, mode="continuation")
 
 
+@pytest.mark.parametrize(
+    ("with_tokens", "without_tokens"),
+    [
+        (
+            lambda processor, prefix_codes: [
+                processor.build_user_message(text="Continue this.", tokens=99),
+                processor.build_assistant_message(audio_codes_list=[prefix_codes]),
+            ],
+            lambda processor, prefix_codes: [
+                processor.build_user_message(text="Continue this."),
+                processor.build_assistant_message(audio_codes_list=[prefix_codes]),
+            ],
+        ),
+        (
+            lambda processor, prefix_codes: [
+                processor.build_user_message(
+                    text="Continue clone.",
+                    reference=[prefix_codes],
+                    tokens=99,
+                ),
+                processor.build_assistant_message(audio_codes_list=[prefix_codes]),
+            ],
+            lambda processor, prefix_codes: [
+                processor.build_user_message(
+                    text="Continue clone.",
+                    reference=[prefix_codes],
+                ),
+                processor.build_assistant_message(audio_codes_list=[prefix_codes]),
+            ],
+        ),
+    ],
+)
+def test_processor_continuation_modes_ignore_tokens_conditioning(with_tokens, without_tokens) -> None:
+    processor = MossTTSLocalProcessor.from_path("models/openmoss/moss_tts_local/original")
+    prefix_codes = _make_reference_codes()
+    with_tokens_batch = processor([with_tokens(processor, prefix_codes)], mode="continuation")
+    without_tokens_batch = processor([without_tokens(processor, prefix_codes)], mode="continuation")
+
+    assert with_tokens_batch.input_ids.tolist() == without_tokens_batch.input_ids.tolist()
+    assert with_tokens_batch.attention_mask.tolist() == without_tokens_batch.attention_mask.tolist()
+
+
 def test_processor_audio_helpers_encode_and_decode_with_bound_codec() -> None:
     codec = MossAudioTokenizerModel(_tiny_codec_config())
     processor = MossTTSLocalProcessor.from_path(

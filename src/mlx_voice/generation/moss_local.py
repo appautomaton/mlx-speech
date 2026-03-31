@@ -57,6 +57,17 @@ class MossTTSLocalGenerationConfig:
         payload.update(overrides)
         return cls(**payload)
 
+    @classmethod
+    def clone_v1_defaults(cls, **overrides: Any) -> "MossTTSLocalGenerationConfig":
+        payload: dict[str, Any] = {
+            "audio_temperature": MODEL_DEFAULT_AUDIO_TEMPERATURE,
+            "audio_top_k": MODEL_DEFAULT_AUDIO_TOP_K,
+            "audio_top_p": MODEL_DEFAULT_AUDIO_TOP_P,
+            "audio_repetition_penalty": MODEL_DEFAULT_AUDIO_REPETITION_PENALTY,
+        }
+        payload.update(overrides)
+        return cls(**payload)
+
 
 @dataclass(frozen=True)
 class MossTTSLocalGenerationOutput:

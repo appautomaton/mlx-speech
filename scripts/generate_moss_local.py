@@ -176,10 +176,16 @@ def resolve_cache_flag(args: argparse.Namespace) -> bool:
     return True
 
 
+def supports_duration_control(mode: str) -> bool:
+    return mode not in {"continuation", "continue_clone"}
+
+
 def build_conversation(args: argparse.Namespace, processor: MossTTSLocalProcessor) -> tuple[list[list[dict]], str]:
     resolved_tokens = args.expected_tokens
-    if resolved_tokens is None and args.auto_estimate_expected_tokens:
+    if supports_duration_control(args.mode) and resolved_tokens is None and args.auto_estimate_expected_tokens:
         _, resolved_tokens, _, _ = estimate_duration_tokens(args.text)
+    if not supports_duration_control(args.mode):
+        resolved_tokens = None
     user_kwargs: dict[str, object] = {
         "text": args.text,
         "instruction": args.instruction,

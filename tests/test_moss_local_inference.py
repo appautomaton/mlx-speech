@@ -16,6 +16,10 @@ from mlx_voice.models.moss_local import MossTTSLocalProcessor, load_moss_tts_loc
 
 @pytest.fixture(scope="module")
 def original_runtime():
+    if not Path("models/openmoss/moss_tts_local/original").exists():
+        pytest.skip("original MossTTSLocal checkpoint not available")
+    if not Path("models/openmoss/moss_audio_tokenizer/original").exists():
+        pytest.skip("original Moss audio tokenizer checkpoint not available")
     loaded_model = load_moss_tts_local_model(
         "models/openmoss/moss_tts_local/original",
         prefer_mlx_int8=False,

@@ -190,20 +190,24 @@ def resolve_moss_tts_local_model_dir(
     *,
     prefer_mlx_int8: bool = True,
 ) -> Path:
-    """Resolve the default local MossTTSLocal path for runtime loading."""
+    """Resolve the default local MossTTSLocal path for runtime loading.
+
+    The local default is always the quantized MLX runtime artifact. Use
+    ``model_dir`` explicitly if you want to load some other checkpoint path.
+    """
 
     if model_dir is not None:
         return Path(model_dir)
 
     layout = get_openmoss_v0_layouts().moss_tts_local
     quantized_dir = layout.mlx_int8_dir
-    original_dir = layout.original_dir
-
-    if prefer_mlx_int8 and any(quantized_dir.glob("*.safetensors")):
+    _ = prefer_mlx_int8
+    if any(quantized_dir.glob("*.safetensors")):
         return quantized_dir
-    if any(original_dir.glob("*.safetensors")):
-        return original_dir
-    return quantized_dir if prefer_mlx_int8 else original_dir
+    raise FileNotFoundError(
+        "No local quantized MossTTSLocal checkpoint found at "
+        f"{quantized_dir}. Pass `model_dir` explicitly to load some other checkpoint."
+    )
 
 
 def _is_quantizable_module(

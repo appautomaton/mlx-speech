@@ -174,12 +174,13 @@ def resolve_moss_audio_tokenizer_model_dir(
 
     layout = get_openmoss_v0_layouts().audio_tokenizer
     quantized_dir = layout.mlx_int8_dir
-    original_dir = layout.original_dir
-    if prefer_mlx_int8 and any(quantized_dir.glob("*.safetensors")):
+    _ = prefer_mlx_int8
+    if any(quantized_dir.glob("*.safetensors")):
         return quantized_dir
-    if any(original_dir.glob("*.safetensors")):
-        return original_dir
-    return quantized_dir if prefer_mlx_int8 else original_dir
+    raise FileNotFoundError(
+        "No local quantized MOSS audio tokenizer checkpoint found at "
+        f"{quantized_dir}. Pass `model_dir` explicitly to load some other checkpoint."
+    )
 
 
 def validate_checkpoint_against_model(
@@ -325,12 +326,4 @@ def load_moss_audio_tokenizer_model(
             quantization=quantization,
         )
 
-    try:
-        return build_loaded_codec(resolved_dir)
-    except ValueError:
-        if model_dir is not None or not prefer_mlx_int8:
-            raise
-        fallback_dir = resolve_moss_audio_tokenizer_model_dir(None, prefer_mlx_int8=False)
-        if fallback_dir == resolved_dir:
-            raise
-        return build_loaded_codec(fallback_dir)
+    return build_loaded_codec(resolved_dir)

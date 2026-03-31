@@ -19,6 +19,8 @@ to 24 kHz waveform using pure MLX on Apple Silicon.
 - Processor-side reference audio encode/decode helpers
 - Default local-path loading from `models/openmoss/.../mlx-int8/`
 - Default global + local KV cache for single-item sampled inference
+- `MossTTSDelay` / TTSD MLX inference path with default KV cache and
+  quantized-first runtime selection
 
 **Runtime characteristics:**
 
@@ -66,6 +68,14 @@ python scripts/convert_moss_audio_tokenizer.py
 Converted weights land in `models/openmoss/moss_tts_local/mlx-int8/` and
 `models/openmoss/moss_audio_tokenizer/mlx-int8/`.
 
+TTSD conversion:
+
+```bash
+python scripts/convert_moss_ttsd.py
+```
+
+Converted TTSD weights land in `models/openmoss/moss_ttsd/mlx-int8/`.
+
 ### Direct generation
 
 ```bash
@@ -91,6 +101,10 @@ python scripts/generate_moss_local.py \
   --mode clone \
   --text "Hello, this is a test." \
   --reference-audio reference.wav \
+  --audio-temperature 1.0 \
+  --audio-top-p 0.95 \
+  --audio-top-k 50 \
+  --audio-repetition-penalty 1.1 \
   --output output.wav
 
 # Continue from existing audio
@@ -99,6 +113,44 @@ python scripts/generate_moss_local.py \
   --text "Hello, this is a test." \
   --reference-audio reference.wav \
   --output output.wav
+```
+
+### TTSD generation
+
+```bash
+python scripts/generate_moss_ttsd.py \
+  --text "[S1] Watson, we should go now." \
+  --output output.wav
+```
+
+`generate_moss_ttsd.py` prefers local `mlx-int8` TTSD and codec artifacts by
+default. To force the original reference weights instead:
+
+```bash
+python scripts/generate_moss_ttsd.py \
+  --prefer-original \
+  --text "[S1] Watson, we should go now." \
+  --output output.wav
+```
+
+### Clone evaluation
+
+Materialize the fixed English clone-eval reference set from macOS built-in
+voices:
+
+```bash
+python scripts/materialize_clone_eval_macos.py \
+  --manifest examples/clone_eval/macos_builtin_en.json \
+  --output-dir outputs/clone_eval/macos_builtin_en
+```
+
+Sweep clone presets on that eval set:
+
+```bash
+python scripts/sweep_clone_presets.py \
+  --manifest examples/clone_eval/macos_builtin_en.json \
+  --reference-dir outputs/clone_eval/macos_builtin_en/references \
+  --output-dir outputs/clone_eval/macos_builtin_en/runs
 ```
 
 ## Development

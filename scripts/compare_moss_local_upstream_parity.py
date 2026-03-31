@@ -27,8 +27,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--codec-dir",
-        default="models/openmoss/moss_audio_tokenizer/original",
-        help="Local original Moss audio tokenizer checkpoint directory.",
+        default="models/openmoss/moss_audio_tokenizer/mlx-int8",
+        help="Local Moss audio tokenizer checkpoint directory.",
     )
     parser.add_argument(
         "--max-new-tokens",
