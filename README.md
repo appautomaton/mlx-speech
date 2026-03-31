@@ -25,14 +25,31 @@ Local speech synthesis on Apple Silicon, running pure MLX. No cloud, no PyTorch.
 ## Installation
 
 ```bash
+pip install mlx-speech
+```
+
+Or clone for development:
+
+```bash
 git clone https://github.com/appautomaton/mlx-speech.git
 cd mlx-speech
 uv sync
 ```
 
-> PyPI package (`pip install mlx-speech`) coming soon.
+## Checkpoints
 
-Convert the checkpoints you want to use — each model family has a `scripts/convert_*.py` entry point:
+Pre-converted MLX artifacts are on Hugging Face under [appautomaton](https://huggingface.co/appautomaton):
+
+| Model | HF Repo | Quant | Local path |
+| --- | --- | --- | --- |
+| MossTTSLocal | [openmoss-tts-local-mlx](https://huggingface.co/appautomaton/openmoss-tts-local-mlx) | `mlx-int8` | `models/openmoss/moss_tts_local/mlx-int8` |
+| MOSS-TTSD | [openmoss-ttsd-mlx](https://huggingface.co/appautomaton/openmoss-ttsd-mlx) | `mlx-int8` | `models/openmoss/moss_ttsd/mlx-int8` |
+| MOSS-SoundEffect | [openmoss-sound-effect-mlx](https://huggingface.co/appautomaton/openmoss-sound-effect-mlx) | `mlx-4bit` | `models/openmoss/moss_sound_effect/mlx-4bit` |
+| VibeVoice | [vibevoice-mlx](https://huggingface.co/appautomaton/vibevoice-mlx) | `mlx-int8` | `models/vibevoice/mlx-int8` |
+| CohereASR | [cohere-asr-mlx](https://huggingface.co/appautomaton/cohere-asr-mlx) | `mlx-int8` | `models/cohere/cohere_transcribe/mlx-int8` |
+| Audio Tokenizer | [openmoss-audio-tokenizer-mlx](https://huggingface.co/appautomaton/openmoss-audio-tokenizer-mlx) | `mlx-int8` | `models/openmoss/moss_audio_tokenizer/mlx-int8` |
+
+Or convert from source — each model family has a `scripts/convert_*.py` entry point:
 
 ```bash
 python scripts/convert_moss_local.py
