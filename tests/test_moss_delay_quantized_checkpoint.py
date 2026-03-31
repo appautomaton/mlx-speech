@@ -1,7 +1,7 @@
 import mlx.core as mx
 import mlx.nn as nn
 
-from mlx_voice.models.moss_delay import (
+from mlx_speech.models.moss_delay import (
     MossTTSDelayConfig,
     MossTTSDelayModel,
     QuantizationConfig,

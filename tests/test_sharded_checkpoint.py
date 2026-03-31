@@ -3,7 +3,7 @@ from pathlib import Path
 
 import mlx.core as mx
 
-from mlx_voice.models.moss_local import load_moss_tts_local_checkpoint
+from mlx_speech.models.moss_local import load_moss_tts_local_checkpoint
 
 
 def test_load_moss_local_checkpoint_from_sharded_safetensors(tmp_path: Path) -> None:

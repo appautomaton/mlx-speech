@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 def test_runtime_modules_do_not_import_torch() -> None:
-    runtime_root = Path(__file__).resolve().parents[1] / "src" / "mlx_voice"
+    runtime_root = Path(__file__).resolve().parents[1] / "src" / "mlx_speech"
     bad_files: list[str] = []
     for path in runtime_root.rglob("*.py"):
         text = path.read_text(encoding="utf-8")

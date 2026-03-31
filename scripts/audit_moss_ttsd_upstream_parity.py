@@ -127,10 +127,10 @@ def main() -> None:
     if not reference_audio.is_absolute():
         reference_audio = repo_root / reference_audio
 
-    from mlx_voice.generation import MossTTSDelayGenerationConfig, generate_moss_tts_delay
-    from mlx_voice.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
-    from mlx_voice.models.moss_delay import MossTTSDelayProcessor, load_moss_tts_delay_model
-    from mlx_voice.models.moss_local.tokenizer import DEFAULT_MOSS_CHAT_TEMPLATE
+    from mlx_speech.generation import MossTTSDelayGenerationConfig, generate_moss_tts_delay
+    from mlx_speech.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
+    from mlx_speech.models.moss_delay import MossTTSDelayProcessor, load_moss_tts_delay_model
+    from mlx_speech.models.moss_local.tokenizer import DEFAULT_MOSS_CHAT_TEMPLATE
 
     UpstreamConfig, UpstreamModel, UpstreamProcessor = _load_upstream_modules(repo_root)
 

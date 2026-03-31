@@ -10,18 +10,18 @@ import textwrap
 
 import mlx.core as mx
 
-from mlx_voice.audio import write_wav
-from mlx_voice.generation import (
+from mlx_speech.audio import write_wav
+from mlx_speech.generation import (
     MossTTSDelayGenerationConfig,
     synthesize_moss_tts_delay_conversations,
 )
-from mlx_voice.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
-from mlx_voice.models.moss_delay import (
+from mlx_speech.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
+from mlx_speech.models.moss_delay import (
     MossTTSDelayProcessor,
     load_moss_sound_effect_model,
     resolve_moss_sound_effect_model_dir,
 )
-from mlx_voice.models.moss_delay.sound_effect import (
+from mlx_speech.models.moss_delay.sound_effect import (
     SOUND_EFFECT_DEFAULT_AUDIO_REPETITION_PENALTY,
     SOUND_EFFECT_DEFAULT_AUDIO_TEMPERATURE,
     SOUND_EFFECT_DEFAULT_AUDIO_TOP_K,

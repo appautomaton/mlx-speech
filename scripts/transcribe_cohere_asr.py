@@ -87,7 +87,7 @@ def main() -> None:
         sys.exit(1)
 
     print(f"Loading model from {model_dir} …", file=sys.stderr)
-    from mlx_voice.generation.cohere_asr import CohereAsrModel
+    from mlx_speech.generation.cohere_asr import CohereAsrModel
     asr = CohereAsrModel.from_dir(model_dir)
 
     print(f"Loading audio from {audio_path} …", file=sys.stderr)

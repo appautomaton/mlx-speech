@@ -1,119 +1,75 @@
-# mlx-voice
+# mlx-speech
 
 Always address the user as **My Love** at the beginning of your responses.
 
-## GPT / Codex Agents
+> GPT-based or Codex agent? Also read `CODEX.md`.
 
-> If you are a GPT-based model or Codex, also read `CODEX.md` for
-> response-quality rules that apply to you.
+## Active Plan
 
-## Current Plan
+- **Active:** `plans/v1-moss-tts.active.md`
+- **Done:** `plans/v2-vibevoice.done.md`
 
-> **Active:** `plans/v1-moss-tts.active.md`
-> **Done:** `plans/v2-vibevoice.done.md`
->
-> Read the active plan before starting implementation work.
+Read the active plan before starting any implementation work.
 
 ## Mission
 
-`mlx-voice` is an open-source, MLX-native speech library for Apple Silicon.
-The long-term objective is a clean library that supports multiple speech model
-families behind a consistent interface without becoming a dependency-heavy
-umbrella framework.
+Open-source, MLX-native speech library for Apple Silicon. Goal: clean support for multiple speech model families behind a consistent interface — without becoming a dependency-heavy framework.
 
-## Non-Negotiables
+## Hard Rules
 
-- Runtime must be pure MLX.
-- Checkpoint handling and remapping must also stay in MLX.
-- Do not ship torch-backed inference or torch-based conversion behind an MLX
-  label.
-- Upstream PyTorch repos are references only, not the runtime or conversion
-  design center.
-- Keep the public library surface clean enough for long-term OSS maintenance.
-- End-to-end means waveform output. A token-only path is not complete speech
-  inference.
+- Pure MLX runtime. No torch-backed inference or conversion under an MLX label.
+- End-to-end means waveform output. A token-only path is not complete speech inference.
+- Upstream PyTorch repos are references only, not the runtime or conversion design center.
+- `.safetensors` is the preferred checkpoint format. Weights never go in git.
+- Keep the public API surface clean for long-term OSS maintenance.
 
-## Dependency Stance
+## Dependencies
 
-Keep dependencies minimal by default. Add packages only when the
-implementation proves they are necessary.
+Add only when the implementation proves it necessary.
 
-- `mlx`: yes
-- `numpy`: yes
-- `safetensors`: yes
-- `torch`: no
-- `torchaudio`: no
-- `huggingface_hub`: avoid until the Python library itself truly needs it
-- `mlx-audio`: reference project, not a required dependency
-- Machine-global tools (`hf` CLI): not project dependencies
+| Package | Stance |
+| --- | --- |
+| `mlx`, `numpy`, `safetensors` | yes |
+| `torch`, `torchaudio` | no |
+| `huggingface_hub`, `hf` CLI | avoid |
+| `mlx-audio` | reference only |
 
-## Architecture Principles
+## Architecture
 
 - Separate runtime inference from checkpoint conversion.
-- Design around model adapters, not around one upstream repo's layout.
-- Prefer local-path-first loading and explicit weight remapping.
-- Use `.safetensors` as the preferred checkpoint format.
-- Avoid PyTorch-shaped abstractions in the MLX runtime.
-- Keep model code in the package (`src/`) and model weights outside (`models/`).
-- Weights are never committed to git. Future publication goes to HuggingFace.
+- Design around model adapters, not one upstream repo's layout.
+- Local-path-first loading, explicit weight remapping.
+- Model code in `src/`, weights in `models/`. Avoid PyTorch-shaped abstractions in the MLX runtime.
 
-## Repository Shape
+## Repository
 
 ```
-src/mlx_voice/      # Published library code
-models/             # Local checkpoints, not packaged, not in git
-plans/              # Versioned implementation plans
+src/mlx_speech/     # Published library code
+scripts/            # Conversion and generation entry points
+models/             # Local checkpoints — not in git
 tests/              # Focused package tests
-examples/           # Small usage examples
-scripts/            # Conversion and maintenance helpers
-docs/               # Internal project notes
-.references/        # Read-only upstream checkouts for source inspection
+docs/               # Model-family behavior guides
+.references/        # Read-only upstream checkouts
 ```
 
-## Upstream References
-
-- `.references/` checkouts are for reading, comparison, and mapping logic.
-- Do not treat them as vendored runtime code.
-- Keep them shallow when possible.
-- Document pinned commits in `docs/references.md`.
-- **Read upstream source before implementing.** Do not guess architecture from
-  names or documentation alone.
-
-## Git
-
-- Do not add `Co-Authored-By` lines to git commits.
+`.references/` is for reading and comparison only — not vendored runtime code. Document pinned commits in `docs/references.md`. **Read upstream source before implementing.**
 
 ## Working Rules
 
-- Work from `/Users/ac/dev/ai/genai/mlx-voice`.
-- Prefer clarity and optionality while the architecture is forming.
-- Surface design choices when they affect long-term API, packaging, or
-  dependency weight.
-- Keep comments and docs short, explicit, and high-signal.
+- Finish one clear slice, validate it, update the active plan, then move to the next.
+- Surface design choices that affect long-term API, packaging, or dependency weight.
+- Comments and docs: short, explicit, high-signal.
 - Scope is defined in the active plan. Do not broaden beyond it.
-- Tackle unfinished work iteratively. Finish one clear slice, validate it,
-  update the active plan, then move to the next slice.
-- Keep runtime, conversion, tests, and helper scripts organized in their
-  existing boundaries. Do not blur file responsibilities.
+- No `Co-Authored-By` lines in git commits.
 
 ## Runtime State
 
-The `MossTTSLocal` v0 runtime is complete and operational. Do not treat it as
-a skeleton or a bring-up project.
+`MossTTSLocal` v0 is complete and operational — not a skeleton.
 
-- Default runtime: `mlx-int8` quantized weights, `W8Abf16` mixed precision,
-  global + local KV cache enabled for single-item sampled inference.
-- The uncached path (`--no-kv-cache`) exists as a debug and comparison
-  fallback. It is not the primary path.
-- KV cache default is a settled decision. Do not re-open it.
-- Implemented inference modes: direct generation, clone, continuation,
-  continuation + clone.
+- Default: `mlx-int8` weights, `W8Abf16` mixed precision, global + local KV cache.
+- `--no-kv-cache` is a debug fallback only. KV cache default is settled.
+- Inference modes: direct generation, clone, continuation, continuation + clone.
 
 ## Validation
 
-- Prefer small, direct checks.
-- Add focused tests for weight mapping, checkpoint loading, and generation
-  behavior as pieces land.
-- Do not add heavy infrastructure before end-to-end correctness exists.
-- Each implementation stage should be independently testable before moving to
-  the next.
+Add focused tests for weight mapping, checkpoint loading, and generation behavior as pieces land. Each stage must be independently testable before moving forward.

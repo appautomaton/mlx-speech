@@ -3,7 +3,7 @@ from pathlib import Path
 
 import mlx.core as mx
 
-from mlx_voice.models.moss_local import (
+from mlx_speech.models.moss_local import (
     MossTTSLocalModel,
     MossTTSLocalConfig,
     load_checkpoint_into_model,

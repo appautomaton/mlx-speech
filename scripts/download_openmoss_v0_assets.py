@@ -7,7 +7,7 @@ import argparse
 import subprocess
 from pathlib import Path
 
-from mlx_voice.checkpoints.layout import OpenMossV0Layouts, get_openmoss_v0_layouts
+from mlx_speech.checkpoints.layout import OpenMossV0Layouts, get_openmoss_v0_layouts
 
 
 TEXT_MODEL_PATTERNS = [

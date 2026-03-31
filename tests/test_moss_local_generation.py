@@ -4,15 +4,15 @@ from pathlib import Path
 
 import mlx.core as mx
 
-from mlx_voice.generation import (
+from mlx_speech.generation import (
     MossTTSLocalGenerationConfig,
     extract_audio_code_sequences,
     generate_moss_tts_local,
     sample_next_token,
 )
-from mlx_voice.generation.moss_local import _can_use_kv_cache, _resolve_sampling_config
-from mlx_voice.generation.moss_local import _resolve_generation_limit
-from mlx_voice.models.moss_local import (
+from mlx_speech.generation.moss_local import _can_use_kv_cache, _resolve_sampling_config
+from mlx_speech.generation.moss_local import _resolve_generation_limit
+from mlx_speech.models.moss_local import (
     MossTTSLocalConfig,
     MossTTSLocalModel,
     estimate_duration_tokens,

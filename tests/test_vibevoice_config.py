@@ -4,11 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from mlx_voice.models.vibevoice.config import (
+from mlx_speech.models.vibevoice.config import (
     Qwen2LanguageConfig,
     VibeVoiceConfig,
     VibeVoiceConvTokenizerConfig,
-    VibeVoiceDiffusionConfig,
 )
 
 MODEL_DIR = Path("models/vibevoice/original")

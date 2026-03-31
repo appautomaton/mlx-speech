@@ -65,7 +65,7 @@ The audio tokenizer is part of this plan. Token-only output does not count.
 
 ## Completed So Far
 
-- Project scaffold is in place: `uv` package metadata, `src/mlx_voice/`,
+- Project scaffold is in place: `uv` package metadata, `src/mlx_speech/`,
   focused tests, and local `models/` layout for original vs converted weights.
 - Sharded upstream checkpoint loading is implemented for `.safetensors` plus
   `model.safetensors.index.json`.
@@ -90,9 +90,9 @@ The audio tokenizer is part of this plan. Token-only output does not count.
 - The processor path is implemented for prompt formatting, tokenization,
   packing, attention-mask creation, reference-audio ingestion, and audio-code
   decode helpers.
-- The generation loop is implemented in `src/mlx_voice/generation/` and drives
+- The generation loop is implemented in `src/mlx_speech/generation/` and drives
   the converted speech model without PyTorch.
-- Explicit KV cache types exist under `src/mlx_voice/models/moss_local/`
+- Explicit KV cache types exist under `src/mlx_speech/models/moss_local/`
   for both the global time-axis decode and the local RVQ depth decode.
 - `Qwen3Model` / `MosiTTSModel` expose `prefill(...)` and `decode_step(...)`
   APIs used by the default cached path.

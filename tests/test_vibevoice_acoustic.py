@@ -5,7 +5,7 @@ from pathlib import Path
 import mlx.core as mx
 import pytest
 
-from mlx_voice.models.vibevoice.acoustic import (
+from mlx_speech.models.vibevoice.acoustic import (
     Block1D,
     CausalConv1d,
     CausalConvTranspose1d,
@@ -14,7 +14,7 @@ from mlx_voice.models.vibevoice.acoustic import (
     VibeVoiceConvDecoder,
     VibeVoiceConvEncoder,
 )
-from mlx_voice.models.vibevoice.config import VibeVoiceConfig, VibeVoiceConvTokenizerConfig
+from mlx_speech.models.vibevoice.config import VibeVoiceConvTokenizerConfig
 
 MODEL_DIR = Path("models/vibevoice/mlx-int8")
 HAS_CHECKPOINT = (MODEL_DIR / "config.json").exists()
@@ -147,7 +147,7 @@ class TestDecoder:
 @pytest.mark.skipif(not HAS_CHECKPOINT, reason="checkpoint not available")
 class TestRealCheckpoint:
     def test_encoder_output_shape(self):
-        from mlx_voice.models.vibevoice.checkpoint import load_vibevoice_model
+        from mlx_speech.models.vibevoice.checkpoint import load_vibevoice_model
 
         loaded = load_vibevoice_model(MODEL_DIR, strict=False)
         enc = loaded.model.model.acoustic_tokenizer.encoder
@@ -160,7 +160,7 @@ class TestRealCheckpoint:
         assert out.shape[2] >= 7
 
     def test_encode_decode_roundtrip_shape(self):
-        from mlx_voice.models.vibevoice.checkpoint import load_vibevoice_model
+        from mlx_speech.models.vibevoice.checkpoint import load_vibevoice_model
 
         loaded = load_vibevoice_model(MODEL_DIR, strict=False)
         at = loaded.model.model.acoustic_tokenizer

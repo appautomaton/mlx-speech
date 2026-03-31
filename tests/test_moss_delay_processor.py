@@ -1,6 +1,6 @@
 import mlx.core as mx
 
-from mlx_voice.models.moss_delay import MossTTSDelayConfig, MossTTSDelayProcessor
+from mlx_speech.models.moss_delay import MossTTSDelayConfig, MossTTSDelayProcessor
 
 
 class _DummyTokenizer:

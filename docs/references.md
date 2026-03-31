@@ -3,7 +3,7 @@
 This repository uses `.references/` for optional local checkouts of upstream
 projects that are useful for source inspection.
 
-These checkouts are not part of the `mlx-voice` runtime, build, or packaging
+These checkouts are not part of the `mlx-speech` runtime, build, or packaging
 story. They exist so implementation work can refer to upstream code locally
 without turning those projects into vendored dependencies.
 

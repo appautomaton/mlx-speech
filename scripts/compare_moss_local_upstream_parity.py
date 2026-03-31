@@ -153,9 +153,9 @@ def main() -> None:
     from moss_audio_tokenizer.configuration_moss_audio_tokenizer import MossAudioTokenizerConfig
     from moss_audio_tokenizer.modeling_moss_audio_tokenizer import MossAudioTokenizerModel
 
-    from mlx_voice.generation.moss_local import MossTTSLocalGenerationConfig, generate_moss_tts_local
-    from mlx_voice.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
-    from mlx_voice.models.moss_local import MossTTSLocalProcessor, load_moss_tts_local_model
+    from mlx_speech.generation.moss_local import MossTTSLocalGenerationConfig, generate_moss_tts_local
+    from mlx_speech.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
+    from mlx_speech.models.moss_local import MossTTSLocalProcessor, load_moss_tts_local_model
 
     mlx_processor = MossTTSLocalProcessor.from_path(model_dir)
     mlx_batch = mlx_processor(

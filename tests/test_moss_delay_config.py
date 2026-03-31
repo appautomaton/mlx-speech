@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from mlx_voice.models.moss_delay import MossTTSDelayConfig
+from mlx_speech.models.moss_delay import MossTTSDelayConfig
 
 
 def test_moss_delay_config_from_dict_exposes_derived_properties() -> None:

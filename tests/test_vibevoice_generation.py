@@ -5,7 +5,7 @@ from pathlib import Path
 import mlx.core as mx
 import pytest
 
-from mlx_voice.generation.vibevoice import (
+from mlx_speech.generation.vibevoice import (
     VibeVoiceGenerationConfig,
     VibeVoiceSynthesisOutput,
     _apply_top_p,
@@ -107,9 +107,9 @@ class TestEndToEnd:
         return MODEL_DIR if HAS_INT8 else ORIGINAL_DIR
 
     def test_short_generation(self):
-        from mlx_voice.models.vibevoice.checkpoint import load_vibevoice_model
-        from mlx_voice.models.vibevoice.tokenizer import VibeVoiceTokenizer
-        from mlx_voice.generation.vibevoice import synthesize_vibevoice
+        from mlx_speech.models.vibevoice.checkpoint import load_vibevoice_model
+        from mlx_speech.models.vibevoice.tokenizer import VibeVoiceTokenizer
+        from mlx_speech.generation.vibevoice import synthesize_vibevoice
 
         model_dir = self._get_model_dir()
         loaded = load_vibevoice_model(model_dir, strict=False)
@@ -125,10 +125,10 @@ class TestEndToEnd:
         assert result.waveform.shape[0] > 0
 
     def test_voice_cloning(self):
-        from mlx_voice.models.vibevoice.checkpoint import load_vibevoice_model
-        from mlx_voice.models.vibevoice.tokenizer import VibeVoiceTokenizer
-        from mlx_voice.generation.vibevoice import synthesize_vibevoice
-        from mlx_voice.audio.io import load_audio
+        from mlx_speech.models.vibevoice.checkpoint import load_vibevoice_model
+        from mlx_speech.models.vibevoice.tokenizer import VibeVoiceTokenizer
+        from mlx_speech.generation.vibevoice import synthesize_vibevoice
+        from mlx_speech.audio.io import load_audio
 
         ref_path = Path("outputs/source/hank_hill_ref.wav")
         if not ref_path.exists():

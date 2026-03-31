@@ -11,14 +11,14 @@ import textwrap
 
 import mlx.core as mx
 
-from mlx_voice.audio import write_wav
-from mlx_voice.generation import (
+from mlx_speech.audio import write_wav
+from mlx_speech.generation import (
     MossTTSDelayGenerationConfig,
     synthesize_moss_tts_delay_conversations,
 )
-from mlx_voice.generation.moss_delay import TTSD_DEFAULT_MAX_NEW_TOKENS
-from mlx_voice.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
-from mlx_voice.models.moss_delay import (
+from mlx_speech.generation.moss_delay import TTSD_DEFAULT_MAX_NEW_TOKENS
+from mlx_speech.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
+from mlx_speech.models.moss_delay import (
     MossTTSDelayProcessor,
     build_ttsd_conversation,
     load_moss_tts_delay_model,

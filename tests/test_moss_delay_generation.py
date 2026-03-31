@@ -2,8 +2,8 @@ import math
 
 import mlx.core as mx
 
-from mlx_voice.generation import MossTTSDelayGenerationConfig, generate_moss_tts_delay
-from mlx_voice.generation.moss_delay import (
+from mlx_speech.generation import MossTTSDelayGenerationConfig, generate_moss_tts_delay
+from mlx_speech.generation.moss_delay import (
     _apply_top_k_delay,
     _apply_top_p_delay,
     _build_delay_sampling_audio_mask,

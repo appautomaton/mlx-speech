@@ -13,13 +13,13 @@ from pathlib import Path
 
 import mlx.core as mx
 
-from mlx_voice.audio.io import load_audio, write_wav
-from mlx_voice.generation.vibevoice import (
+from mlx_speech.audio.io import load_audio, write_wav
+from mlx_speech.generation.vibevoice import (
     VibeVoiceGenerationConfig,
     synthesize_vibevoice,
 )
-from mlx_voice.models.vibevoice.checkpoint import load_vibevoice_model
-from mlx_voice.models.vibevoice.tokenizer import VibeVoiceTokenizer
+from mlx_speech.models.vibevoice.checkpoint import load_vibevoice_model
+from mlx_speech.models.vibevoice.tokenizer import VibeVoiceTokenizer
 
 
 def _build_parser() -> argparse.ArgumentParser:

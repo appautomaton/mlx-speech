@@ -267,10 +267,10 @@ v1 is done when:
 
 | Component | Source |
 |-----------|--------|
-| Local model | `src/mlx_voice/models/moss_local/` |
-| Delay model | `src/mlx_voice/models/moss_delay/` |
-| Shared layer | `src/mlx_voice/models/moss_common/` |
-| Local generation | `src/mlx_voice/generation/moss_local.py` |
-| Delay generation | `src/mlx_voice/generation/moss_delay.py` |
+| Local model | `src/mlx_speech/models/moss_local/` |
+| Delay model | `src/mlx_speech/models/moss_delay/` |
+| Shared layer | `src/mlx_speech/models/moss_common/` |
+| Local generation | `src/mlx_speech/generation/moss_local.py` |
+| Delay generation | `src/mlx_speech/generation/moss_delay.py` |
 | Upstream MOSS-TTS | `.references/MOSS-TTS/` |
 | Upstream MOSS-TTSD | `.references/MOSS-TTSD/` |

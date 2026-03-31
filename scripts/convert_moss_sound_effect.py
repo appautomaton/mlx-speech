@@ -7,15 +7,15 @@ import argparse
 import shutil
 from pathlib import Path
 
-from mlx_voice.checkpoints import INDEX_FILENAME, get_openmoss_v0_layouts
-from mlx_voice.models.moss_delay import (
+from mlx_speech.checkpoints import INDEX_FILENAME, get_openmoss_v0_layouts
+from mlx_speech.models.moss_delay import (
     MossTTSDelayModel,
     QuantizationConfig,
     load_moss_tts_delay_checkpoint,
     quantize_moss_tts_delay_model,
     save_moss_tts_delay_model,
 )
-from mlx_voice.models.moss_local.checkpoint import load_checkpoint_into_model
+from mlx_speech.models.moss_local.checkpoint import load_checkpoint_into_model
 
 
 def parse_args() -> argparse.Namespace:

@@ -106,9 +106,30 @@ class ParakeetSubsampling(nn.Module):
         Returns:
             (batch, T', hidden_size)
         """
+        def apply_time_mask(hidden: mx.array, lengths: mx.array | None) -> mx.array:
+            if lengths is None:
+                return hidden
+            current_seq_length = hidden.shape[1]
+            valid = mx.arange(current_seq_length)[None, :] < lengths[:, None]
+            return hidden * valid[:, :, None, None].astype(hidden.dtype)
+
+        current_lengths: mx.array | None = None
+        if attention_mask is not None:
+            current_lengths = attention_mask.sum(axis=-1).astype(mx.int32)
+
         # Add channel dim: (batch, T, n_mels, 1)
         x = features[:, :, :, None]
         x = self.relu0(self.conv0(x))
+        if current_lengths is not None:
+            current_lengths = mx.floor(
+                (
+                    current_lengths.astype(mx.float32)
+                    + (self._dw_k // 2) * 2
+                    - self._dw_k
+                )
+                / self._dw_s
+            ).astype(mx.int32) + 1
+            x = apply_time_mask(x, current_lengths)
 
         dw_weights = [self.dw_weight_0, self.dw_weight_1]
         dw_biases = [self.dw_bias_0, self.dw_bias_1]
@@ -122,6 +143,16 @@ class ParakeetSubsampling(nn.Module):
             if dw_b is not None:
                 x = x + dw_b
             x = relu(pw(x))
+            if current_lengths is not None:
+                current_lengths = mx.floor(
+                    (
+                        current_lengths.astype(mx.float32)
+                        + (self._dw_k // 2) * 2
+                        - self._dw_k
+                    )
+                    / self._dw_s
+                ).astype(mx.int32) + 1
+                x = apply_time_mask(x, current_lengths)
 
         # x: (batch, T', freq_out, ch)
         batch, t_out, freq_out, ch = x.shape
@@ -191,6 +222,13 @@ class ParakeetConvModule(nn.Module):
         x = self.pointwise_conv1(x)  # (batch, time, 2*ch)
         half = x.shape[-1] // 2
         x = x[..., :half] * mx.sigmoid(x[..., half:])  # (batch, time, ch)
+
+        if attention_mask is not None:
+            if attention_mask.dtype == mx.bool_:
+                valid_rows = ~mx.all(~attention_mask, axis=2)
+            else:
+                valid_rows = ~mx.all(attention_mask != 0.0, axis=2)
+            x = x * valid_rows[:, 0, :, None].astype(x.dtype)
 
         # Depthwise conv: mx.conv1d with groups=ch (channels-last, ch = x.shape[-1])
         x = mx.conv1d(x, self.dw_weight, stride=1, padding=self._dw_padding, groups=x.shape[-1])
@@ -316,11 +354,12 @@ class ParakeetConformerBlock(nn.Module):
         self,
         x: mx.array,
         pos_emb: mx.array,
-        attention_mask: mx.array | None = None,
+        attention_bias: mx.array | None = None,
+        conv_attention_mask: mx.array | None = None,
     ) -> mx.array:
         x = x + 0.5 * self.feed_forward1(self.norm_feed_forward1(x))
-        x = x + self.self_attn(self.norm_self_att(x), pos_emb, attention_mask)
-        x = x + self.conv(self.norm_conv(x))
+        x = x + self.self_attn(self.norm_self_att(x), pos_emb, attention_bias)
+        x = x + self.conv(self.norm_conv(x), attention_mask=conv_attention_mask)
         x = x + 0.5 * self.feed_forward2(self.norm_feed_forward2(x))
         x = self.norm_out(x)
         return x
@@ -365,6 +404,7 @@ class ParakeetEncoder(nn.Module):
         # Compute subsampled attention mask
         output_mask: mx.array | None = None
         attn_bias: mx.array | None = None
+        pairwise_mask: mx.array | None = None
         if attention_mask is not None:
             input_lengths = attention_mask.sum(axis=-1).astype(mx.int32)
             out_lengths = self.subsampling.output_lengths(input_lengths)
@@ -373,14 +413,14 @@ class ParakeetEncoder(nn.Module):
             # Expand to (batch, 1, T', T') additive mask
             row = output_mask[:, None, :, None]   # (B, 1, T', 1)
             col = output_mask[:, None, None, :]   # (B, 1, 1, T')
-            valid = row & col
+            pairwise_mask = row & col
             neg_inf = mx.array(mx.finfo(mx.float32).min, dtype=mx.float32)
-            attn_bias = mx.where(valid, mx.zeros_like(neg_inf), neg_inf)
+            attn_bias = mx.where(pairwise_mask, mx.zeros_like(neg_inf), neg_inf)
             attn_bias = attn_bias.astype(features.dtype)
 
         pos_emb = self.pos_encoding(x)
 
         for block in self.layers:
-            x = block(x, pos_emb, attn_bias)
+            x = block(x, pos_emb, attn_bias, pairwise_mask)
 
         return x, output_mask

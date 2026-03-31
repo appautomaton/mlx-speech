@@ -1,6 +1,6 @@
 # Hugging Face Release Workflow
 
-This document records the intended publication workflow for `mlx-voice`
+This document records the intended publication workflow for `mlx-speech`
 quantized artifacts.
 
 ## Scope
@@ -42,7 +42,7 @@ Each Hugging Face repo should include:
 - source upstream reference
 - note that the artifact is converted for MLX runtime use
 - expected runtime precision policy: `W8Abf16`
-- minimal local usage example with `mlx-voice`
+- minimal local usage example with `mlx-speech`
 
 ## Publication Steps
 

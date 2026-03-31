@@ -11,9 +11,9 @@ import time
 
 import mlx.core as mx
 
-from mlx_voice.generation import MossTTSDelayGenerationConfig, generate_moss_tts_delay
-from mlx_voice.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
-from mlx_voice.models.moss_delay import (
+from mlx_speech.generation import MossTTSDelayGenerationConfig, generate_moss_tts_delay
+from mlx_speech.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
+from mlx_speech.models.moss_delay import (
     MossTTSDelayProcessor,
     load_moss_tts_delay_model,
     resolve_moss_tts_delay_model_dir,

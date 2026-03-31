@@ -3,7 +3,7 @@
 ## Scope
 
 Port CohereLabs/cohere-transcribe-03-2026 to pure MLX. This is the first ASR
-family in mlx-voice — a fundamentally different task from TTS: audio in,
+family in mlx-speech — a fundamentally different task from TTS: audio in,
 text out.
 
 The model is a 2B Conformer encoder-decoder. The encoder (ParakeetEncoder,
@@ -140,7 +140,7 @@ remaining gating task before Stage 4 is inspecting the actual weight keys.
 
 ### Stage 1 — Config
 
-- `src/mlx_voice/models/cohere_asr/config.py`
+- `src/mlx_speech/models/cohere_asr/config.py`
 - `ParakeetEncoderConfig` frozen dataclass matching the encoder sub-config
 - `CohereAsrConfig` frozen dataclass: decoder fields + nested encoder config
 - `from_dict(payload)`, `from_path(model_dir)`, `to_dict()`
@@ -153,7 +153,7 @@ original).
 
 Port the log-Mel pipeline to pure numpy (no torch, no librosa at inference).
 
-- `src/mlx_voice/models/cohere_asr/feature_extraction.py`
+- `src/mlx_speech/models/cohere_asr/feature_extraction.py`
 - Mel filterbank: replicate `librosa.filters.mel(norm="slaney")` in numpy
   exactly — this is the most numerically sensitive step; validate against
   librosa output on known input before proceeding
@@ -173,7 +173,7 @@ to capture reference values).
 
 ### Stage 3 — Tokenizer
 
-- `src/mlx_voice/models/cohere_asr/tokenizer.py`
+- `src/mlx_speech/models/cohere_asr/tokenizer.py`
 - Load `tokenizer.json` (via `tokenizers` library, already a dep) or
   `tokenizer.model` (SentencePiece); confirm which path `tokenizers` needs
 - `CohereAsrTokenizer.encode(text: str) -> list[int]`
@@ -189,7 +189,7 @@ to capture reference values).
 
 Full architecture is known from reading the reference. Implement in MLX:
 
-- `src/mlx_voice/models/cohere_asr/encoder.py`
+- `src/mlx_speech/models/cohere_asr/encoder.py`
 
 **Subsampling** (`ParakeetEncoderSubsamplingConv2D`):
   - Operates on the mel spectrogram as a 2D image: `(batch, 1, T_mel, 128)`
@@ -254,7 +254,7 @@ Full architecture is known from reading the reference. Implement in MLX:
 
 ### Stage 5 — Decoder
 
-- `src/mlx_voice/models/cohere_asr/decoder.py`
+- `src/mlx_speech/models/cohere_asr/decoder.py`
 - `CohereAsrSelfAttention`: standard MHSA, no RoPE, causal mask, biases
 - `CohereAsrCrossAttention`: non-causal, q from decoder, k/v from encoder
 - `CohereAsrDecoderLayer`: pre-norm self-attn → cross-attn → MLP
@@ -273,7 +273,7 @@ and `decoder_input_ids=[decoder_start_token_id]` → verify logit shape is
 
 ### Stage 6 — Checkpoint Loading + Quantization
 
-- `src/mlx_voice/models/cohere_asr/checkpoint.py`
+- `src/mlx_speech/models/cohere_asr/checkpoint.py`
 - `load_cohere_asr_checkpoint(model_dir)`: loads safetensors, returns raw
   weight dict
 - `sanitize(weights)`: applies the remapping table from Stage 0
@@ -290,7 +290,7 @@ keys → smoke forward pass on random inputs.
 
 ### Stage 7 — Greedy Inference Loop
 
-- `src/mlx_voice/generation/cohere_asr.py`
+- `src/mlx_speech/generation/cohere_asr.py`
 - `CohereAsrGenerationConfig`: `max_new_tokens`, `language`, `punctuation`
 - Inference flow:
   1. Feature extraction → `(1, T_mel, 128)` mel features

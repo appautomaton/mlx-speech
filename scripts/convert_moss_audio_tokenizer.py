@@ -6,8 +6,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from mlx_voice.checkpoints import get_openmoss_v0_layouts
-from mlx_voice.models.moss_audio_tokenizer import (
+from mlx_speech.checkpoints import get_openmoss_v0_layouts
+from mlx_speech.models.moss_audio_tokenizer import (
     MossAudioTokenizerModel,
     QuantizationConfig,
     load_checkpoint_into_model,

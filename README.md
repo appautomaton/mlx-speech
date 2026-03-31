@@ -107,7 +107,7 @@ uv build --no-sources
 
 ```text
 mlx-speech/
-  src/mlx_voice/    library code
+  src/mlx_speech/    library code
   scripts/          conversion and generation entry points
   models/           local checkpoints (not in git)
   tests/            unit and integration tests

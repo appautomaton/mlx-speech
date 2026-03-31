@@ -5,7 +5,7 @@ from pathlib import Path
 import mlx.core as mx
 import pytest
 
-from mlx_voice.models.vibevoice.checkpoint import (
+from mlx_speech.models.vibevoice.checkpoint import (
     load_vibevoice_checkpoint,
     load_vibevoice_model,
     sanitize_state_dict,

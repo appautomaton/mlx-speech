@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from mlx_voice.generation import MossTTSDelayGenerationConfig, generate_moss_tts_delay
-from mlx_voice.models.moss_delay import MossTTSDelayProcessor, load_moss_tts_delay_model
+from mlx_speech.generation import MossTTSDelayGenerationConfig, generate_moss_tts_delay
+from mlx_speech.models.moss_delay import MossTTSDelayProcessor, load_moss_tts_delay_model
 
 pytestmark = pytest.mark.local_integration
 

@@ -2,14 +2,14 @@ import mlx.core as mx
 import mlx.nn as nn
 from mlx.utils import tree_flatten
 
-from mlx_voice.models.moss_local import (
+from mlx_speech.models.moss_local import (
     MossTTSLocalConfig,
     load_moss_tts_local_model,
     quantize_moss_tts_local_model,
     save_moss_tts_local_model,
 )
-from mlx_voice.models.moss_local.checkpoint import QuantizationConfig, prepare_runtime_state_dict
-from mlx_voice.models.moss_local.model import MossTTSLocalModel
+from mlx_speech.models.moss_local.checkpoint import QuantizationConfig, prepare_runtime_state_dict
+from mlx_speech.models.moss_local.model import MossTTSLocalModel
 
 
 def _quantizable_config() -> MossTTSLocalConfig:

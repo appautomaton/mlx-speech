@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from mlx_voice.models.moss_delay import (
+from mlx_speech.models.moss_delay import (
     build_sound_effect_conversation,
     estimate_sound_effect_tokens,
     resolve_moss_sound_effect_model_dir,

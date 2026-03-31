@@ -7,8 +7,8 @@ import argparse
 import shutil
 from pathlib import Path
 
-from mlx_voice.checkpoints import INDEX_FILENAME, get_openmoss_v0_layouts
-from mlx_voice.models.moss_local import (
+from mlx_speech.checkpoints import INDEX_FILENAME, get_openmoss_v0_layouts
+from mlx_speech.models.moss_local import (
     MossTTSLocalModel,
     QuantizationConfig,
     load_checkpoint_into_model,

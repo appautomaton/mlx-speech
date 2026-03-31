@@ -5,13 +5,13 @@ from pathlib import Path
 import mlx.core as mx
 import pytest
 
-from mlx_voice.audio import write_wav
-from mlx_voice.generation import (
+from mlx_speech.audio import write_wav
+from mlx_speech.generation import (
     MossTTSLocalGenerationConfig,
     synthesize_moss_tts_local_conversations,
 )
-from mlx_voice.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
-from mlx_voice.models.moss_local import MossTTSLocalProcessor, load_moss_tts_local_model
+from mlx_speech.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
+from mlx_speech.models.moss_local import MossTTSLocalProcessor, load_moss_tts_local_model
 
 pytestmark = pytest.mark.local_integration
 

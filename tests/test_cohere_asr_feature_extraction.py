@@ -11,7 +11,7 @@ def _load_feature_module():
     module_path = (
         Path(__file__).resolve().parents[1]
         / "src"
-        / "mlx_voice"
+        / "mlx_speech"
         / "models"
         / "cohere_asr"
         / "feature_extraction.py"

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import mlx.core as mx
 
-from mlx_voice.audio import write_wav
-from mlx_voice.models.moss_delay.dialogue import (
+from mlx_speech.audio import write_wav
+from mlx_speech.models.moss_delay.dialogue import (
     build_prefixed_ttsd_text,
     build_ttsd_conversation,
     collect_speaker_fields,

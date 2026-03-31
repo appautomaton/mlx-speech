@@ -2,7 +2,7 @@ import mlx.core as mx
 import mlx.nn as nn
 from mlx.utils import tree_flatten
 
-from mlx_voice.models.moss_audio_tokenizer import (
+from mlx_speech.models.moss_audio_tokenizer import (
     MossAudioTokenizerConfig,
     MossAudioTokenizerModel,
     load_moss_audio_tokenizer_model,
@@ -10,11 +10,11 @@ from mlx_voice.models.moss_audio_tokenizer import (
     sanitize_state_dict,
     save_moss_audio_tokenizer_model,
 )
-from mlx_voice.models.moss_audio_tokenizer.checkpoint import (
+from mlx_speech.models.moss_audio_tokenizer.checkpoint import (
     QuantizationConfig,
     prepare_runtime_state_dict,
 )
-from mlx_voice.models.moss_audio_tokenizer.model import _apply_codec_rope
+from mlx_speech.models.moss_audio_tokenizer.model import _apply_codec_rope
 
 
 def _tiny_codec_config() -> MossAudioTokenizerConfig:

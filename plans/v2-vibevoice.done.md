@@ -8,7 +8,7 @@ Port Microsoft's VibeVoice Large (9B) to pure MLX. This is a fundamentally
 different architecture from MOSS-TTS: continuous VAE latents + per-frame
 diffusion instead of discrete RVQ codes.
 
-VibeVoice is the second model family in mlx-voice, validating the library's
+VibeVoice is the second model family in mlx-speech, validating the library's
 model adapter design.
 
 ## What Was Delivered
@@ -254,7 +254,7 @@ The most complex stage. Interleaves autoregressive LM with per-frame diffusion.
 - multi-speaker: up to 4 speakers with "Speaker N:" format
 - CLI:
   ```
-  mlx-voice vibevoice \
+  mlx-speech vibevoice \
     --text "Speaker 1: Hello! Speaker 2: Hi there!" \
     --speaker1-audio s1.wav \
     --speaker2-audio s2.wav \

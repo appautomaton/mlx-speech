@@ -6,13 +6,13 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from mlx_voice.audio import normalize_peak, trim_leading_silence, write_wav
-from mlx_voice.generation import (
+from mlx_speech.audio import normalize_peak, trim_leading_silence, write_wav
+from mlx_speech.generation import (
     MossTTSLocalGenerationConfig,
     synthesize_moss_tts_local_conversations,
 )
-from mlx_voice.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
-from mlx_voice.models.moss_local import (
+from mlx_speech.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
+from mlx_speech.models.moss_local import (
     MossTTSLocalProcessor,
     estimate_duration_tokens,
     load_moss_tts_local_model,

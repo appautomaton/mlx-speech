@@ -6,10 +6,10 @@ import sys
 import mlx.core as mx
 import pytest
 
-from mlx_voice.models.moss_audio_tokenizer import MossAudioTokenizerModel
-from mlx_voice.models.moss_audio_tokenizer.config import MossAudioTokenizerConfig
-from mlx_voice.models.moss_local import MossTTSLocalProcessor
-from mlx_voice.models.moss_local.tokenizer import DEFAULT_MOSS_CHAT_TEMPLATE
+from mlx_speech.models.moss_audio_tokenizer import MossAudioTokenizerModel
+from mlx_speech.models.moss_audio_tokenizer.config import MossAudioTokenizerConfig
+from mlx_speech.models.moss_local import MossTTSLocalProcessor
+from mlx_speech.models.moss_local.tokenizer import DEFAULT_MOSS_CHAT_TEMPLATE
 
 pytestmark = pytest.mark.local_integration
 

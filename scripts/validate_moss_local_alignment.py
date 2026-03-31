@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 
-from mlx_voice.models.moss_local import (
+from mlx_speech.models.moss_local import (
     MossTTSLocalConfig,
     MossTTSLocalModel,
     load_moss_tts_local_checkpoint,

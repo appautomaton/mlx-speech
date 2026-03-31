@@ -1,15 +1,14 @@
 """Tests for VibeVoice diffusion head and scheduler."""
 
 import mlx.core as mx
-import pytest
 
-from mlx_voice.models.vibevoice.diffusion import (
+from mlx_speech.models.vibevoice.diffusion import (
     DPMSolverMultistepScheduler,
     SchedulerOutput,
     TimestepEmbedder,
     VibeVoiceDiffusionHead,
 )
-from mlx_voice.models.vibevoice.config import VibeVoiceDiffusionConfig
+from mlx_speech.models.vibevoice.config import VibeVoiceDiffusionConfig
 
 
 class TestTimestepEmbedder:

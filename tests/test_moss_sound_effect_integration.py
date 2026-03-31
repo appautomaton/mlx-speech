@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from mlx_voice.models.moss_delay import load_moss_sound_effect_model, resolve_moss_sound_effect_model_dir
+from mlx_speech.models.moss_delay import load_moss_sound_effect_model, resolve_moss_sound_effect_model_dir
 
 pytestmark = pytest.mark.local_integration
 

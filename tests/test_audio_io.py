@@ -1,6 +1,6 @@
 import mlx.core as mx
 
-from mlx_voice.audio import normalize_peak, trim_leading_silence
+from mlx_speech.audio import normalize_peak, trim_leading_silence
 
 
 def test_trim_leading_silence_removes_low_energy_prefix() -> None:

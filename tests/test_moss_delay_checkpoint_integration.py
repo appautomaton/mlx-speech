@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from mlx_voice.models.moss_delay import (
+from mlx_speech.models.moss_delay import (
     load_moss_tts_delay_model,
     resolve_moss_tts_delay_model_dir,
 )

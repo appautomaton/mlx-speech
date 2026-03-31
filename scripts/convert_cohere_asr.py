@@ -15,7 +15,7 @@ from pathlib import Path
 # Allow running from repo root without installing the package
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from mlx_voice.models.cohere_asr import (
+from mlx_speech.models.cohere_asr import (
     QuantizationConfig,
     load_cohere_asr_checkpoint,
     load_checkpoint_into_model,

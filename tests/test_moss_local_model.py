@@ -1,6 +1,6 @@
 import mlx.core as mx
 
-from mlx_voice.models.moss_local import MosiTTSModel, MossTTSLocalConfig, MossTTSLocalModel
+from mlx_speech.models.moss_local import MosiTTSModel, MossTTSLocalConfig, MossTTSLocalModel
 
 
 def _tiny_config() -> MossTTSLocalConfig:

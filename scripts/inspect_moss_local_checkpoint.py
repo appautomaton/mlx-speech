@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import argparse
 
-from mlx_voice.checkpoints import summarize_prefixes
-from mlx_voice.models.moss_local import load_moss_tts_local_checkpoint
+from mlx_speech.checkpoints import summarize_prefixes
+from mlx_speech.models.moss_local import load_moss_tts_local_checkpoint
 
 
 def parse_args() -> argparse.Namespace:

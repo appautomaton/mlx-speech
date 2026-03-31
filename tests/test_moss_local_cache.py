@@ -1,6 +1,6 @@
 import mlx.core as mx
 
-from mlx_voice.models.moss_local import (
+from mlx_speech.models.moss_local import (
     GlobalLayerKVCache,
     LocalKVCache,
     LocalLayerKVCache,
@@ -8,7 +8,7 @@ from mlx_voice.models.moss_local import (
     MossTTSLocalConfig,
     MossTTSLocalModel,
 )
-from mlx_voice.models.moss_local.model import MossTTSAttention
+from mlx_speech.models.moss_local.model import MossTTSAttention
 
 
 def _tiny_config() -> MossTTSLocalConfig:

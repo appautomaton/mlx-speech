@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from mlx_voice.models.moss_local import MossTTSLocalConfig
+from mlx_speech.models.moss_local import MossTTSLocalConfig
 
 
 def test_moss_local_config_from_dict_exposes_derived_properties() -> None:

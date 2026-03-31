@@ -1,7 +1,7 @@
 # Model Behavior Guides
 
 This directory documents the current runtime behavior of each major model family
-in `mlx-voice`.
+in `mlx-speech`.
 
 These guides are intentionally short and operational. They are meant to answer:
 

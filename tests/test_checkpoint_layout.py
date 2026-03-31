@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mlx_voice.checkpoints import get_openmoss_v0_layouts
+from mlx_speech.checkpoints import get_openmoss_v0_layouts
 
 
 def test_openmoss_v0_layouts_are_built_under_models_root(tmp_path: Path) -> None:

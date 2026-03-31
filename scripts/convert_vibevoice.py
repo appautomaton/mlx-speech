@@ -11,14 +11,14 @@ import argparse
 import shutil
 from pathlib import Path
 
-from mlx_voice.models.vibevoice.checkpoint import (
+from mlx_speech.models.vibevoice.checkpoint import (
     QuantizationConfig,
     load_checkpoint_into_model,
     load_vibevoice_checkpoint,
     quantize_vibevoice_model,
     save_vibevoice_model,
 )
-from mlx_voice.models.vibevoice.model import VibeVoiceForConditionalGeneration
+from mlx_speech.models.vibevoice.model import VibeVoiceForConditionalGeneration
 
 
 DEFAULT_INPUT = "models/vibevoice/original"
