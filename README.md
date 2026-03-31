@@ -1,8 +1,10 @@
-# mlx-voice
+# mlx-speech
 
-Local speech synthesis on Apple Silicon, running pure MLX.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![Platform](https://img.shields.io/badge/platform-Apple%20Silicon-black?logo=apple)](https://developer.apple.com/documentation/apple-silicon)
 
-Four model families right now:
+Local speech synthesis on Apple Silicon, running pure MLX. No cloud, no PyTorch.
 
 | Model | Best for |
 | --- | --- |
@@ -11,19 +13,35 @@ Four model families right now:
 | MOSS-SoundEffect | text-to-sound-effect |
 | VibeVoice | long-form speech, voice-conditioned generation |
 
-Checkpoints live locally under `models/`. Scripts are the main interface.
+## Requirements
 
-## Setup
+- Apple Silicon Mac (M1 or later)
+- Python 3.13+
+- [uv](https://docs.astral.sh/uv/)
+
+## Installation
 
 ```bash
+git clone https://github.com/appautomaton/mlx-speech.git
+cd mlx-speech
 uv sync
 ```
 
-Convert the checkpoints you want to use — each model family has a `scripts/convert_*.py` entry point.
+> PyPI package (`pip install mlx-speech`) coming soon.
+
+Convert the checkpoints you want to use — each model family has a `scripts/convert_*.py` entry point:
+
+```bash
+python scripts/convert_moss_local.py
+python scripts/convert_moss_audio_tokenizer.py
+python scripts/convert_moss_ttsd.py
+python scripts/convert_moss_sound_effect.py
+python scripts/convert_vibevoice.py
+```
 
 ## Usage
 
-Generate with MossTTSLocal:
+**Generate speech:**
 
 ```bash
 python scripts/generate_moss_local.py \
@@ -31,7 +49,7 @@ python scripts/generate_moss_local.py \
   --output outputs/moss_local.wav
 ```
 
-Clone a voice:
+**Clone a voice:**
 
 ```bash
 python scripts/generate_moss_local.py \
@@ -41,7 +59,7 @@ python scripts/generate_moss_local.py \
   --output outputs/moss_local_clone.wav
 ```
 
-Run a TTSD dialogue:
+**Multi-speaker dialogue:**
 
 ```bash
 python scripts/generate_moss_ttsd.py \
@@ -49,7 +67,7 @@ python scripts/generate_moss_ttsd.py \
   --output outputs/ttsd.wav
 ```
 
-Generate a sound effect:
+**Sound effect:**
 
 ```bash
 python scripts/generate_moss_sound_effect.py \
@@ -58,13 +76,17 @@ python scripts/generate_moss_sound_effect.py \
   --output outputs/thunder.wav
 ```
 
-Run VibeVoice:
+**VibeVoice:**
 
 ```bash
 python scripts/generate_vibevoice.py \
   --text "Hello from VibeVoice." \
   --output outputs/vibevoice.wav
 ```
+
+## Exploring the Codebase
+
+The PyPI package is still in progress. The best way to explore right now is to drop the repo into an agentic coding tool like [Claude Code](https://claude.ai/code) or Cursor — the codebase is structured and self-describing, and an agent can walk you through it quickly.
 
 ## Model Guides
 
@@ -84,10 +106,14 @@ uv build --no-sources
 ```
 
 ```text
-mlx-voice/
+mlx-speech/
   src/mlx_voice/    library code
   scripts/          conversion and generation entry points
   models/           local checkpoints (not in git)
   tests/            unit and integration tests
   docs/             model-family behavior guides
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE)
