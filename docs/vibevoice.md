@@ -28,8 +28,8 @@ Current user-facing inputs:
 - `voice_samples: list[mx.array] | None`
 - `config: VibeVoiceGenerationConfig`
 
-`voice_samples` is the real multi-speaker conditioning path. Each sample should
-be shaped like `(1, 1, T)` at `24 kHz`.
+`voice_samples` is the Python API path for explicit per-speaker conditioning.
+Each sample should be shaped like `(1, 1, T)` at `24 kHz`.
 
 ## Current Generation Config
 
@@ -137,15 +137,17 @@ So the best current default for multi-turn / multi-speaker VV is:
 - use reference-driven speaker setup
 - or add a wrapper that creates synthetic per-speaker defaults
 
-## Reference Behavior We Verified
+## Current Practical Reality
 
-The local `mlx-audio` VibeVoice reference suggests:
+What we have verified in the local MLX runtime:
 
-- multi-speaker behavior is wrapped at a higher level
-- speaker references are central to stable speaker behavior
-- segmented or wrapper-driven orchestration matters more than raw text tags alone
+- explicit `voice_samples` give stronger speaker anchoring than text-only
+  speaker labels
+- text-only multi-speaker prompting can work, but it is less stable
+- the current CLI is good for single-reference generation, not full
+  multi-speaker conditioning
 
-So if future work changes VV behavior, this is the main area to improve:
+The main follow-on improvements are still:
 
 - a proper multi-speaker wrapper
 - optional synthetic default speaker references

@@ -51,6 +51,12 @@ Supported modes:
 - combines continuation-style prompt audio context with clone-style voice
   conditioning
 
+Current CLI shape:
+
+- single `--reference-audio` input only
+- in `continue_clone`, that same reference path is used for both prompt context
+  and voice conditioning
+
 ## Sampling Controls
 
 Local exposes separate text and audio sampling controls:
@@ -68,6 +74,7 @@ Local exposes separate text and audio sampling controls:
 Current default runtime:
 
 - KV cache on for eligible single-sample paths
+- `--no-kv-cache` is available as a debug fallback
 
 ## Duration Controls
 
@@ -80,6 +87,7 @@ Important current behavior:
 
 - duration control applies to `generation` and `clone`
 - continuation-style modes ignore expected tokens
+- `--no-max-new-tokens` still keeps the internal safety cap
 
 ## Important Continuation Note
 

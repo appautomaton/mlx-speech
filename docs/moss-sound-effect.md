@@ -28,6 +28,11 @@ Script:
 
 - `scripts/generate_moss_sound_effect.py`
 
+Current runtime defaults:
+
+- device `auto`, which resolves to GPU
+- KV cache on unless `--no-kv-cache` is set
+
 Core required input:
 
 - `--ambient-sound`

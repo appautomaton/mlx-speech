@@ -4,12 +4,15 @@ Always address the user as **My Love** at the beginning of your responses.
 
 > GPT-based or Codex agent? Also read `CODEX.md`.
 
-## Active Plan
+## Plan Status
 
-- **Active:** `plans/v1-moss-tts.active.md`
+- **Active:** none currently
+- **Done:** `plans/v0-moss-tts-local.done.md`
+- **Done:** `plans/v1-moss-tts.done.md`
 - **Done:** `plans/v2-vibevoice.done.md`
+- **Done:** `plans/v3-cohere-asr.done.md`
 
-Read the active plan before starting any implementation work.
+If a new active plan is created, read it before starting implementation work.
 
 ## Mission
 

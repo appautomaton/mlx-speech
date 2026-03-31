@@ -25,6 +25,11 @@ Script:
 
 - `scripts/generate_moss_ttsd.py`
 
+I/O shapes:
+
+- single-sample mode writes one WAV
+- batch mode reads JSONL sequentially and writes `output.jsonl` plus WAV files
+
 Supported modes:
 
 - `generation`
@@ -57,6 +62,7 @@ Current default behavior:
 `voice_clone_and_continuation`
 
 - same paired speaker prompt requirements as continuation-style use
+- uses those paired prompts for both continuation context and speaker anchoring
 
 ## Sampling Controls
 
@@ -72,6 +78,12 @@ Practical note:
 
 - `--greedy` disables sampling
 - otherwise TTSD uses the audio sampling controls above
+- `--no-kv-cache` is available as a debug fallback
+
+Useful CLI helpers:
+
+- `--text-normalize`
+- `--sample-rate-normalize`
 
 ## Recommended Usage
 
