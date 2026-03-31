@@ -19,6 +19,16 @@ UPLOADS = [
 ]
 
 
+def resolve_hf() -> str:
+    local_hf = Path(sys.executable).with_name("hf")
+    if local_hf.exists():
+        return str(local_hf)
+    return "hf"
+
+
+HF_BIN = resolve_hf()
+
+
 def run(cmd: list[str]) -> None:
     print(f"$ {' '.join(cmd)}")
     result = subprocess.run(cmd, check=False)
@@ -37,7 +47,7 @@ def main() -> None:
             sys.exit(1)
 
         run([
-            "hf", "upload",
+            HF_BIN, "upload",
             "--repo-type", REPO_TYPE,
             REPO_ID,
             str(local_path),

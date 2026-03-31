@@ -35,6 +35,17 @@ Only upload variants that have been validated end-to-end locally first.
 
 ## Upload Tool
 
-Uploads use the `hf` CLI (installed via Homebrew). Each model has its own
-upload script in this folder. Run them individually — do not batch upload
-without verifying the artifact loads cleanly first.
+Uploads use the `hf` CLI from `huggingface_hub`.
+
+Install the release tooling locally with:
+
+```bash
+uv sync --group release
+```
+
+Then run the wrapper scripts from the repo environment. The wrappers prefer the
+`hf` executable that lives next to the active Python interpreter and only fall
+back to a global `hf` on `PATH` if no local one is available.
+
+Run them individually — do not batch upload without verifying the artifact
+loads cleanly first.

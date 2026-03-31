@@ -18,6 +18,16 @@ REQUIRED_PATHS = (
 NUM_WORKERS = "1"
 
 
+def resolve_hf() -> str:
+    local_hf = Path(sys.executable).with_name("hf")
+    if local_hf.exists():
+        return str(local_hf)
+    return "hf"
+
+
+HF_BIN = resolve_hf()
+
+
 def run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
     print(f"$ {' '.join(cmd)}")
     result = subprocess.run(cmd, check=False, env=env)
@@ -45,7 +55,7 @@ def main() -> None:
 
     run(
         [
-            "hf",
+            HF_BIN,
             "upload-large-folder",
             "--repo-type",
             REPO_TYPE,

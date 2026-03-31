@@ -291,6 +291,9 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+release = [
+    { name = "huggingface-hub" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -305,6 +308,9 @@ requires-dist = [
 dev = [
     { name = "pytest", specifier = ">=8.3,<9" },
     { name = "ruff", specifier = ">=0.11,<0.12" },
+]
+release = [
+    { name = "huggingface-hub", specifier = ">=1.8,<2" },
 ]
 
 [[package]]
