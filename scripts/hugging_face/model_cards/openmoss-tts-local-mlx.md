@@ -11,6 +11,8 @@ tags:
 - speech
 - voice-cloning
 - apple-silicon
+- quantized
+- 8bit
 ---
 
 # OpenMOSS TTS — MLX

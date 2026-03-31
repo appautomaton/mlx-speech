@@ -13,6 +13,8 @@ tags:
 - long-form
 - diffusion
 - apple-silicon
+- quantized
+- 8bit
 ---
 
 # VibeVoice — MLX

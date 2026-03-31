@@ -11,6 +11,8 @@ tags:
 - sound-effects
 - audio-generation
 - apple-silicon
+- quantized
+- 4bit
 ---
 
 # OpenMOSS Sound Effect — MLX

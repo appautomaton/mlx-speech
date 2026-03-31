@@ -12,6 +12,8 @@ tags:
 - multi-speaker
 - dialogue
 - apple-silicon
+- quantized
+- 8bit
 ---
 
 # OpenMOSS TTSD — MLX

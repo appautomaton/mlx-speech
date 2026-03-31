@@ -12,6 +12,8 @@ tags:
 - codec
 - tokenizer
 - apple-silicon
+- quantized
+- 8bit
 ---
 
 # OpenMOSS Audio Tokenizer — MLX

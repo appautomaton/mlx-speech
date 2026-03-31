@@ -10,6 +10,8 @@ tags:
 - speech-recognition
 - transcription
 - apple-silicon
+- quantized
+- 8bit
 ---
 
 # Cohere ASR — MLX
