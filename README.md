@@ -114,6 +114,10 @@ mlx-speech/
   docs/             model-family behavior guides
 ```
 
+## Acknowledgements
+
+This project wouldn't exist without the inspiration and generous support of the incredible community at [linux.do](https://linux.do/). You know who you are — thank you for everything.
+
 ## License
 
 MIT — see [LICENSE](LICENSE)
