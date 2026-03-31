@@ -4,6 +4,9 @@
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![Platform](https://img.shields.io/badge/platform-Apple%20Silicon-black?logo=apple)](https://developer.apple.com/documentation/apple-silicon)
 
+> [!NOTE]
+> ⚫⚪🟡 This project wouldn't exist without the inspiration and generous support of the incredible community at [linux.do](https://linux.do). 💙
+
 Local speech synthesis on Apple Silicon, running pure MLX. No cloud, no PyTorch.
 
 | Model | Best for |
@@ -118,6 +121,3 @@ mlx-speech/
 
 MIT — see [LICENSE](LICENSE)
 
----
-
-> ⚫⚪🟡 This project wouldn't exist without the inspiration and generous support of the incredible community at [linux.do](https://linux.do/). 💙
