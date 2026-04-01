@@ -1,4 +1,4 @@
-"""Tests for the Step-Audio tokenizer processor layer."""
+"""Pure Step-Audio tokenizer processor tests."""
 
 from __future__ import annotations
 

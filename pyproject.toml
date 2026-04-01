@@ -31,6 +31,9 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
+    "checkpoint: needs local model checkpoints (skip if absent)",
+    "runtime: needs checkpoints and runs inference (slow)",
+    "integration: full pipeline with real audio (manual only)",
     "local_integration: test requires local model artifacts or repo-specific runtime assets",
 ]
 

@@ -74,6 +74,33 @@ docs/               # Model-family behavior guides
 - `--no-kv-cache` is a debug fallback only. KV cache default is settled.
 - Inference modes: direct generation, clone, continuation, continuation + clone.
 
+## Testing
+
+Tests are organized into four tiers by dependency. Run the tier appropriate to your task:
+
+```bash
+# Default — use during development and after code changes
+pytest tests/unit/
+
+# After changing checkpoint loading, weight remapping, or config parsing
+pytest tests/unit/ tests/checkpoint/
+
+# After changing model forward pass, inference logic, or DSP code
+pytest tests/unit/ tests/checkpoint/ tests/runtime/
+
+# Full integration — only when validating end-to-end waveform output
+RUN_LOCAL_INTEGRATION=1 pytest tests/integration/
+```
+
+| Tier | Directory | Needs checkpoints? | When to run |
+| --- | --- | --- | --- |
+| Unit | `tests/unit/` | No | Always |
+| Checkpoint | `tests/checkpoint/` | Yes (skips if absent) | Changed loaders/config |
+| Runtime | `tests/runtime/` | Yes (skips if absent) | Changed model/inference |
+| Integration | `tests/integration/` | Yes + `RUN_LOCAL_INTEGRATION=1` | Manual smoke test |
+
+**Agents must run `pytest tests/unit/` before reporting work as complete.** Higher tiers are opt-in based on what was changed. Do not run checkpoint/runtime/integration tests routinely — they are slow and require local model files.
+
 ## Validation
 
 Add focused tests for weight mapping, checkpoint loading, and generation behavior as pieces land. Each stage must be independently testable before moving forward.

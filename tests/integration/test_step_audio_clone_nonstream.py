@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 import mlx.core as mx
 import numpy as np
 import pytest
 import soundfile as sf
 
 from mlx_speech.models.step_audio_editx import (
-    StepAudioEditXTokenizer,
     StepAudioCosyVoiceFrontEnd,
+    StepAudioEditXTokenizer,
     load_step_audio_editx_model,
     load_step_audio_flow_conditioner,
     load_step_audio_flow_model,
@@ -24,20 +21,12 @@ from mlx_speech.models.step_audio_tokenizer import (
     load_step_audio_vq06_model,
     pack_raw_codes_to_prompt_tokens,
 )
+from tests.helpers.step_audio import EDITX_DIR, PROMPT_AUDIO, TOKENIZER_DIR, skip_no_integration
+
+pytestmark = pytest.mark.integration
 
 
-MODEL_DIR = Path("models/stepfun/step_audio_editx/original")
-TOKENIZER_DIR = Path("models/stepfun/step_audio_tokenizer/original")
-PROMPT_AUDIO = Path("outputs/source/hank_hill_ref.wav")
-
-RUN_LOCAL_INTEGRATION = os.environ.get("RUN_LOCAL_INTEGRATION") == "1"
-HAS_LOCAL_ASSETS = MODEL_DIR.exists() and TOKENIZER_DIR.exists() and PROMPT_AUDIO.exists()
-
-
-@pytest.mark.skipif(
-    not RUN_LOCAL_INTEGRATION or not HAS_LOCAL_ASSETS,
-    reason="manual local integration test; requires RUN_LOCAL_INTEGRATION=1 and local Step-Audio assets",
-)
+@skip_no_integration
 def test_step_audio_nonstream_clone_path_produces_waveform() -> None:
     audio, sample_rate = sf.read(PROMPT_AUDIO, dtype="float32")
     if audio.ndim > 1:
@@ -50,12 +39,12 @@ def test_step_audio_nonstream_clone_path_produces_waveform() -> None:
     prompt_wav_tokens = format_audio_token_string(prompt_vq02, prompt_vq06)
     prompt_token = pack_raw_codes_to_prompt_tokens(prompt_vq02, prompt_vq06)
 
-    tokenizer = StepAudioEditXTokenizer.from_path(MODEL_DIR)
-    step1 = load_step_audio_editx_model(MODEL_DIR, prefer_mlx_int8=False)
-    frontend = StepAudioCosyVoiceFrontEnd.from_model_dir(MODEL_DIR)
-    conditioner = load_step_audio_flow_conditioner(MODEL_DIR)
-    flow = load_step_audio_flow_model(MODEL_DIR)
-    hift = load_step_audio_hift_model(MODEL_DIR)
+    tokenizer = StepAudioEditXTokenizer.from_path(EDITX_DIR)
+    step1 = load_step_audio_editx_model(EDITX_DIR, prefer_mlx_int8=False)
+    frontend = StepAudioCosyVoiceFrontEnd.from_model_dir(EDITX_DIR)
+    conditioner = load_step_audio_flow_conditioner(EDITX_DIR)
+    flow = load_step_audio_flow_model(EDITX_DIR)
+    hift = load_step_audio_hift_model(EDITX_DIR)
 
     prompt_ids = tokenizer.build_clone_prompt_ids(
         speaker="debug",

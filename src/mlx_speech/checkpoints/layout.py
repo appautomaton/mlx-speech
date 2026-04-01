@@ -3,23 +3,33 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 
-
-def _resolve_repo_root() -> Path:
-    candidate = Path(__file__).resolve().parents[3]
-    if candidate.parent.name == ".worktrees":
-        shared_root = candidate.parent.parent
-        if (shared_root / "models").exists():
-            return shared_root
-    models_root = candidate / "models"
-    if models_root.exists():
-        return candidate
-    return candidate
+_MODELS_ROOT_ENV = "MLX_SPEECH_MODELS_ROOT"
 
 
-REPO_ROOT = _resolve_repo_root()
-MODELS_ROOT = REPO_ROOT / "models"
+def _resolve_checkout_root(source_file: str | Path | None = None) -> Path:
+    anchor = Path(__file__ if source_file is None else source_file).resolve()
+    return anchor.parents[3]
+
+
+def _resolve_models_root_for_checkout(checkout_root: Path) -> Path:
+    override = os.environ.get(_MODELS_ROOT_ENV)
+    if override:
+        return Path(override).expanduser().resolve()
+
+    if checkout_root.parent.name == ".worktrees":
+        shared_root = checkout_root.parent.parent
+        shared_models = shared_root / "models"
+        if shared_models.exists():
+            return shared_models
+
+    return checkout_root / "models"
+
+
+REPO_ROOT = _resolve_checkout_root()
+MODELS_ROOT = _resolve_models_root_for_checkout(REPO_ROOT)
 
 
 @dataclass(frozen=True)

@@ -259,56 +259,25 @@ def test_from_dir_loads_all_runtime_components(monkeypatch: pytest.MonkeyPatch) 
     flow_loaded = SimpleNamespace()
     hift_loaded = SimpleNamespace()
 
-    def fake_load_step1(model_dir, prefer_mlx_int8, strict):
-        calls["step1"] = (model_dir, prefer_mlx_int8, strict)
+    def fake_load_step_audio_editx_model(model_dir, *, prefer_mlx_int8, strict):
+        calls["editx"] = (model_dir, prefer_mlx_int8, strict)
         return step1_loaded
 
     def fake_resolve_tokenizer_dir(tokenizer_dir):
-        del tokenizer_dir
-        calls["tokenizer_dir"] = Path("/tmp/step_audio_tokenizer/original")
-        return calls["tokenizer_dir"]
+        calls["resolve_tokenizer_dir"] = tokenizer_dir
+        return Path("/tmp/tokenizer")
 
-    def fake_text_tokenizer_from_path(cls, path):
-        del cls
-        calls["text_tokenizer"] = Path(path)
-        return tokenizer_loaded
-
-    def fake_load_vq02(path, strict):
-        calls["vq02"] = (Path(path), strict)
-        return vq02_loaded
-
-    def fake_load_vq06(path, strict):
-        calls["vq06"] = (Path(path), strict)
-        return vq06_loaded
-
-    def fake_frontend_from_model_dir(cls, path):
-        del cls
-        calls["frontend"] = Path(path)
-        return frontend_loaded
-
-    def fake_conditioner(path):
-        calls["conditioner"] = Path(path)
-        return conditioner_loaded
-
-    def fake_flow(path):
-        calls["flow"] = Path(path)
-        return flow_loaded
-
-    def fake_hift(path):
-        calls["hift"] = Path(path)
-        return hift_loaded
-
-    monkeypatch.setattr(module, "load_step_audio_editx_model", fake_load_step1)
+    monkeypatch.setattr(module, "load_step_audio_editx_model", fake_load_step_audio_editx_model)
     monkeypatch.setattr(module, "resolve_step_audio_tokenizer_model_dir", fake_resolve_tokenizer_dir)
-    monkeypatch.setattr(module.StepAudioEditXTokenizer, "from_path", classmethod(fake_text_tokenizer_from_path))
-    monkeypatch.setattr(module, "load_step_audio_vq02_model", fake_load_vq02)
-    monkeypatch.setattr(module, "load_step_audio_vq06_model", fake_load_vq06)
-    monkeypatch.setattr(module.StepAudioCosyVoiceFrontEnd, "from_model_dir", classmethod(fake_frontend_from_model_dir))
-    monkeypatch.setattr(module, "load_step_audio_flow_conditioner", fake_conditioner)
-    monkeypatch.setattr(module, "load_step_audio_flow_model", fake_flow)
-    monkeypatch.setattr(module, "load_step_audio_hift_model", fake_hift)
+    monkeypatch.setattr(module.StepAudioEditXTokenizer, "from_path", staticmethod(lambda path: tokenizer_loaded))
+    monkeypatch.setattr(module, "load_step_audio_vq02_model", lambda path, strict: vq02_loaded)
+    monkeypatch.setattr(module, "load_step_audio_vq06_model", lambda path, strict: vq06_loaded)
+    monkeypatch.setattr(module.StepAudioCosyVoiceFrontEnd, "from_model_dir", staticmethod(lambda path: frontend_loaded))
+    monkeypatch.setattr(module, "load_step_audio_flow_conditioner", lambda path: conditioner_loaded)
+    monkeypatch.setattr(module, "load_step_audio_flow_model", lambda path: flow_loaded)
+    monkeypatch.setattr(module, "load_step_audio_hift_model", lambda path: hift_loaded)
 
-    loaded = StepAudioEditXModel.from_dir(None, strict=False)
+    loaded = module.StepAudioEditXModel.from_dir("/tmp/model", tokenizer_dir="/tmp/tokenizer", prefer_mlx_int8=True, strict=False)
 
     assert loaded.step1 is step1_loaded
     assert loaded.tokenizer is tokenizer_loaded
@@ -318,6 +287,5 @@ def test_from_dir_loads_all_runtime_components(monkeypatch: pytest.MonkeyPatch) 
     assert loaded.conditioner is conditioner_loaded
     assert loaded.flow is flow_loaded
     assert loaded.hift is hift_loaded
-    assert calls["step1"] == (None, False, False)
-    assert calls["text_tokenizer"] == step1_loaded.model_dir
-    assert calls["frontend"] == step1_loaded.model_dir
+    assert calls["editx"] == ("/tmp/model", True, False)
+    assert calls["resolve_tokenizer_dir"] == "/tmp/tokenizer"
