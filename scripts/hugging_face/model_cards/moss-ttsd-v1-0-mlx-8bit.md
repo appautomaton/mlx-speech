@@ -18,11 +18,14 @@ tags:
 - 8bit
 ---
 
-# OpenMOSS TTSD — MLX
+# MOSS TTSD v1.0 — MLX 8-bit
 
-This repository contains an MLX-native int8 conversion of OpenMOSS TTSD for multi-speaker dialogue generation on Apple Silicon.
+This repository contains an MLX-native int8 conversion of MOSS TTSD v1.0 for multi-speaker dialogue generation on Apple Silicon.
 
-It is intended for local multi-speaker speech generation with [`mlx-speech`](https://github.com/appautomaton/mlx-speech), without a PyTorch runtime at inference time.
+> Note
+> This repo is a community mirror of the canonical MLX conversion maintained by
+> [AppAutomaton](https://github.com/appautomaton) at
+> [`appautomaton/openmoss-ttsd-mlx`](https://huggingface.co/appautomaton/openmoss-ttsd-mlx).
 
 ## Variants
 
@@ -33,7 +36,8 @@ It is intended for local multi-speaker speech generation with [`mlx-speech`](htt
 ## Model Details
 
 - Developed by: AppAutomaton
-- Shared by: AppAutomaton on Hugging Face
+- Shared by: `mlx-community`
+- Original MLX repo: [`appautomaton/openmoss-ttsd-mlx`](https://huggingface.co/appautomaton/openmoss-ttsd-mlx)
 - Upstream model: [`OpenMOSS-Team/MOSS-TTSD-v1.0`](https://huggingface.co/OpenMOSS-Team/MOSS-TTSD-v1.0)
 - Task: multi-speaker text-to-speech
 - Runtime: MLX on Apple Silicon
@@ -63,10 +67,12 @@ Speaker turns are tagged with `[S1]` and `[S2]` in the input text.
 - This repo contains the quantized MLX runtime artifact only.
 - The conversion keeps the original TTSD architecture and remaps weights explicitly for MLX inference.
 - The current runtime path is designed around speaker-tagged dialogue input and shared codec decoding.
+- This mirror is a duplicated repo, not an automatically synchronized namespace mirror.
 
 ## Links
 
-- Source code: [mlx-speech](https://github.com/appautomaton/mlx-speech)
+- Canonical MLX repo: [`appautomaton/openmoss-ttsd-mlx`](https://huggingface.co/appautomaton/openmoss-ttsd-mlx)
+- Source code: [`mlx-speech`](https://github.com/appautomaton/mlx-speech)
 - More examples: [AppAutomaton](https://github.com/appautomaton)
 
 ## License

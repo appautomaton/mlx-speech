@@ -13,6 +13,7 @@ These guides are intentionally short and operational. They are meant to answer:
 
 Current guides:
 
+- [Step-Audio-EditX](./step-audio-editx.md)
 - [VibeVoice](./vibevoice.md)
 - [MOSS-TTSD](./moss-ttsd.md)
 - [MossTTSLocal](./moss-local.md)

@@ -42,6 +42,19 @@ class OpenMossV0Layouts:
         return self
 
 
+@dataclass(frozen=True)
+class StepFunV4Layouts:
+    """Grouped layout for the Step-Audio-EditX family."""
+
+    step_audio_editx: ModelArtifactLayout
+    step_audio_tokenizer: ModelArtifactLayout
+
+    def ensure(self) -> "StepFunV4Layouts":
+        self.step_audio_editx.ensure()
+        self.step_audio_tokenizer.ensure()
+        return self
+
+
 def _build_model_layout(
     models_root: Path,
     family: str,
@@ -81,5 +94,25 @@ def get_openmoss_v0_layouts(models_root: Path | None = None) -> OpenMossV0Layout
             family="openmoss",
             model_name="moss_sound_effect",
             repo_id="OpenMOSS-Team/MOSS-SoundEffect",
+        ),
+    )
+
+
+def get_stepfun_v4_layouts(models_root: Path | None = None) -> StepFunV4Layouts:
+    """Return the local model layout used by the Step-Audio v4 plan."""
+
+    resolved_root = MODELS_ROOT if models_root is None else Path(models_root)
+    return StepFunV4Layouts(
+        step_audio_editx=_build_model_layout(
+            models_root=resolved_root,
+            family="stepfun",
+            model_name="step_audio_editx",
+            repo_id="stepfun-ai/Step-Audio-EditX",
+        ),
+        step_audio_tokenizer=_build_model_layout(
+            models_root=resolved_root,
+            family="stepfun",
+            model_name="step_audio_tokenizer",
+            repo_id="stepfun-ai/Step-Audio-Tokenizer",
         ),
     )

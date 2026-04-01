@@ -20,6 +20,7 @@ from .moss_local import (
     synthesize_moss_tts_local,
     synthesize_moss_tts_local_conversations,
 )
+from .step_audio_editx import StepAudioEditXModel, StepAudioEditXResult
 
 __all__ = [
     "CohereAsrModel",
@@ -36,6 +37,8 @@ __all__ = [
     "generate_moss_tts_delay",
     "generate_moss_tts_local",
     "sample_next_token",
+    "StepAudioEditXModel",
+    "StepAudioEditXResult",
     "synthesize_moss_tts_delay_conversations",
     "synthesize_moss_tts_local",
     "synthesize_moss_tts_local_conversations",

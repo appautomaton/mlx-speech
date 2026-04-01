@@ -17,11 +17,14 @@ tags:
 - 8bit
 ---
 
-# OpenMOSS TTS Local Transformer — MLX 8-bit
+# MOSS TTS Local Transformer — MLX 8-bit
 
-This repository contains an MLX-native int8 conversion of OpenMOSS TTS Local Transformer for single-speaker text-to-speech on Apple Silicon.
+This repository contains an MLX-native int8 conversion of MOSS TTS Local Transformer for single-speaker text-to-speech on Apple Silicon.
 
-It is intended for local speech generation with [`mlx-speech`](https://github.com/appautomaton/mlx-speech), without a PyTorch runtime at inference time.
+> Note
+> This repo is a community mirror of the canonical MLX conversion maintained by
+> [AppAutomaton](https://github.com/appautomaton) at
+> [`appautomaton/openmoss-tts-local-mlx`](https://huggingface.co/appautomaton/openmoss-tts-local-mlx).
 
 ## Variants
 
@@ -32,7 +35,8 @@ It is intended for local speech generation with [`mlx-speech`](https://github.co
 ## Model Details
 
 - Developed by: AppAutomaton
-- Shared by: AppAutomaton on Hugging Face
+- Shared by: `mlx-community`
+- Original MLX repo: [`appautomaton/openmoss-tts-local-mlx`](https://huggingface.co/appautomaton/openmoss-tts-local-mlx)
 - Upstream model: [`OpenMOSS-Team/MOSS-TTS-Local-Transformer`](https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Local-Transformer)
 - Task: single-speaker text-to-speech and voice cloning
 - Runtime: MLX on Apple Silicon
@@ -68,12 +72,14 @@ model = MossTTSLocalModel.from_path("mlx-int8")
 ## Notes
 
 - This repo contains the quantized MLX runtime artifact only.
-- The conversion keeps the original OpenMOSS local TTS architecture and remaps weights explicitly for MLX inference.
+- The conversion keeps the original local TTS architecture and remaps weights explicitly for MLX inference.
 - The default runtime path uses `W8Abf16` mixed precision with global and local KV cache enabled.
+- This mirror is a duplicated repo, not an automatically synchronized namespace mirror.
 
 ## Links
 
-- Source code: [mlx-speech](https://github.com/appautomaton/mlx-speech)
+- Canonical MLX repo: [`appautomaton/openmoss-tts-local-mlx`](https://huggingface.co/appautomaton/openmoss-tts-local-mlx)
+- Source code: [`mlx-speech`](https://github.com/appautomaton/mlx-speech)
 - More examples: [AppAutomaton](https://github.com/appautomaton)
 
 ## License

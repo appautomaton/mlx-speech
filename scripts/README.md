@@ -30,6 +30,18 @@ Current v0 scripts:
 - `generate_moss_ttsd.py` — run TTSD generation / continuation from local
   TTSD weights; uses `mlx-int8` by default and supports explicit `--model-dir`
   / `--codec-dir` overrides for custom checkpoint paths
+- `audit_step_audio_editx_checkpoint.py` — inspect the local Step-Audio-EditX
+  Step1 checkpoint config, tensor prefixes, and checkpoint/model alignment
+- `audit_step_audio_tokenizer_assets.py` — inspect the local Step-Audio text
+  tokenizer assets plus the external dual-tokenizer asset directory and sample
+  prompt packing
+- `generate_step_audio_editx.py` — run local Step-Audio clone/edit waveform
+  generation from prompt audio, prompt text, and target/edit input
+- `convert_step_audio_tokenizer.py` — package the local Step-Audio dual-tokenizer
+  runtime assets into another directory and validate both tokenizer paths there
+- `convert_step_audio_editx.py` — convert the original Step-Audio Step1
+  checkpoint into a local `mlx-int8` runtime directory and copy the supporting
+  runtime assets
 - `run_local_speech_smoke_eval.py` — run a small sequential local smoke-eval
   across Cohere ASR, Moss local, TTSD, and VibeVoice, then write generated
   artifacts plus back-transcribed summaries under `outputs/tests/`

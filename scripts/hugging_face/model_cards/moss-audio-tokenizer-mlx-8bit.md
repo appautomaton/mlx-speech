@@ -18,11 +18,14 @@ tags:
 - 8bit
 ---
 
-# OpenMOSS Audio Tokenizer — MLX 8-bit
+# MOSS Audio Tokenizer — MLX 8-bit
 
-This repository contains an MLX-native int8 conversion of the OpenMOSS audio tokenizer for Apple Silicon.
+This repository contains an MLX-native int8 conversion of the MOSS Audio Tokenizer for Apple Silicon.
 
-It is a supporting model that encodes and decodes audio tokens for the OpenMOSS TTS family. It is not a standalone speech generation model.
+> Note
+> This repo is a community mirror of the canonical MLX conversion maintained by
+> [AppAutomaton](https://github.com/appautomaton) at
+> [`appautomaton/openmoss-audio-tokenizer-mlx`](https://huggingface.co/appautomaton/openmoss-audio-tokenizer-mlx).
 
 ## Variants
 
@@ -33,7 +36,8 @@ It is a supporting model that encodes and decodes audio tokens for the OpenMOSS 
 ## Model Details
 
 - Developed by: AppAutomaton
-- Shared by: AppAutomaton on Hugging Face
+- Shared by: `mlx-community`
+- Original MLX repo: [`appautomaton/openmoss-audio-tokenizer-mlx`](https://huggingface.co/appautomaton/openmoss-audio-tokenizer-mlx)
 - Upstream model: [`OpenMOSS-Team/MOSS-Audio-Tokenizer`](https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer)
 - Task: audio tokenization and codec decoding
 - Runtime: MLX on Apple Silicon
@@ -59,12 +63,14 @@ python scripts/generate_moss_local.py \
 ## Notes
 
 - This repo contains the quantized MLX runtime artifact only.
-- The conversion remaps the original OpenMOSS audio tokenizer weights explicitly for MLX inference.
-- The artifact is shared by the OpenMOSS local TTS, TTSD, and SoundEffect runtime paths in this repo.
+- The conversion remaps the original MOSS audio tokenizer weights explicitly for MLX inference.
+- The artifact is shared by the OpenMOSS local TTS, TTSD, and SoundEffect runtime paths in this repo family.
+- This mirror is a duplicated repo, not an automatically synchronized namespace mirror.
 
 ## Links
 
-- Source code: [mlx-speech](https://github.com/appautomaton/mlx-speech)
+- Canonical MLX repo: [`appautomaton/openmoss-audio-tokenizer-mlx`](https://huggingface.co/appautomaton/openmoss-audio-tokenizer-mlx)
+- Source code: [`mlx-speech`](https://github.com/appautomaton/mlx-speech)
 - More examples: [AppAutomaton](https://github.com/appautomaton)
 
 ## License

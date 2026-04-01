@@ -22,6 +22,7 @@ As of March 29, 2026:
 - `MOSS-TTS`: shallow clone of `main`
 - `MOSS-TTSD`: shallow clone of `main`
 - `mlx-audio`: shallow clone of `main`
+- `Step-Audio-EditX`: shallow clone of `main`
 
 ## Current Checkouts
 
@@ -30,6 +31,7 @@ As of March 29, 2026:
 - `.references/MOSS-TTSD`: `main` at `20dbb4fc44819435fee894d644a0402a0fee736a`
 - `.references/mlx-audio`: `main` at `6408d2a410eb8c57464e07725b92271860199250`
 - `.references/transformers`: `main` at `8213e0d920d52cb00dcade16b6d1f6e952ac0a8c` (sparse: `src/transformers/models/cohere_asr`, `src/transformers/models/moonshine`, `src/transformers/models/parakeet`)
+- `.references/Step-Audio-EditX`: `main` at `8fa0a3e96979d3c47f6e6b531d234ff98acac878`
 
 ## Notes
 
@@ -39,3 +41,7 @@ As of March 29, 2026:
   dependencies.
 - `MOSS-TTS` appears to be the active family repository and is the best primary
   OpenMOSS reference point going forward.
+- Step-Audio assets staged locally for runtime bring-up, conversion, and source
+  inspection:
+  - `models/stepfun/step_audio_editx/original/`
+  - `models/stepfun/step_audio_tokenizer/original/`

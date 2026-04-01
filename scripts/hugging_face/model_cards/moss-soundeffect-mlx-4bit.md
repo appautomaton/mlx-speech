@@ -17,11 +17,14 @@ tags:
 - 4bit
 ---
 
-# OpenMOSS SoundEffect — MLX 4-bit
+# MOSS SoundEffect — MLX 4-bit
 
-This repository contains an MLX-native 4-bit conversion of OpenMOSS SoundEffect for local text-to-audio generation on Apple Silicon.
+This repository contains an MLX-native 4-bit conversion of MOSS SoundEffect for local text-to-audio generation on Apple Silicon.
 
-It is intended for local environmental audio and sound-effect generation with [`mlx-speech`](https://github.com/appautomaton/mlx-speech), without a PyTorch runtime at inference time.
+> Note
+> This repo is a community mirror of the canonical MLX conversion maintained by
+> [AppAutomaton](https://github.com/appautomaton) at
+> [`appautomaton/openmoss-sound-effect-mlx`](https://huggingface.co/appautomaton/openmoss-sound-effect-mlx).
 
 ## Variants
 
@@ -32,7 +35,8 @@ It is intended for local environmental audio and sound-effect generation with [`
 ## Model Details
 
 - Developed by: AppAutomaton
-- Shared by: AppAutomaton on Hugging Face
+- Shared by: `mlx-community`
+- Original MLX repo: [`appautomaton/openmoss-sound-effect-mlx`](https://huggingface.co/appautomaton/openmoss-sound-effect-mlx)
 - Upstream model: [`OpenMOSS-Team/MOSS-SoundEffect`](https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect)
 - Task: text-to-audio and sound-effect generation
 - Runtime: MLX on Apple Silicon
@@ -59,12 +63,14 @@ model = MossSoundEffectModel.from_path("mlx-4bit")
 ## Notes
 
 - This repo contains the quantized MLX runtime artifact only.
-- The conversion keeps the original OpenMOSS SoundEffect architecture and remaps weights explicitly for MLX inference.
+- The conversion keeps the original SoundEffect architecture and remaps weights explicitly for MLX inference.
 - This is the 4-bit variant, and the published folder layout reflects that in `mlx-4bit/`.
+- This mirror is a duplicated repo, not an automatically synchronized namespace mirror.
 
 ## Links
 
-- Source code: [mlx-speech](https://github.com/appautomaton/mlx-speech)
+- Canonical MLX repo: [`appautomaton/openmoss-sound-effect-mlx`](https://huggingface.co/appautomaton/openmoss-sound-effect-mlx)
+- Source code: [`mlx-speech`](https://github.com/appautomaton/mlx-speech)
 - More examples: [AppAutomaton](https://github.com/appautomaton)
 
 ## License

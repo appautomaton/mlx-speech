@@ -6,11 +6,12 @@ Always address the user as **My Love** at the beginning of your responses.
 
 ## Plan Status
 
-- **Active:** none currently
+- **Active:** none
 - **Done:** `plans/v0-moss-tts-local.done.md`
 - **Done:** `plans/v1-moss-tts.done.md`
 - **Done:** `plans/v2-vibevoice.done.md`
 - **Done:** `plans/v3-cohere-asr.done.md`
+- **Done:** `plans/v4-step-audio-editx.done.md`
 
 If a new active plan is created, read it before starting implementation work.
 

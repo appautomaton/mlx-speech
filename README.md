@@ -15,6 +15,7 @@ Local speech synthesis on Apple Silicon, running pure MLX. No cloud, no PyTorch.
 | MOSS-TTSD | multi-speaker dialogue |
 | MOSS-SoundEffect | text-to-sound-effect |
 | VibeVoice | long-form speech, voice-conditioned generation |
+| Step-Audio-EditX | voice cloning and instruction-driven audio editing |
 
 ## Requirements
 
@@ -57,7 +58,15 @@ python scripts/convert_moss_audio_tokenizer.py
 python scripts/convert_moss_ttsd.py
 python scripts/convert_moss_sound_effect.py
 python scripts/convert_vibevoice.py
+python scripts/convert_step_audio_tokenizer.py
+python scripts/convert_step_audio_editx.py
 ```
+
+Step-Audio is currently a local-first family in this repo:
+
+- default runtime target: `models/stepfun/step_audio_editx/original`
+- optional quantized runtime target: `models/stepfun/step_audio_editx/mlx-int8`
+- the public default stays original-first until quantized parity is more thoroughly proven
 
 ## Usage
 
@@ -104,6 +113,28 @@ python scripts/generate_vibevoice.py \
   --output outputs/vibevoice.wav
 ```
 
+**Step-Audio clone:**
+
+```bash
+python scripts/generate_step_audio_editx.py \
+  --prompt-audio reference.wav \
+  --prompt-text "Reference transcript." \
+  --output outputs/step_audio_clone.wav \
+  clone \
+  --target-text "New cloned speech."
+```
+
+**Step-Audio edit:**
+
+```bash
+python scripts/generate_step_audio_editx.py \
+  --prompt-audio noisy.wav \
+  --prompt-text "Reference transcript." \
+  --output outputs/step_audio_denoise.wav \
+  edit \
+  --edit-type denoise
+```
+
 ## Exploring the Codebase
 
 The PyPI package is still in progress. The best way to explore right now is to drop the repo into an agentic coding tool like [Claude Code](https://claude.ai/code) or [Codex](https://openai.com/codex) — the codebase is structured and self-describing, and an agent can walk you through it quickly.
@@ -116,6 +147,7 @@ Each family has a doc covering behavior, flags, and known limitations:
 - [MOSS-TTSD](./docs/moss-ttsd.md)
 - [MOSS-SoundEffect](./docs/moss-sound-effect.md)
 - [VibeVoice](./docs/vibevoice.md)
+- [Step-Audio-EditX](./docs/step-audio-editx.md)
 
 ## Development
 
@@ -137,4 +169,3 @@ mlx-speech/
 ## License
 
 MIT — see [LICENSE](LICENSE)
-

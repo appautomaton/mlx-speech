@@ -16,11 +16,14 @@ tags:
 - 8bit
 ---
 
-# Cohere Transcribe — MLX
+# Cohere Transcribe 03-2026 — MLX 8-bit
 
-This repository contains an MLX-native int8 conversion of Cohere Transcribe for local automatic speech recognition on Apple Silicon.
+This repository contains an MLX-native int8 conversion of Cohere Transcribe 03-2026 for local automatic speech recognition on Apple Silicon.
 
-It is intended for local transcription with [`mlx-speech`](https://github.com/appautomaton/mlx-speech), without a PyTorch runtime or cloud API dependency at inference time.
+> Note
+> This repo is a community mirror of the canonical MLX conversion maintained by
+> [AppAutomaton](https://github.com/appautomaton) at
+> [`appautomaton/cohere-asr-mlx`](https://huggingface.co/appautomaton/cohere-asr-mlx).
 
 ## Variants
 
@@ -31,8 +34,9 @@ It is intended for local transcription with [`mlx-speech`](https://github.com/ap
 ## Model Details
 
 - Developed by: AppAutomaton
-- Shared by: AppAutomaton on Hugging Face
-- Upstream model: `cohere-transcribe-03-2026`
+- Shared by: `mlx-community`
+- Original MLX repo: [`appautomaton/cohere-asr-mlx`](https://huggingface.co/appautomaton/cohere-asr-mlx)
+- Upstream model: `CohereLabs/cohere-transcribe-03-2026`
 - Task: automatic speech recognition
 - Runtime: MLX on Apple Silicon
 
@@ -60,7 +64,11 @@ if audio.ndim > 1:
 if sr != 16000:
     old_len = len(audio)
     new_len = int(round(old_len * 16000 / sr))
-    audio = np.interp(np.linspace(0, old_len - 1, new_len), np.arange(old_len), audio).astype(np.float32)
+    audio = np.interp(
+        np.linspace(0, old_len - 1, new_len),
+        np.arange(old_len),
+        audio,
+    ).astype(np.float32)
 
 model = CohereAsrModel.from_path("mlx-int8")
 result = model.transcribe(audio, sample_rate=16000, language="en")
@@ -72,10 +80,12 @@ print(result.text)
 - This repo contains the quantized MLX runtime artifact only.
 - The conversion keeps the original encoder-decoder ASR architecture and remaps weights explicitly for MLX inference.
 - The example above resamples to 16 kHz before calling `transcribe()`, which matches the runtime requirement.
+- This mirror is a duplicated repo, not an automatically synchronized namespace mirror.
 
 ## Links
 
-- Source code: [mlx-speech](https://github.com/appautomaton/mlx-speech)
+- Canonical MLX repo: [`appautomaton/cohere-asr-mlx`](https://huggingface.co/appautomaton/cohere-asr-mlx)
+- Source code: [`mlx-speech`](https://github.com/appautomaton/mlx-speech)
 - More examples: [AppAutomaton](https://github.com/appautomaton)
 
 ## License
