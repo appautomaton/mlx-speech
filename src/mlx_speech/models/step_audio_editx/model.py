@@ -203,11 +203,7 @@ class Step1RMSNorm(nn.Module):
         self.eps = eps
 
     def __call__(self, x: mx.array) -> mx.array:
-        input_dtype = x.dtype
-        x_float = x.astype(mx.float32)
-        variance = mx.mean(x_float * x_float, axis=-1, keepdims=True)
-        x_norm = x_float * mx.rsqrt(variance + self.eps)
-        return self.weight.astype(input_dtype) * x_norm.astype(input_dtype)
+        return mx.fast.rms_norm(x, self.weight.astype(x.dtype), self.eps)
 
 
 class Step1MLP(nn.Module):

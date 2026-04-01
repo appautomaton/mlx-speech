@@ -6,7 +6,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+def _resolve_repo_root() -> Path:
+    candidate = Path(__file__).resolve().parents[3]
+    if candidate.parent.name == ".worktrees":
+        shared_root = candidate.parent.parent
+        if (shared_root / "models").exists():
+            return shared_root
+    models_root = candidate / "models"
+    if models_root.exists():
+        return candidate
+    return candidate
+
+
+REPO_ROOT = _resolve_repo_root()
 MODELS_ROOT = REPO_ROOT / "models"
 
 
