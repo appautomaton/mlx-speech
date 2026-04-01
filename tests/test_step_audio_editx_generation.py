@@ -27,15 +27,20 @@ class _FakeStep1Model:
         self.calls: list[list[int]] = []
         self._cursor = 0
 
+    def allocate_kv_cache(self, *, batch_size: int, max_length: int, dtype=None):
+        del batch_size, max_length, dtype
+        return SimpleNamespace(current_length=0)
+
     def __call__(self, input_ids: mx.array, *, cache=None):
-        del cache
+        if cache is not None:
+            cache.current_length += int(np.asarray(input_ids).shape[-1])
         tokens = np.asarray(input_ids).reshape(-1).astype(np.int32).tolist()
         self.calls.append(tokens)
         next_token = self.generated_tokens[min(self._cursor, len(self.generated_tokens) - 1)]
         self._cursor += 1
         return SimpleNamespace(
             logits=_logits_with_token(next_token, vocab_size=self.vocab_size),
-            cache=[SimpleNamespace(step=self._cursor)],
+            cache=cache,
         )
 
 

@@ -372,9 +372,14 @@ class StepAudioEditXModel:
         generation_limit = self._resolve_max_new_tokens(len(prompt_ids), max_new_tokens)
         audio_token_base_id = self._resolve_audio_token_base_id()
         eos_token_id = int(self.step1.config.eos_token_id)
+        cache = self.step1.model.allocate_kv_cache(
+            batch_size=1,
+            max_length=len(prompt_ids) + generation_limit,
+        )
 
         outputs = self.step1.model(
             input_ids=mx.array([prompt_ids], dtype=mx.int32),
+            cache=cache,
         )
         mx.eval(outputs.logits)
         cache = outputs.cache

@@ -28,10 +28,12 @@ def _linear_forward(
         y = linear(x)
         return y if y.dtype == target_dtype else y.astype(target_dtype)
 
-    y = mx.matmul(x.astype(mx.float32), weight.astype(mx.float32).T)
+    weight_cast = weight if weight.dtype == x.dtype else weight.astype(x.dtype)
+    y = mx.matmul(x, weight_cast.T)
     bias = getattr(linear, "bias", None)
     if bias is not None:
-        y = y + bias.astype(mx.float32)
+        bias_cast = bias if bias.dtype == y.dtype else bias.astype(y.dtype)
+        y = y + bias_cast
     return y.astype(target_dtype)
 
 
@@ -86,25 +88,110 @@ class Step1AttentionBias(Protocol):
     value: mx.array
 
 
-@dataclass(frozen=True)
-class Step1KVCache:
-    """Grouped KV cache stored in pre-repeat form."""
+@dataclass
+class Step1LayerKVCache:
+    """Mutable grouped KV cache stored in pre-repeat form."""
 
-    key: mx.array
-    value: mx.array
+    keys: mx.array
+    values: mx.array
+    current_length: int = 0
+
+    @staticmethod
+    def allocate(
+        *,
+        batch_size: int,
+        max_length: int,
+        num_groups: int,
+        head_dim: int,
+        dtype: mx.Dtype,
+    ) -> "Step1LayerKVCache":
+        return Step1LayerKVCache(
+            keys=mx.zeros((batch_size, max_length, num_groups, head_dim), dtype=dtype),
+            values=mx.zeros((batch_size, max_length, num_groups, head_dim), dtype=dtype),
+            current_length=0,
+        )
+
+    @property
+    def max_length(self) -> int:
+        return int(self.keys.shape[1])
+
+    def append(self, new_k: mx.array, new_v: mx.array) -> None:
+        if new_k.shape != new_v.shape:
+            raise ValueError(
+                f"Expected key/value shapes to match, got {new_k.shape} vs {new_v.shape}."
+            )
+        if new_k.ndim != 4:
+            raise ValueError(
+                "Expected key/value with shape (batch, seq, num_groups, head_dim), "
+                f"got {new_k.shape}."
+            )
+        step = int(new_k.shape[1])
+        end = self.current_length + step
+        if end > self.max_length:
+            raise ValueError(
+                f"KV cache overflow: need {end} slots, cache only has {self.max_length}."
+            )
+        self.keys[:, self.current_length:end, :, :] = new_k
+        self.values[:, self.current_length:end, :, :] = new_v
+        self.current_length = end
+
+    def get(self) -> tuple[mx.array, mx.array]:
+        return (
+            self.keys[:, : self.current_length, :, :],
+            self.values[:, : self.current_length, :, :],
+        )
+
+    def reset(self) -> None:
+        self.current_length = 0
+
+
+@dataclass
+class Step1KVCacheCollection:
+    """Per-layer cache collection allocated once for Step1 decode."""
+
+    layers: tuple[Step1LayerKVCache, ...]
+
+    @property
+    def current_length(self) -> int:
+        return 0 if not self.layers else int(self.layers[0].current_length)
+
+    @classmethod
+    def allocate(
+        cls,
+        config: Step1Config,
+        *,
+        batch_size: int,
+        max_length: int,
+        dtype: mx.Dtype,
+    ) -> "Step1KVCacheCollection":
+        layers = tuple(
+            Step1LayerKVCache.allocate(
+                batch_size=batch_size,
+                max_length=max_length,
+                num_groups=config.num_attention_groups,
+                head_dim=config.head_dim,
+                dtype=dtype,
+            )
+            for _ in range(config.num_hidden_layers)
+        )
+        return cls(layers=layers)
+
+    def reset(self) -> None:
+        for layer in self.layers:
+            layer.reset()
 
 
 @dataclass(frozen=True)
 class Step1LMOutput:
     last_hidden_state: mx.array
-    cache: list[Step1KVCache]
+    cache: Step1KVCacheCollection | None
 
 
 @dataclass(frozen=True)
 class Step1CausalLMOutput:
     logits: mx.array
     hidden_states: mx.array
-    cache: list[Step1KVCache]
+    cache: Step1KVCacheCollection | None
 
 
 class Step1RMSNorm(nn.Module):
@@ -165,29 +252,25 @@ class Step1Attention(nn.Module):
         self,
         x: mx.array,
         *,
-        cache: Step1KVCache | None = None,
-        cache_offset: int = 0,
-    ) -> tuple[mx.array, Step1KVCache]:
+        cache: Step1LayerKVCache | None = None,
+    ) -> tuple[mx.array, Step1LayerKVCache | None]:
         batch_size, query_len, _ = x.shape
 
-        q = _linear_forward(self.q_proj, x, output_dtype=mx.float32).reshape(
+        q = _linear_forward(self.q_proj, x).reshape(
             batch_size, query_len, self.num_heads, self.head_dim,
         )
-        k = _linear_forward(self.k_proj, x, output_dtype=mx.float32).reshape(
+        k = _linear_forward(self.k_proj, x).reshape(
             batch_size, query_len, self.num_groups, self.head_dim,
         )
-        v = _linear_forward(self.v_proj, x, output_dtype=mx.float32).reshape(
+        v = _linear_forward(self.v_proj, x).reshape(
             batch_size, query_len, self.num_groups, self.head_dim,
         )
 
+        cache_offset = 0
         if cache is not None:
-            cache_offset = int(cache.key.shape[1])
-            k = mx.concatenate([cache.key, k], axis=1)
-            v = mx.concatenate([cache.value, v], axis=1)
-        new_cache = Step1KVCache(key=k, value=v)
-
-        k = _repeat_kv_groups(k, self.kv_repeat)
-        v = _repeat_kv_groups(v, self.kv_repeat)
+            cache_offset = int(cache.current_length)
+            cache.append(k, v)
+            k, v = cache.get()
 
         q = q.transpose(0, 2, 1, 3)
         k = k.transpose(0, 2, 1, 3)
@@ -202,16 +285,31 @@ class Step1Attention(nn.Module):
             dtype=mx.float32,
         )
 
+        q_grouped = q.reshape(batch_size, self.num_groups, self.kv_repeat, query_len, self.head_dim)
+        k_grouped = k[:, :, None, :, :]
         scores = mx.matmul(
-            q.astype(mx.float32),
-            k.astype(mx.float32).transpose(0, 1, 3, 2),
-        )
+            q_grouped,
+            k_grouped.transpose(0, 1, 2, 4, 3),
+        ).reshape(batch_size, self.num_heads, query_len, key_len).astype(mx.float32)
         scores = (scores * self.scale) + bias[None, :, :, :]
         probs = mx.softmax(scores, axis=-1)
-        hidden = mx.matmul(probs, v.astype(mx.float32))
+        probs_grouped = probs.astype(v.dtype).reshape(
+            batch_size,
+            self.num_groups,
+            self.kv_repeat,
+            query_len,
+            key_len,
+        )
+        v_grouped = v[:, :, None, :, :]
+        hidden = mx.matmul(probs_grouped, v_grouped).reshape(
+            batch_size,
+            self.num_heads,
+            query_len,
+            self.head_dim,
+        )
         hidden = hidden.transpose(0, 2, 1, 3).reshape(batch_size, query_len, self.hidden_size)
         hidden = hidden.astype(x.dtype)
-        return _linear_forward(self.o_proj, hidden), new_cache
+        return _linear_forward(self.o_proj, hidden), cache
 
 
 class Step1Block(nn.Module):
@@ -228,18 +326,17 @@ class Step1Block(nn.Module):
         self,
         x: mx.array,
         *,
-        cache: Step1KVCache | None = None,
-        cache_offset: int = 0,
-    ) -> tuple[mx.array, Step1KVCache]:
+        cache: Step1LayerKVCache | None = None,
+    ) -> tuple[mx.array, Step1LayerKVCache | None]:
         residual = x
         x = self.input_layernorm(x)
-        h, new_cache = self.self_attn(x, cache=cache, cache_offset=cache_offset)
+        h, updated_cache = self.self_attn(x, cache=cache)
         x = residual + h
 
         residual = x
         x = self.post_attention_layernorm(x)
         x = residual + self.mlp(x)
-        return x, new_cache
+        return x, updated_cache
 
 
 class Step1Model(nn.Module):
@@ -258,7 +355,7 @@ class Step1Model(nn.Module):
         *,
         inputs_embeds: mx.array | None = None,
         attention_mask: mx.array | None = None,
-        cache: list[Step1KVCache] | None = None,
+        cache: Step1KVCacheCollection | None = None,
     ) -> Step1LMOutput:
         if (input_ids is None) == (inputs_embeds is None):
             raise ValueError("Specify exactly one of input_ids or inputs_embeds.")
@@ -269,20 +366,15 @@ class Step1Model(nn.Module):
             inputs_embeds = self.embed_tokens(input_ids)
 
         hidden_states = inputs_embeds
-        cache_offset = 0 if cache is None or not cache else int(cache[0].key.shape[1])
-        new_cache: list[Step1KVCache] = []
-
         for idx, layer in enumerate(self.layers):
-            layer_cache = cache[idx] if cache is not None and idx < len(cache) else None
-            hidden_states, layer_new_cache = layer(
+            layer_cache = cache.layers[idx] if cache is not None and idx < len(cache.layers) else None
+            hidden_states, _ = layer(
                 hidden_states,
                 cache=layer_cache,
-                cache_offset=cache_offset,
             )
-            new_cache.append(layer_new_cache)
 
         hidden_states = self.norm(hidden_states)
-        return Step1LMOutput(last_hidden_state=hidden_states, cache=new_cache)
+        return Step1LMOutput(last_hidden_state=hidden_states, cache=cache)
 
 
 class Step1ForCausalLM(nn.Module):
@@ -300,13 +392,28 @@ class Step1ForCausalLM(nn.Module):
     def set_input_embeddings(self, value: nn.Embedding) -> None:
         self.model.embed_tokens = value
 
+    def allocate_kv_cache(
+        self,
+        *,
+        batch_size: int,
+        max_length: int,
+        dtype: mx.Dtype | None = None,
+    ) -> Step1KVCacheCollection:
+        resolved_dtype = self.get_input_embeddings().weight.dtype if dtype is None else dtype
+        return Step1KVCacheCollection.allocate(
+            self.config,
+            batch_size=batch_size,
+            max_length=max_length,
+            dtype=resolved_dtype,
+        )
+
     def __call__(
         self,
         input_ids: mx.array | None = None,
         *,
         attention_mask: mx.array | None = None,
         inputs_embeds: mx.array | None = None,
-        cache: list[Step1KVCache] | None = None,
+        cache: Step1KVCacheCollection | None = None,
     ) -> Step1CausalLMOutput:
         outputs = self.model(
             input_ids,
