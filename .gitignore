@@ -33,6 +33,9 @@ models/*
 !models/README.md
 .references/
 
+# Git worktrees for parallel agent sessions
+.worktrees/
+
 # Misc local noise
 *.log
 *.swp
