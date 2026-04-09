@@ -1,6 +1,7 @@
 """Generation utilities for mlx-voice."""
 
 from .cohere_asr import CohereAsrModel, CohereAsrResult
+from .fish_s2_pro import FishS2ProOutput, generate_fish_s2_pro
 from .moss_delay import (
     MossTTSDelayBatchSynthesisOutput,
     MossTTSDelayGenerationConfig,
@@ -25,6 +26,8 @@ from .step_audio_editx import StepAudioEditXModel, StepAudioEditXResult
 __all__ = [
     "CohereAsrModel",
     "CohereAsrResult",
+    "FishS2ProOutput",
+    "generate_fish_s2_pro",
     "MossTTSDelayBatchSynthesisOutput",
     "MossTTSDelayGenerationConfig",
     "MossTTSDelayGenerationOutput",
