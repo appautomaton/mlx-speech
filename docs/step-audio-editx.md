@@ -178,7 +178,7 @@ python scripts/generate_step_audio_editx.py \
 Manual public smoke:
 
 ```bash
-RUN_LOCAL_INTEGRATION=1 uv run pytest tests/test_step_audio_editx_public_integration.py
+RUN_LOCAL_INTEGRATION=1 uv run pytest tests/integration/test_step_audio_clone_public_api.py
 ```
 
 This stays gated on purpose. It is useful for local confirmation, but it is not

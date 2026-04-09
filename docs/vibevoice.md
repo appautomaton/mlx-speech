@@ -13,7 +13,16 @@ Current local default runtime:
 
 - `models/vibevoice/mlx-int8`
 
-## Main Python API
+## Current Python Module API
+
+Current entry points are split across direct modules.
+
+- `mlx_speech.models.vibevoice.checkpoint` for `load_vibevoice_model(...)`
+- `mlx_speech.models.vibevoice.tokenizer` for `VibeVoiceTokenizer.from_path(...)`
+- `mlx_speech.generation.vibevoice` for `generate_vibevoice(...)`,
+  `synthesize_vibevoice(...)`, and generation config/output types
+
+They are not re-exported from `mlx_speech.generation` yet.
 
 Core entry points:
 
@@ -28,7 +37,8 @@ Current user-facing inputs:
 - `voice_samples: list[mx.array] | None`
 - `config: VibeVoiceGenerationConfig`
 
-`voice_samples` is the Python API path for explicit per-speaker conditioning.
+`voice_samples` is the direct module API path for explicit per-speaker
+conditioning.
 Each sample should be shaped like `(1, 1, T)` at `24 kHz`.
 
 ## Current Generation Config

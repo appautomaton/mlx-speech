@@ -7,15 +7,22 @@
 > [!NOTE]
 > ⚫⚪🟡 This project wouldn't exist without the inspiration and generous support of the incredible community at [linux.do](https://linux.do). 💙
 
-Local speech synthesis on Apple Silicon, running pure MLX. No cloud, no PyTorch.
+Local speech synthesis, editing, and transcription on Apple Silicon, running
+pure MLX. No cloud, no PyTorch.
 
-| Model | Best for |
-| --- | --- |
-| MossTTSLocal | shorter TTS, voice cloning, continuation |
-| MOSS-TTSD | multi-speaker dialogue |
-| MOSS-SoundEffect | text-to-sound-effect |
-| VibeVoice | long-form speech, voice-conditioned generation |
-| Step-Audio-EditX | voice cloning and instruction-driven audio editing |
+| Family | Type | Best for | Primary surface |
+| --- | --- | --- | --- |
+| MossTTSLocal | TTS | shorter TTS, voice cloning, continuation | CLI + `mlx_speech.generation` |
+| MOSS-TTSD | TTS | multi-speaker dialogue | CLI + `mlx_speech.generation` |
+| MOSS-SoundEffect | audio generation | text-to-sound-effect | CLI |
+| VibeVoice | TTS | long-form speech, voice-conditioned generation | CLI + direct module imports |
+| Step-Audio-EditX | audio editing | voice cloning and instruction-driven audio editing | CLI + `mlx_speech.generation` |
+| CohereASR | ASR | transcription | CLI + `mlx_speech.generation` |
+
+Supporting runtime components:
+
+- Moss audio tokenizer for OpenMOSS families
+- Step-Audio dual tokenizer assets (`vq02` + `vq06`)
 
 ## Requirements
 
@@ -58,6 +65,7 @@ python scripts/convert_moss_audio_tokenizer.py
 python scripts/convert_moss_ttsd.py
 python scripts/convert_moss_sound_effect.py
 python scripts/convert_vibevoice.py
+python scripts/convert_cohere_asr.py
 python scripts/convert_step_audio_tokenizer.py
 python scripts/convert_step_audio_editx.py
 ```
@@ -113,6 +121,14 @@ python scripts/generate_vibevoice.py \
   --output outputs/vibevoice.wav
 ```
 
+**Cohere ASR transcription:**
+
+```bash
+python scripts/transcribe_cohere_asr.py \
+  --audio speech.wav \
+  --language en
+```
+
 **Step-Audio clone:**
 
 ```bash
@@ -135,9 +151,36 @@ python scripts/generate_step_audio_editx.py \
   --edit-type denoise
 ```
 
+## Python API Surface
+
+Re-exported from `mlx_speech.generation` today:
+
+- `CohereAsrModel`
+- `StepAudioEditXModel`
+- Moss Local generation and synthesis helpers
+- MOSS-TTSD generation and conversation helpers
+
+Direct module imports today:
+
+- `mlx_speech.generation.vibevoice` for VibeVoice synthesis helpers and config types
+- `mlx_speech.models.vibevoice.checkpoint` plus `mlx_speech.models.vibevoice.tokenizer`
+  for the current VibeVoice loader and tokenizer path
+
+CLI-first today:
+
+- `MOSS-SoundEffect` is documented and tested through `scripts/generate_moss_sound_effect.py`
+  rather than a dedicated top-level `mlx_speech.generation` re-export
+
 ## Exploring the Codebase
 
-The PyPI package is still in progress. The best way to explore right now is to drop the repo into an agentic coding tool like [Claude Code](https://claude.ai/code) or [Codex](https://openai.com/codex) — the codebase is structured and self-describing, and an agent can walk you through it quickly.
+The package is installable, but the exported Python surface is still narrower
+than the full repo.
+
+For the clearest starting points:
+
+- use `mlx_speech.generation` for re-exported Python APIs
+- use the model guides below for runtime and CLI status
+- use `scripts/README.md` for conversion, transcription, and audit helpers
 
 ## Model Guides
 
@@ -148,6 +191,7 @@ Each family has a doc covering behavior, flags, and known limitations:
 - [MOSS-SoundEffect](./docs/moss-sound-effect.md)
 - [VibeVoice](./docs/vibevoice.md)
 - [Step-Audio-EditX](./docs/step-audio-editx.md)
+- [CohereASR](./docs/cohere-asr.md)
 
 ## Development
 
@@ -162,7 +206,7 @@ mlx-speech/
   src/mlx_speech/    library code
   scripts/          conversion and generation entry points
   models/           local checkpoints (not in git)
-  tests/            unit and integration tests
+  tests/            unit, checkpoint, runtime, integration tests
   docs/             model-family behavior guides
 ```
 

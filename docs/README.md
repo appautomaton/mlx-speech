@@ -18,6 +18,14 @@ Current guides:
 - [MOSS-TTSD](./moss-ttsd.md)
 - [MossTTSLocal](./moss-local.md)
 - [MOSS-SoundEffect](./moss-sound-effect.md)
+- [CohereASR](./cohere-asr.md)
+
+Guide scope:
+
+- guides describe runtime behavior plus CLI or module entry points
+- not every guide implies a top-level re-export from `mlx_speech.generation`
+- tokenizer/runtime support code lives under `src/mlx_speech/models/` even when it
+  does not have a dedicated guide here
 
 General rule:
 

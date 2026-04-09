@@ -1,7 +1,9 @@
 # Examples
 
-Small usage examples for `mlx-voice` will live here as the public API takes
-shape.
+Small usage examples for `mlx-speech` live here as the public API takes shape.
+
+Current examples stay intentionally small. Most runnable conversion and
+generation entry points still live under `scripts/`.
 
 Current v1 material:
 
