@@ -1,168 +1,260 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import mlx.core as mx
-import numpy as np
 
 from ..models.fish_s2_pro import (
-    FishS2ProConfig,
+    Conversation,
     DualARTransformer,
+    FishS2Codec,
+    FishS2ProConfig,
     FishS2Tokenizer,
+    Message,
+    TextPart,
 )
 from ..models.fish_s2_pro.checkpoint import (
-    FishS2ProCheckpoint,
+    load_checkpoint_into_model,
     load_fish_s2_pro_checkpoint,
 )
-from ..models.fish_s2_pro.cache import KVCache
 
 
-@dataclass
-class FishS2ProModel:
-    """Loaded Fish S2 Pro model for inference."""
+_DEFAULT_TEMPERATURE = 1.0
+_DEFAULT_TOP_P = 0.9
+_DEFAULT_TOP_K = 30
+_RAS_WINDOW = 10
+_RAS_HIGH_TEMPERATURE = 1.0
+_RAS_HIGH_TOP_P = 0.9
 
-    model: DualARTransformer
-    tokenizer: FishS2Tokenizer
-    config: FishS2ProConfig
 
-    @classmethod
-    def from_dir(cls, model_dir: str, dtype=mx.bfloat16):
-        """Load model from directory."""
-        model_dir = Path(model_dir)
-        if not model_dir.exists():
-            raise FileNotFoundError(f"Model directory not found: {model_dir}")
+def _apply_top_k(logits: mx.array, top_k: int) -> mx.array:
+    if top_k <= 0 or top_k >= int(logits.shape[-1]):
+        return logits
+    kth_values = mx.topk(logits, k=top_k, axis=-1)[..., -1:]
+    neg_inf = mx.array(mx.finfo(logits.dtype).min, dtype=logits.dtype)
+    return mx.where(logits < kth_values, neg_inf, logits)
 
-        ckpt = load_fish_s2_pro_checkpoint(str(model_dir))
 
-        model = DualARTransformer(
-            vocab_size=ckpt.config.vocab_size,
-            num_layers=ckpt.config.num_layers,
-            dim=ckpt.config.slow_ar_dim,
-            num_heads=ckpt.config.num_heads,
-            max_position_embeddings=ckpt.config.max_position_embeddings,
-        )
+def _apply_top_p(logits: mx.array, top_p: float) -> mx.array:
+    if top_p >= 1.0:
+        return logits
+    if top_p <= 0.0:
+        raise ValueError("top_p must be > 0.")
 
-        model_params = dict(model.named_parameters())
-        for key, param in model_params.items():
-            if key in ckpt.state_dict:
-                param.value = ckpt.state_dict[key].astype(dtype)
+    sorted_indices = mx.argsort(-logits, axis=-1)
+    sorted_logits = mx.take_along_axis(logits, sorted_indices, axis=-1)
+    sorted_probs = mx.softmax(sorted_logits, axis=-1)
+    cumulative_probs = mx.cumsum(sorted_probs, axis=-1)
+    to_remove = cumulative_probs > top_p
+    to_remove = mx.concatenate(
+        [mx.zeros_like(to_remove[..., :1]), to_remove[..., :-1]], axis=-1
+    )
+    neg_inf = mx.array(mx.finfo(logits.dtype).min, dtype=logits.dtype)
+    filtered_sorted_logits = mx.where(to_remove, neg_inf, sorted_logits)
+    filtered_logits = mx.full(logits.shape, neg_inf, dtype=logits.dtype)
+    return mx.put_along_axis(
+        filtered_logits, sorted_indices, filtered_sorted_logits, axis=-1
+    )
 
-        tokenizer = FishS2Tokenizer.from_pretrained(str(model_dir))
 
-        return cls(model=model, tokenizer=tokenizer, config=ckpt.config)
-
-    def generate(
-        self,
-        text: str,
-        max_new_tokens: int = 1024,
-        temperature: float = 0.8,
-        top_p: float = 0.8,
-        top_k: int = 50,
-    ) -> mx.array:
-        """Generate tokens autoregressively."""
-        tokens = self.tokenizer.encode(text, add_special_tokens=True)
-        tokens = mx.array([tokens])
-
-        generated = []
-        kv_cache = None
-
-        for _ in range(max_new_tokens):
-            h = self.model(tokens)
-            logits = h[0, -1, :]
-
-            if temperature > 0:
-                logits = logits / temperature
-            else:
-                return mx.array(generated)
-
-            probs = mx.softmax(logits, axis=-1)
-
-            if top_k > 0:
-                top_k_vals = mx.topk(probs, k=top_k)
-                min_top_k = mx.min(top_k_vals)
-                probs = mx.where(probs < min_top_k, mx.zeros_like(probs), probs)
-                probs = probs / mx.sum(probs)
-
-            if top_p < 1.0:
-                sorted_idx = mx.argsort(probs)[::-1]
-                sorted_probs = probs[sorted_idx]
-                cumsum = mx.cumsum(sorted_probs)
-                mask = cumsum > top_p
-                for i, idx in enumerate(sorted_idx.tolist()):
-                    if mask[i]:
-                        probs[idx] = 0
-                probs = probs / mx.sum(probs)
-
-            next_token = int(mx.argmax(probs))
-            generated.append(next_token)
-
-            if next_token == self.tokenizer.eos_token_id:
-                break
-
-            tokens = mx.array([tokens.tolist()[0] + [next_token]])
-
-        return mx.array(generated)
+def _sample_token_id(
+    logits: mx.array,
+    *,
+    temperature: float,
+    top_p: float,
+    top_k: int,
+) -> int:
+    warped = logits.astype(mx.float32)
+    if temperature <= 0.0:
+        return int(mx.argmax(warped, axis=-1)[0])
+    warped = warped / float(temperature)
+    warped = _apply_top_k(warped, top_k)
+    warped = _apply_top_p(warped, top_p)
+    return int(mx.random.categorical(warped, axis=-1)[0])
 
 
 @dataclass
 class FishS2ProOutput:
-    """Output from Fish S2 Pro generation."""
+    waveform: mx.array
+    sample_rate: int
+    generated_tokens: int
 
-    waveform: Optional[mx.array]
-    sample_rate: int = 22050
-    generated_tokens: int = 0
+
+@dataclass
+class FishS2ProRuntime:
+    model: DualARTransformer
+    tokenizer: FishS2Tokenizer
+    codec: FishS2Codec
+    config: FishS2ProConfig
+
+    def _stop_token_id_set(self) -> set[int]:
+        return {int(self.tokenizer.im_end_id), int(self.config.eos_token_id)}
+
+    def _semantic_token_id_set(self) -> set[int]:
+        semantic_ids = {
+            int(token_id) for token_id in self.tokenizer.semantic_token_ids.values()
+        }
+        return semantic_ids
+
+    @staticmethod
+    def _resolve_codec_dir(
+        model_dir: str | Path,
+        codec_dir: str | Path | None = None,
+    ) -> Path:
+        if codec_dir is not None:
+            return Path(codec_dir)
+
+        resolved = Path(model_dir)
+        sibling_codec_dir = resolved.parent / "codec-mlx"
+        if sibling_codec_dir.is_dir():
+            return sibling_codec_dir
+        return resolved
+
+    @classmethod
+    def from_dir(
+        cls,
+        model_dir: str | Path,
+        *,
+        codec_dir: str | Path | None = None,
+    ) -> "FishS2ProRuntime":
+        resolved = Path(model_dir)
+        checkpoint = load_fish_s2_pro_checkpoint(resolved)
+        model = DualARTransformer(checkpoint.config)
+        load_checkpoint_into_model(model, checkpoint, strict=True)
+        tokenizer = FishS2Tokenizer.from_pretrained(str(resolved))
+        codec = FishS2Codec.from_dir(cls._resolve_codec_dir(resolved, codec_dir))
+        return cls(
+            model=model,
+            tokenizer=tokenizer,
+            codec=codec,
+            config=checkpoint.config,
+        )
+
+    def synthesize(
+        self,
+        text: str,
+        *,
+        max_new_tokens: int = 256,
+    ) -> FishS2ProOutput:
+        conversation = Conversation(
+            [Message(role="user", modality="voice", parts=[TextPart(text)])]
+        )
+        prompt = conversation.encode_for_inference(
+            self.tokenizer,
+            self.config.audio_decoder_config.num_codebooks,
+        )
+        codes = self._generate_codes(prompt, max_new_tokens=max_new_tokens)
+        if int(codes.shape[1]) == 0:
+            raise ValueError("No Fish S2 audio tokens generated before stop token")
+        waveform = self.codec.decode(codes)
+        return FishS2ProOutput(
+            waveform=waveform.squeeze(),
+            sample_rate=self.codec.sample_rate,
+            generated_tokens=int(codes.shape[1]),
+        )
+
+    def _semantic_code_from_token_id(self, token_id: int) -> int:
+        inverse_semantic_ids = {
+            semantic_token_id: code
+            for code, semantic_token_id in self.tokenizer.semantic_token_ids.items()
+        }
+        if token_id not in inverse_semantic_ids:
+            raise ValueError(
+                f"Selected token id {token_id} is not EOS and not a valid semantic token"
+            )
+        return int(inverse_semantic_ids[token_id])
+
+    def _apply_semantic_logit_bias(self, logits: mx.array) -> mx.array:
+        vocab_size = int(logits.shape[-1])
+        valid = mx.zeros((vocab_size,), dtype=mx.bool_)
+        for token_id in self._semantic_token_id_set() | self._stop_token_id_set():
+            if 0 <= token_id < vocab_size:
+                valid[token_id] = True
+        blocked = mx.full(logits.shape, float("-inf"), dtype=logits.dtype)
+        return mx.where(valid[None, :], logits, blocked)
+
+    def _generate_codes(
+        self,
+        prompt: mx.array,
+        *,
+        max_new_tokens: int = 256,
+    ) -> mx.array:
+        generated = []
+        cur = prompt[None, :, :]
+        num_codebooks = self.config.audio_decoder_config.num_codebooks
+        recent_semantic_token_ids: list[int] = []
+
+        for _ in range(max_new_tokens):
+            forward = self.model(cur)
+            semantic_logits = forward.logits[:, -1, :]
+            semantic_logits = self._apply_semantic_logit_bias(semantic_logits)
+            next_semantic_token_id = _sample_token_id(
+                semantic_logits,
+                temperature=_DEFAULT_TEMPERATURE,
+                top_p=_DEFAULT_TOP_P,
+                top_k=_DEFAULT_TOP_K,
+            )
+            fallback_semantic_token_id = _sample_token_id(
+                semantic_logits,
+                temperature=_RAS_HIGH_TEMPERATURE,
+                top_p=_RAS_HIGH_TOP_P,
+                top_k=_DEFAULT_TOP_K,
+            )
+            if next_semantic_token_id in recent_semantic_token_ids:
+                next_semantic_token_id = fallback_semantic_token_id
+            next_semantic = mx.array([next_semantic_token_id], dtype=mx.int32)
+            if next_semantic_token_id in self._stop_token_id_set():
+                break
+
+            semantic_code = self._semantic_code_from_token_id(next_semantic_token_id)
+            recent_semantic_token_ids.append(next_semantic_token_id)
+            recent_semantic_token_ids = recent_semantic_token_ids[-_RAS_WINDOW:]
+            previous_codebooks = mx.array([[semantic_code]], dtype=mx.int32)
+            step_codes = [mx.array([semantic_code], dtype=mx.int32)]
+
+            for _codebook_idx in range(1, num_codebooks):
+                fast_logits = self.model.fast_forward(
+                    forward.hidden_states[:, -1:, :], previous_codebooks
+                )
+                next_codebook = mx.array(
+                    [
+                        _sample_token_id(
+                            fast_logits,
+                            temperature=_DEFAULT_TEMPERATURE,
+                            top_p=_DEFAULT_TOP_P,
+                            top_k=_DEFAULT_TOP_K,
+                        )
+                    ],
+                    dtype=mx.int32,
+                )
+                previous_codebooks = mx.concatenate(
+                    [previous_codebooks, next_codebook[:, None]], axis=1
+                )
+                step_codes.append(next_codebook)
+
+            generated.append(mx.stack(step_codes, axis=0))
+            step_codebooks = previous_codebooks
+
+            next_frame = mx.zeros((1, num_codebooks + 1, 1), dtype=mx.int32)
+            next_frame[:, 0, 0] = next_semantic
+            next_frame[:, 1:, 0] = step_codebooks
+            cur = mx.concatenate([cur, next_frame], axis=2)
+
+        if not generated:
+            return mx.zeros((num_codebooks, 0), dtype=mx.int32)
+
+        return mx.stack(generated, axis=1).squeeze(2)
 
 
 def generate_fish_s2_pro(
     text: str,
     *,
-    model_dir: str = "models/fish_s2_pro/mlx-int8",
-    max_new_tokens: int = 1024,
-    temperature: float = 0.8,
-    top_p: float = 0.8,
-    top_k: int = 50,
+    model_dir: str = "models/fish_s2_pro/original",
+    codec_dir: str | None = None,
+    max_new_tokens: int = 256,
 ) -> FishS2ProOutput:
-    """Generate speech from text using Fish S2 Pro.
-
-    Args:
-        text: Input text (can include inline tags like [whisper], [excited])
-        model_dir: Path to model checkpoint
-        max_new_tokens: Maximum tokens to generate
-        temperature: Sampling temperature
-        top_p: Nucleus sampling threshold
-        top_k: Top-k sampling
-
-    Returns:
-        FishS2ProOutput with waveform
-    """
-    model_dir = Path(model_dir)
-
-    if not model_dir.exists():
-        return FishS2ProOutput(
-            waveform=None,
-            sample_rate=22050,
-            generated_tokens=0,
-        )
-
-    try:
-        model_pkg = FishS2ProModel.from_dir(str(model_dir))
-
-        tokens = model_pkg.generate(
-            text,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k,
-        )
-
-        return FishS2ProOutput(
-            waveform=None,
-            sample_rate=22050,
-            generated_tokens=len(tokens.tolist()),
-        )
-    except Exception as e:
-        return FishS2ProOutput(
-            waveform=None,
-            sample_rate=22050,
-            generated_tokens=0,
-        )
+    if max_new_tokens <= 0:
+        raise ValueError("max_new_tokens must be > 0")
+    runtime = FishS2ProRuntime.from_dir(model_dir, codec_dir=codec_dir)
+    if max_new_tokens == 256:
+        return runtime.synthesize(text)
+    return runtime.synthesize(text, max_new_tokens=max_new_tokens)

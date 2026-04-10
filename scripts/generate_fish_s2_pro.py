@@ -24,32 +24,19 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--model-dir",
-        default="models/fish_s2_pro/mlx-int8",
-        help="Model checkpoint directory.",
+        default="models/fish_s2_pro/original",
+        help="Local MLX model directory.",
+    )
+    parser.add_argument(
+        "--codec-dir",
+        default=None,
+        help="Optional local converted Fish codec directory. Defaults to a sibling codec-mlx directory when present.",
     )
     parser.add_argument(
         "--max-new-tokens",
         type=int,
         default=1024,
         help="Maximum tokens to generate.",
-    )
-    parser.add_argument(
-        "--temperature",
-        type=float,
-        default=0.8,
-        help="Sampling temperature.",
-    )
-    parser.add_argument(
-        "--top-p",
-        type=float,
-        default=0.8,
-        help="Nucleus sampling threshold.",
-    )
-    parser.add_argument(
-        "--top-k",
-        type=int,
-        default=50,
-        help="Top-k sampling.",
     )
     parser.add_argument(
         "--trim-leading-silence",
@@ -68,14 +55,13 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    result = generate_fish_s2_pro(
-        args.text,
-        model_dir=args.model_dir,
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        top_p=args.top_p,
-        top_k=args.top_k,
-    )
+    generation_kwargs = {
+        "model_dir": args.model_dir,
+        "codec_dir": args.codec_dir,
+        "max_new_tokens": args.max_new_tokens,
+    }
+
+    result = generate_fish_s2_pro(args.text, **generation_kwargs)
 
     if result.waveform is None:
         print("Error: No waveform generated", file=sys.stderr)
