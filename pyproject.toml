@@ -13,15 +13,17 @@ dependencies = [
     "safetensors",
     "soundfile>=0.13.1",
     "tokenizers>=0.22.2",
+    "huggingface_hub>=1.8,<2",
 ]
+
+[project.scripts]
+"mlx-speech-tts" = "mlx_speech.tts.generate:main"
+"mlx-speech-asr" = "mlx_speech.asr.generate:main"
 
 [dependency-groups]
 dev = [
     "pytest>=8.3,<9",
     "ruff>=0.11,<0.12",
-]
-release = [
-    "huggingface_hub>=1.8,<2",
 ]
 
 [build-system]

@@ -426,6 +426,8 @@ def test_generate_main_matches_current_generation_api(monkeypatch, tmp_path):
             model_dir="models/fish_s2_pro/original",
             codec_dir=None,
             max_new_tokens=32,
+            reference_audio=None,
+            reference_text=None,
             trim_leading_silence=False,
             normalize_peak=0.0,
         ),
@@ -453,5 +455,7 @@ def test_generate_main_matches_current_generation_api(monkeypatch, tmp_path):
             "model_dir": "models/fish_s2_pro/original",
             "codec_dir": None,
             "max_new_tokens": 32,
+            "reference_audio": None,
+            "reference_text": None,
         },
     }
