@@ -1,7 +1,11 @@
 """Generation utilities for mlx-voice."""
 
 from .cohere_asr import CohereAsrModel, CohereAsrResult
-from .fish_s2_pro import FishS2ProOutput, generate_fish_s2_pro
+from .longcat_audiodit import (
+    LongCatSynthesisOutput,
+    generate_longcat_audiodit,
+    synthesize_longcat_audiodit,
+)
 from .moss_delay import (
     MossTTSDelayBatchSynthesisOutput,
     MossTTSDelayGenerationConfig,
@@ -23,11 +27,18 @@ from .moss_local import (
 )
 from .step_audio_editx import StepAudioEditXModel, StepAudioEditXResult
 
+try:
+    from .fish_s2_pro import FishS2ProOutput, generate_fish_s2_pro
+except ModuleNotFoundError as exc:
+    if exc.name != "transformers":
+        raise
+
+
 __all__ = [
     "CohereAsrModel",
     "CohereAsrResult",
-    "FishS2ProOutput",
-    "generate_fish_s2_pro",
+    "LongCatSynthesisOutput",
+    "generate_longcat_audiodit",
     "MossTTSDelayBatchSynthesisOutput",
     "MossTTSDelayGenerationConfig",
     "MossTTSDelayGenerationOutput",
@@ -42,7 +53,11 @@ __all__ = [
     "sample_next_token",
     "StepAudioEditXModel",
     "StepAudioEditXResult",
+    "synthesize_longcat_audiodit",
     "synthesize_moss_tts_delay_conversations",
     "synthesize_moss_tts_local",
     "synthesize_moss_tts_local_conversations",
 ]
+
+if "FishS2ProOutput" in globals():
+    __all__.extend(["FishS2ProOutput", "generate_fish_s2_pro"])
