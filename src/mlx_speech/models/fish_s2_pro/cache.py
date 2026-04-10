@@ -1,12 +1,12 @@
-import mlx.core as mx
+from __future__ import annotations
+
 from typing import Optional, Tuple
+
+import mlx.core as mx
 
 
 class KVCache:
-    """KV Cache for autoregressive generation.
-
-    Stores key/value states for efficient inference.
-    """
+    """Small per-layer cache container for upcoming decode work."""
 
     def __init__(
         self,
@@ -26,6 +26,10 @@ class KVCache:
     def offset(self) -> int:
         return max(self._offsets)
 
+    @property
+    def current_length(self) -> int:
+        return self.offset
+
     def update(self, layer_idx: int, key: mx.array, value: mx.array):
         """Update cache with new key/value.
 
@@ -41,10 +45,12 @@ class KVCache:
             heads = key.shape[1]
             head_dim = key.shape[3]
             self._keys = mx.zeros(
-                (self.num_layers, batch, heads, self.max_length, head_dim)
+                (self.num_layers, batch, heads, self.max_length, head_dim),
+                dtype=key.dtype,
             )
             self._values = mx.zeros(
-                (self.num_layers, batch, heads, self.max_length, head_dim)
+                (self.num_layers, batch, heads, self.max_length, head_dim),
+                dtype=value.dtype,
             )
 
         start = self._offsets[layer_idx]
@@ -62,20 +68,21 @@ class KVCache:
         Returns:
             (keys, values) - sliced to current offset
         """
+        if self._keys is None or self._values is None:
+            raise RuntimeError("KV cache is uninitialized")
+
         if layer_idx is not None:
             return (
                 self._keys[layer_idx, :, :, : self._offsets[layer_idx]],
                 self._values[layer_idx, :, :, : self._offsets[layer_idx]],
             )
-        keys_out = []
-        vals_out = []
-        for i in range(self.num_layers):
-            keys_out.append(self._keys[i, :, :, : self._offsets[i]])
-            vals_out.append(self._values[i, :, :, : self._offsets[i]])
-        return keys_out, vals_out
+        return (
+            self._keys[:, :, :, : self.offset],
+            self._values[:, :, :, : self.offset],
+        )
 
     def reset(self):
-        """Reset cache for new generation."""
+        """Reset logical offsets while keeping allocated storage."""
         self._offsets = [0] * self.num_layers
 
     def trim_to(self, length: int):
