@@ -85,9 +85,15 @@ def resolve_longcat_model_dir(
     return int8_dir if prefer_mlx_int8 else original_dir
 
 
-def resolve_longcat_tokenizer_dir(tokenizer_dir: str | Path | None = None) -> Path:
+def resolve_longcat_tokenizer_dir(
+    tokenizer_dir: str | Path | None = None,
+    *,
+    model_dir: Path | None = None,
+) -> Path:
     if tokenizer_dir is not None:
         return Path(tokenizer_dir)
+    if model_dir is not None and (model_dir / "tokenizer.json").exists():
+        return model_dir
     return MODELS_ROOT / "longcat_audiodit" / "tokenizer" / "umt5-base"
 
 
@@ -231,19 +237,10 @@ def quantize_longcat_model(
 ) -> Any:
     quantized_keys = set(state_dict) if state_dict is not None else None
 
-    blocked_prefixes = (
-        "transformer.input_embed",
-        "transformer.text_embed",
-        "transformer.latent_embed",
-        "transformer.latent_cond_embedder",
-    )
-
     def should_quantize(path: str, module: Any) -> bool:
         if not (hasattr(module, "weight") and hasattr(module, "to_quantized")):
             return False
         if module.weight.shape[-1] % quantization.group_size != 0:
-            return False
-        if path.startswith(blocked_prefixes):
             return False
         if quantized_keys is None:
             return True

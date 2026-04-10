@@ -71,8 +71,6 @@ def synthesize_longcat_audiodit(
     guidance_strength: float = 4.0,
     duration: int | None = None,
     batch_mode: bool = False,
-    seed: int | None = 1024,
-    initial_noise: mx.array | None = None,
 ) -> LongCatSynthesisOutput:
     if prompt_audio is not None and not prompt_text:
         raise ValueError("prompt_text is required when prompt_audio is provided")
@@ -114,8 +112,6 @@ def synthesize_longcat_audiodit(
         steps=nfe,
         cfg_strength=guidance_strength,
         guidance_method=guidance_method,
-        seed=seed,
-        initial_noise=initial_noise,
     )
     waveform = result.waveform.squeeze()
     return LongCatSynthesisOutput(
@@ -136,7 +132,6 @@ def generate_longcat_audiodit(
     nfe: int = 16,
     guidance_method: str = "cfg",
     guidance_strength: float = 4.0,
-    seed: int = 1024,
 ) -> LongCatSynthesisOutput:
     from ..models.longcat_audiodit.checkpoint import (
         load_longcat_model,
@@ -144,7 +139,9 @@ def generate_longcat_audiodit(
     )
 
     loaded = load_longcat_model(model_dir=model_dir)
-    tokenizer = LongCatTokenizer.from_path(resolve_longcat_tokenizer_dir(tokenizer_dir))
+    tokenizer = LongCatTokenizer.from_path(
+        resolve_longcat_tokenizer_dir(tokenizer_dir, model_dir=loaded.model_dir)
+    )
     prompt_audio = None
     if prompt_audio_path is not None:
         waveform, _ = load_audio(
@@ -160,7 +157,6 @@ def generate_longcat_audiodit(
         nfe=nfe,
         guidance_method=guidance_method,
         guidance_strength=guidance_strength,
-        seed=seed,
     )
     write_wav(output_audio, output.waveform, sample_rate=output.sample_rate)
     return output
