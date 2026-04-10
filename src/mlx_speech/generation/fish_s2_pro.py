@@ -3,6 +3,7 @@ from pathlib import Path
 
 import mlx.core as mx
 
+from ..audio import load_audio
 from ..models.fish_s2_pro import (
     Conversation,
     DualARTransformer,
@@ -12,18 +13,25 @@ from ..models.fish_s2_pro import (
     Message,
     TextPart,
 )
+from ..models.fish_s2_pro.prompt import VQPart
+from ..models.fish_s2_pro.cache import KVCache
 from ..models.fish_s2_pro.checkpoint import (
     load_checkpoint_into_model,
     load_fish_s2_pro_checkpoint,
+    quantize_fish_s2_pro_model,
 )
 
 
-_DEFAULT_TEMPERATURE = 1.0
-_DEFAULT_TOP_P = 0.9
+_DEFAULT_TEMPERATURE = 0.8
+_DEFAULT_TOP_P = 0.8
 _DEFAULT_TOP_K = 30
 _RAS_WINDOW = 10
 _RAS_HIGH_TEMPERATURE = 1.0
 _RAS_HIGH_TOP_P = 0.9
+_SYSTEM_PROMPT = "convert the provided text to speech"
+_CLONE_SYSTEM_PROMPT = (
+    "convert the provided text to speech reference to the following:\n\nText:\n"
+)
 
 
 def _apply_top_k(logits: mx.array, top_k: int) -> mx.array:
@@ -86,14 +94,53 @@ class FishS2ProRuntime:
     codec: FishS2Codec
     config: FishS2ProConfig
 
-    def _stop_token_id_set(self) -> set[int]:
-        return {int(self.tokenizer.im_end_id), int(self.config.eos_token_id)}
-
-    def _semantic_token_id_set(self) -> set[int]:
-        semantic_ids = {
-            int(token_id) for token_id in self.tokenizer.semantic_token_ids.values()
+    def __post_init__(self):
+        self._stop_ids = frozenset(
+            {int(self.tokenizer.im_end_id), int(self.config.eos_token_id)}
+        )
+        self._semantic_ids = frozenset(
+            int(tid) for tid in self.tokenizer.semantic_token_ids.values()
+        )
+        self._inverse_semantic = {
+            int(tid): int(code)
+            for code, tid in self.tokenizer.semantic_token_ids.items()
         }
-        return semantic_ids
+        self._semantic_bias: mx.array | None = None
+
+    def _build_generation_prompt(
+        self,
+        text: str,
+        *,
+        reference_text: str | None = None,
+        reference_codes: mx.array | None = None,
+    ) -> mx.array:
+        if reference_text is not None and reference_codes is not None:
+            system_parts = [
+                TextPart(_CLONE_SYSTEM_PROMPT),
+                TextPart(f"<|speaker:0|>{reference_text}"),
+                TextPart("\n\nSpeech:\n"),
+                VQPart(reference_codes),
+            ]
+        else:
+            system_parts = [TextPart(_SYSTEM_PROMPT)]
+
+        conversation = Conversation(
+            [
+                Message(role="system", parts=system_parts),
+                Message(role="user", parts=[TextPart(text)]),
+                Message(
+                    role="assistant",
+                    modality="voice",
+                    parts=[],
+                    add_im_start=True,
+                    add_im_end=False,
+                ),
+            ]
+        )
+        return conversation.encode_for_inference(
+            self.tokenizer,
+            self.config.audio_decoder_config.num_codebooks,
+        )
 
     @staticmethod
     def _resolve_codec_dir(
@@ -104,6 +151,9 @@ class FishS2ProRuntime:
             return Path(codec_dir)
 
         resolved = Path(model_dir)
+        bundled_codec_dir = resolved / "codec-mlx"
+        if bundled_codec_dir.is_dir():
+            return bundled_codec_dir
         sibling_codec_dir = resolved.parent / "codec-mlx"
         if sibling_codec_dir.is_dir():
             return sibling_codec_dir
@@ -119,6 +169,12 @@ class FishS2ProRuntime:
         resolved = Path(model_dir)
         checkpoint = load_fish_s2_pro_checkpoint(resolved)
         model = DualARTransformer(checkpoint.config)
+        if checkpoint.config.quantization is not None:
+            quantize_fish_s2_pro_model(
+                model,
+                checkpoint.config.quantization,
+                state_dict=checkpoint.state_dict,
+            )
         load_checkpoint_into_model(model, checkpoint, strict=True)
         tokenizer = FishS2Tokenizer.from_pretrained(str(resolved))
         codec = FishS2Codec.from_dir(cls._resolve_codec_dir(resolved, codec_dir))
@@ -134,13 +190,25 @@ class FishS2ProRuntime:
         text: str,
         *,
         max_new_tokens: int = 256,
+        reference_audio: str | Path | None = None,
+        reference_text: str | None = None,
     ) -> FishS2ProOutput:
-        conversation = Conversation(
-            [Message(role="user", modality="voice", parts=[TextPart(text)])]
-        )
-        prompt = conversation.encode_for_inference(
-            self.tokenizer,
-            self.config.audio_decoder_config.num_codebooks,
+        if (reference_audio is None) != (reference_text is None):
+            raise ValueError(
+                "reference_audio and reference_text must both be provided for voice cloning"
+            )
+
+        reference_codes = None
+        if reference_audio is not None:
+            waveform, _sr = load_audio(
+                reference_audio, sample_rate=self.codec.sample_rate, mono=True
+            )
+            reference_codes = self.codec.encode(waveform)
+
+        prompt = self._build_generation_prompt(
+            text,
+            reference_text=reference_text,
+            reference_codes=reference_codes,
         )
         codes = self._generate_codes(prompt, max_new_tokens=max_new_tokens)
         if int(codes.shape[1]) == 0:
@@ -153,24 +221,33 @@ class FishS2ProRuntime:
         )
 
     def _semantic_code_from_token_id(self, token_id: int) -> int:
-        inverse_semantic_ids = {
-            semantic_token_id: code
-            for code, semantic_token_id in self.tokenizer.semantic_token_ids.items()
-        }
-        if token_id not in inverse_semantic_ids:
+        if token_id not in self._inverse_semantic:
             raise ValueError(
                 f"Selected token id {token_id} is not EOS and not a valid semantic token"
             )
-        return int(inverse_semantic_ids[token_id])
+        return self._inverse_semantic[token_id]
+
+    def _get_semantic_bias(self, vocab_size: int) -> mx.array:
+        if self._semantic_bias is not None and int(self._semantic_bias.shape[0]) == vocab_size:
+            return self._semantic_bias
+        bias = mx.full((vocab_size,), float("-inf"), dtype=mx.float32)
+        for token_id in self._semantic_ids | self._stop_ids:
+            if 0 <= token_id < vocab_size:
+                bias[token_id] = 0.0
+        mx.eval(bias)
+        self._semantic_bias = bias
+        return bias
 
     def _apply_semantic_logit_bias(self, logits: mx.array) -> mx.array:
-        vocab_size = int(logits.shape[-1])
-        valid = mx.zeros((vocab_size,), dtype=mx.bool_)
-        for token_id in self._semantic_token_id_set() | self._stop_token_id_set():
-            if 0 <= token_id < vocab_size:
-                valid[token_id] = True
-        blocked = mx.full(logits.shape, float("-inf"), dtype=logits.dtype)
-        return mx.where(valid[None, :], logits, blocked)
+        return logits + self._get_semantic_bias(int(logits.shape[-1]))
+
+    def _make_cache(self, prompt_len: int, max_new_tokens: int) -> KVCache:
+        tc = self.config.text_config
+        return KVCache(
+            num_layers=tc.n_layer,
+            dim=tc.dim,
+            max_length=prompt_len + max_new_tokens,
+        )
 
     def _generate_codes(
         self,
@@ -178,13 +255,24 @@ class FishS2ProRuntime:
         *,
         max_new_tokens: int = 256,
     ) -> mx.array:
-        generated = []
-        cur = prompt[None, :, :]
         num_codebooks = self.config.audio_decoder_config.num_codebooks
+        cache = self._make_cache(int(prompt.shape[1]), max_new_tokens)
+
+        # Prefill: process entire prompt, populate KV cache
+        forward = self.model(prompt[None, :, :], cache=cache)
+        mx.eval(forward.logits, forward.hidden_states)
+
+        # Compile the fast AR forward — pure computation, no cache state
+        _compiled_fast = (
+            mx.compile(self.model.fast_forward)
+            if isinstance(self.model, DualARTransformer)
+            else self.model.fast_forward
+        )
+
+        generated = []
         recent_semantic_token_ids: list[int] = []
 
         for _ in range(max_new_tokens):
-            forward = self.model(cur)
             semantic_logits = forward.logits[:, -1, :]
             semantic_logits = self._apply_semantic_logit_bias(semantic_logits)
             next_semantic_token_id = _sample_token_id(
@@ -201,8 +289,7 @@ class FishS2ProRuntime:
             )
             if next_semantic_token_id in recent_semantic_token_ids:
                 next_semantic_token_id = fallback_semantic_token_id
-            next_semantic = mx.array([next_semantic_token_id], dtype=mx.int32)
-            if next_semantic_token_id in self._stop_token_id_set():
+            if next_semantic_token_id in self._stop_ids:
                 break
 
             semantic_code = self._semantic_code_from_token_id(next_semantic_token_id)
@@ -212,7 +299,7 @@ class FishS2ProRuntime:
             step_codes = [mx.array([semantic_code], dtype=mx.int32)]
 
             for _codebook_idx in range(1, num_codebooks):
-                fast_logits = self.model.fast_forward(
+                fast_logits = _compiled_fast(
                     forward.hidden_states[:, -1:, :], previous_codebooks
                 )
                 next_codebook = mx.array(
@@ -232,12 +319,13 @@ class FishS2ProRuntime:
                 step_codes.append(next_codebook)
 
             generated.append(mx.stack(step_codes, axis=0))
-            step_codebooks = previous_codebooks
 
+            # Decode: single-token forward with cached KV
             next_frame = mx.zeros((1, num_codebooks + 1, 1), dtype=mx.int32)
-            next_frame[:, 0, 0] = next_semantic
-            next_frame[:, 1:, 0] = step_codebooks
-            cur = mx.concatenate([cur, next_frame], axis=2)
+            next_frame[:, 0, 0] = mx.array([next_semantic_token_id], dtype=mx.int32)
+            next_frame[:, 1:, 0] = previous_codebooks
+            forward = self.model(next_frame, cache=cache)
+            mx.eval(forward.logits, forward.hidden_states)
 
         if not generated:
             return mx.zeros((num_codebooks, 0), dtype=mx.int32)
@@ -251,10 +339,15 @@ def generate_fish_s2_pro(
     model_dir: str = "models/fish_s2_pro/original",
     codec_dir: str | None = None,
     max_new_tokens: int = 256,
+    reference_audio: str | None = None,
+    reference_text: str | None = None,
 ) -> FishS2ProOutput:
     if max_new_tokens <= 0:
         raise ValueError("max_new_tokens must be > 0")
     runtime = FishS2ProRuntime.from_dir(model_dir, codec_dir=codec_dir)
-    if max_new_tokens == 256:
-        return runtime.synthesize(text)
-    return runtime.synthesize(text, max_new_tokens=max_new_tokens)
+    return runtime.synthesize(
+        text,
+        max_new_tokens=max_new_tokens,
+        reference_audio=reference_audio,
+        reference_text=reference_text,
+    )

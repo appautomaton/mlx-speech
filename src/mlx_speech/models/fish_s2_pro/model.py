@@ -6,6 +6,7 @@ import math
 import mlx.core as mx
 import mlx.nn as nn
 
+from .cache import KVCache
 from .config import FishS2ProConfig
 from .layers import FeedForward, FishRotaryEmbedding, TransformerBlock
 
@@ -79,13 +80,15 @@ class DualARTransformer(nn.Module):
         scale = math.sqrt(self.num_codebooks + 1)
         return mx.where(semantic_mask[:, :, None], combined / scale, semantic_embeds)
 
-    def __call__(self, inp: mx.array) -> ForwardResult:
+    def __call__(
+        self, inp: mx.array, *, cache: KVCache | None = None
+    ) -> ForwardResult:
         self._validate_input_shape(inp)
         x = self._embed(inp)
-        for layer in self.layers:
-            x = layer(x)
+        for i, layer in enumerate(self.layers):
+            x = layer(x, cache=cache, layer_idx=i)
         slow_out = self.norm(x)
-        logits = mx.matmul(slow_out, self.embeddings.weight.T)
+        logits = self.embeddings.as_linear(slow_out)
         return ForwardResult(
             logits=logits, hidden_states=self.fast_project_in(slow_out)
         )

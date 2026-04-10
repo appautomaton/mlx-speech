@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import mlx.core as mx
+import mlx.nn as nn
 from mlx.utils import tree_flatten
 
 from ...checkpoints.sharded import load_state_dict
@@ -110,6 +111,32 @@ def validate_checkpoint_against_model(
         missing_in_model=tuple(sorted(ckpt_keys - model_keys)),
         missing_in_checkpoint=tuple(sorted(model_keys - ckpt_keys)),
         shape_mismatches=tuple(shape_mismatches),
+    )
+
+
+def quantize_fish_s2_pro_model(
+    model: Any,
+    quantization,
+    *,
+    state_dict: dict[str, mx.array] | None = None,
+) -> None:
+    quantized_keys = set(state_dict) if state_dict is not None else None
+
+    def should_quantize(path: str, module: Any) -> bool:
+        if not (hasattr(module, "weight") and hasattr(module, "to_quantized")):
+            return False
+        if module.weight.shape[-1] % quantization.group_size != 0:
+            return False
+        if quantized_keys is None:
+            return True
+        return f"{path}.scales" in quantized_keys
+
+    nn.quantize(
+        model,
+        group_size=quantization.group_size,
+        bits=quantization.bits,
+        mode=quantization.mode,
+        class_predicate=should_quantize,
     )
 
 

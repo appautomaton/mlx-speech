@@ -90,6 +90,9 @@ class Conversation:
 
             if message.add_im_end:
                 segments.append((mx.array([tokenizer.im_end_id], dtype=mx.int32), None))
+                segments.append(
+                    (mx.array(tokenizer.encode("\n"), dtype=mx.int32), None)
+                )
 
         if not segments:
             raise ValueError("Conversation produced no prompt tokens")

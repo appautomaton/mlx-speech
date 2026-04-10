@@ -57,9 +57,9 @@ def test_conversation_encodes_interleaved_prompt():
     encoded = convo.encode_for_inference(tok, num_codebooks=1)
 
     assert encoded.shape[0] == 2
-    assert encoded.shape[1] == 7
-    assert encoded[0].tolist() == [10, 20, 13, 30, 151678, 151700, 11]
-    assert encoded[1].tolist() == [0, 0, 0, 0, 0, 1, 0]
+    assert encoded.shape[1] == 8
+    assert encoded[0].tolist() == [10, 20, 13, 30, 151678, 151700, 11, 99]
+    assert encoded[1].tolist() == [0, 0, 0, 0, 0, 1, 0, 0]
 
 
 def test_conversation_rejects_empty_messages():

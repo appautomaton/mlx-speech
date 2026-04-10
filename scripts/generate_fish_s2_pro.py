@@ -39,6 +39,16 @@ def parse_args() -> argparse.Namespace:
         help="Maximum tokens to generate.",
     )
     parser.add_argument(
+        "--reference-audio",
+        default=None,
+        help="Reference audio WAV path for voice cloning.",
+    )
+    parser.add_argument(
+        "--reference-text",
+        default=None,
+        help="Transcript of the reference audio for voice cloning.",
+    )
+    parser.add_argument(
         "--trim-leading-silence",
         action="store_true",
         help="Trim leading low-energy audio before writing the WAV.",
@@ -55,10 +65,19 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
+    if (args.reference_audio is None) != (args.reference_text is None):
+        print(
+            "Error: --reference-audio and --reference-text must both be provided",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     generation_kwargs = {
         "model_dir": args.model_dir,
         "codec_dir": args.codec_dir,
         "max_new_tokens": args.max_new_tokens,
+        "reference_audio": args.reference_audio,
+        "reference_text": args.reference_text,
     }
 
     result = generate_fish_s2_pro(args.text, **generation_kwargs)

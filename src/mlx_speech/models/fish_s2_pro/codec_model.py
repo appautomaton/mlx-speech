@@ -1215,6 +1215,24 @@ class FishCodecModel:
         mx.eval(model.parameters())
         return cls(model=model, config=config, sample_rate=config.sample_rate)
 
+    def encode(self, waveform: mx.array) -> mx.array:
+        """Encode a mono waveform to VQ codes.
+
+        Args:
+            waveform: (T,) float32 mono audio at self.sample_rate.
+
+        Returns:
+            codes: (n_codebooks + 1, T_frames) int32 codebook indices.
+        """
+        audio = waveform[None, None, :]
+        length = int(audio.shape[-1])
+        pad_amount = math.ceil(length / self.model.frame_length) * self.model.frame_length - length
+        if pad_amount > 0:
+            audio = mx.pad(audio, [(0, 0), (0, 0), (0, pad_amount)])
+        z = self.model.encoder(audio)
+        vq_result = self.model.quantizer(z)
+        return vq_result.codes[0]
+
     def decode(self, codes: mx.array) -> mx.array:
         expected_rows = self.config.n_codebooks + 1
         if codes.ndim != 2 or codes.shape[0] != expected_rows:

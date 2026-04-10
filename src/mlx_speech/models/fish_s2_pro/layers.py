@@ -5,6 +5,7 @@ import math
 import mlx.core as mx
 import mlx.nn as nn
 
+from .cache import KVCache
 from .config import FishAudioDecoderConfig, FishTextConfig
 
 
@@ -12,11 +13,6 @@ def _repeat_kv(x: mx.array, repeats: int) -> mx.array:
     if repeats == 1:
         return x
     return mx.repeat(x, repeats, axis=1)
-
-
-def _rotate_half(x: mx.array) -> mx.array:
-    half = x.shape[-1] // 2
-    return mx.concatenate([-x[..., half:], x[..., :half]], axis=-1)
 
 
 class FishRotaryEmbedding(nn.Module):
@@ -35,8 +31,7 @@ class FishRotaryEmbedding(nn.Module):
         )
         positions = mx.arange(offset, offset + seq_len, dtype=mx.float32)
         freqs = mx.outer(positions, inv_freq)
-        emb = mx.concatenate([freqs, freqs], axis=-1)
-        return mx.cos(emb), mx.sin(emb)
+        return mx.cos(freqs), mx.sin(freqs)
 
     def apply(
         self,
@@ -48,9 +43,18 @@ class FishRotaryEmbedding(nn.Module):
         cos, sin = self(seq_len=int(query.shape[2]), offset=offset)
         cos = cos[None, None, :, :].astype(query.dtype)
         sin = sin[None, None, :, :].astype(query.dtype)
-        return (query * cos) + (_rotate_half(query) * sin), (key * cos) + (
-            _rotate_half(key) * sin
-        )
+
+        def _apply_pairwise_rotary(x: mx.array) -> mx.array:
+            x_pairs = x.astype(mx.float32).reshape(*x.shape[:-1], -1, 2)
+            real = x_pairs[..., 0]
+            imag = x_pairs[..., 1]
+            out = mx.stack(
+                [real * cos - imag * sin, imag * cos + real * sin],
+                axis=-1,
+            )
+            return out.reshape(x.shape).astype(x.dtype)
+
+        return _apply_pairwise_rotary(query), _apply_pairwise_rotary(key)
 
 
 class FeedForward(nn.Module):
@@ -104,7 +108,13 @@ class FishSelfAttention(nn.Module):
             self.k_norm = nn.RMSNorm(head_dim, eps=norm_eps)
         self.rotary_emb = FishRotaryEmbedding(head_dim, base=rope_base)
 
-    def __call__(self, x: mx.array) -> mx.array:
+    def __call__(
+        self,
+        x: mx.array,
+        *,
+        cache: KVCache | None = None,
+        layer_idx: int | None = None,
+    ) -> mx.array:
         batch_size, seq_len, _ = x.shape
         qkv = self.wqkv(x)
         q, k, v = mx.split(
@@ -124,7 +134,17 @@ class FishSelfAttention(nn.Module):
         if hasattr(self, "q_norm"):
             q = self.q_norm(q)
             k = self.k_norm(k)
-        q, k = self.rotary_emb.apply(q, k)
+
+        offset = 0
+        if cache is not None and layer_idx is not None:
+            offset = cache._offsets[layer_idx]
+
+        q, k = self.rotary_emb.apply(q, k, offset=offset)
+
+        if cache is not None and layer_idx is not None:
+            cache.update(layer_idx, k, v)
+            k, v = cache.get(layer_idx)
+
         k = _repeat_kv(k, self.kv_repeat)
         v = _repeat_kv(v, self.kv_repeat)
 
@@ -203,6 +223,12 @@ class TransformerBlock(nn.Module):
             attention_qk_norm=config.attention_qk_norm,
         )
 
-    def __call__(self, x: mx.array) -> mx.array:
-        x = x + self.attention(self.attention_norm(x))
+    def __call__(
+        self,
+        x: mx.array,
+        *,
+        cache: KVCache | None = None,
+        layer_idx: int | None = None,
+    ) -> mx.array:
+        x = x + self.attention(self.attention_norm(x), cache=cache, layer_idx=layer_idx)
         return x + self.feed_forward(self.ffn_norm(x))

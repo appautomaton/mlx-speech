@@ -53,9 +53,9 @@ class _FakeModel:
         self.calls = []
         self.fast_calls = []
 
-    def __call__(self, cur):
+    def __call__(self, cur, **kwargs):
         self.calls.append(cur)
-        token_id = self.semantic_token_ids.pop(0)
+        token_id = self.semantic_token_ids.pop(0) if self.semantic_token_ids else 0
         vocab_size = max(token_id + 1, 2000)
         logits = mx.full((1, 1, vocab_size), -1e9, dtype=mx.float32)
         logits[:, :, token_id] = 0
@@ -87,7 +87,7 @@ class _StopOnlyModel:
         self.calls = []
         self.fast_calls = []
 
-    def __call__(self, cur):
+    def __call__(self, cur, **kwargs):
         self.calls.append(cur)
         vocab_size = max(self.stop_token_id + 1, 2000)
         logits = mx.full((1, 1, vocab_size), -1e9, dtype=mx.float32)
@@ -113,7 +113,7 @@ class _MaskedSemanticModel:
         self.calls = []
         self.fast_calls = []
 
-    def __call__(self, cur):
+    def __call__(self, cur, **kwargs):
         self.calls.append(cur)
         logits = mx.full((1, 1, 2000), -1e9, dtype=mx.float32)
         logits[:, :, 1234] = 0.0
@@ -135,7 +135,7 @@ class _SparseSemanticModel:
         self.calls = []
         self.fast_calls = []
 
-    def __call__(self, cur):
+    def __call__(self, cur, **kwargs):
         self.calls.append(cur)
         logits = mx.full((1, 1, 2000), -1e9, dtype=mx.float32)
         logits[:, :, 1008] = 3.0
@@ -158,7 +158,7 @@ class _RepeatedSemanticModel:
         self.fast_calls = []
         self._next_fast_token = 4
 
-    def __call__(self, cur):
+    def __call__(self, cur, **kwargs):
         self.calls.append(cur)
         logits = mx.full((1, 1, 2000), -1e9, dtype=mx.float32)
         logits[:, :, 1001] = 0.0
@@ -181,7 +181,7 @@ class _SemanticAwareFastModel:
         self.calls = []
         self.fast_calls = []
 
-    def __call__(self, cur):
+    def __call__(self, cur, **kwargs):
         self.calls.append(cur)
         logits = mx.full((1, 1, 2000), -1e9, dtype=mx.float32)
         logits[:, :, 1009] = 0.0
@@ -384,7 +384,11 @@ def test_synthesize_builds_prompt_and_decodes_codes():
 
     out = runtime.synthesize("hi", max_new_tokens=2)
     expected_prompt = Conversation(
-        [Message(role="user", modality="voice", parts=[TextPart("hi")])]
+        [
+            Message(role="system", parts=[TextPart("convert the provided text to speech")]),
+            Message(role="user", parts=[TextPart("hi")]),
+            Message(role="assistant", modality="voice", parts=[], add_im_start=True, add_im_end=False),
+        ]
     ).encode_for_inference(tokenizer, runtime.config.audio_decoder_config.num_codebooks)
 
     assert model.calls[0].tolist() == expected_prompt[None, :, :].tolist()
@@ -436,7 +440,11 @@ def test_generate_uses_public_sibling_codec_autodiscovery(monkeypatch):
     assert calls["model_dir"] == "models/fish_s2_pro/original"
     assert calls["codec_dir"] is None
     assert calls["text"] == "hello"
-    assert calls["kwargs"] == {}
+    assert calls["kwargs"] == {
+        "max_new_tokens": 256,
+        "reference_audio": None,
+        "reference_text": None,
+    }
 
 
 def test_generate_rejects_nonpositive_max_new_tokens(monkeypatch):
@@ -516,3 +524,43 @@ def test_runtime_prefers_sibling_codec_dir_when_present(monkeypatch, tmp_path):
     FishS2ProRuntime.from_dir(model_dir)
 
     assert calls == {"codec_dir": codec_dir}
+
+
+def test_build_generation_prompt_with_clone_includes_vq_codes():
+    tokenizer = _FakeTokenizer()
+    runtime = FishS2ProRuntime(
+        model=_FakeModel([], []),
+        tokenizer=tokenizer,
+        codec=_FakeCodec(),
+        config=_config(),
+    )
+
+    # Use code values 7 and 3 which map to semantic_token_ids in _FakeTokenizer
+    ref_codes = mx.array([[7, 3, 7, 3], [0, 0, 0, 0], [0, 0, 0, 0]], dtype=mx.int32)
+    prompt = runtime._build_generation_prompt(
+        "hello",
+        reference_text="some reference text",
+        reference_codes=ref_codes,
+    )
+
+    # Prompt should be (num_codebooks + 1, seq_len)
+    assert prompt.ndim == 2
+    assert int(prompt.shape[0]) == 4  # 3 codebooks + 1 token row
+    # Should be longer than a non-clone prompt
+    plain_prompt = runtime._build_generation_prompt("hello")
+    assert int(prompt.shape[1]) > int(plain_prompt.shape[1])
+
+
+def test_synthesize_rejects_partial_clone_args():
+    runtime = FishS2ProRuntime(
+        model=_FakeModel([], []),
+        tokenizer=_FakeTokenizer(),
+        codec=_FakeCodec(),
+        config=_config(),
+    )
+
+    with pytest.raises(ValueError, match="must both be provided"):
+        runtime.synthesize("hello", reference_text="text but no audio")
+
+    with pytest.raises(ValueError, match="must both be provided"):
+        runtime.synthesize("hello", reference_audio="/fake/path.wav")

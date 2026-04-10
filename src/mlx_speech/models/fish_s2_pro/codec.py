@@ -48,5 +48,8 @@ class FishS2Codec:
 
         return FishCodecModel.from_dir(codec_dir)
 
+    def encode(self, waveform: mx.array) -> mx.array:
+        return self.model.encode(waveform)
+
     def decode(self, codes: mx.array) -> mx.array:
         return self.model.decode(codes)

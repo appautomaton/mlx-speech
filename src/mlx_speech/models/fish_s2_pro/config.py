@@ -152,6 +152,21 @@ class FishAudioDecoderConfig:
 
 
 @dataclass
+class FishQuantizationConfig:
+    bits: int = 8
+    group_size: int = 64
+    mode: str = "affine"
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "FishQuantizationConfig":
+        return cls(
+            bits=int(payload.get("bits", cls.bits)),
+            group_size=int(payload.get("group_size", cls.group_size)),
+            mode=str(payload.get("mode", cls.mode)),
+        )
+
+
+@dataclass
 class FishS2ProConfig:
     model_type: str = "fish_qwen3_omni"
     dtype: str = "bfloat16"
@@ -166,6 +181,7 @@ class FishS2ProConfig:
     audio_decoder_config: FishAudioDecoderConfig = field(
         default_factory=FishAudioDecoderConfig
     )
+    quantization: FishQuantizationConfig | None = None
 
     @classmethod
     def from_dict(
@@ -195,6 +211,9 @@ class FishS2ProConfig:
             audio_decoder_config=FishAudioDecoderConfig.from_dict(
                 payload.get("audio_decoder_config", {})
             ),
+            quantization=FishQuantizationConfig.from_dict(payload["quantization"])
+            if payload.get("quantization") is not None
+            else None,
         )
 
     @classmethod
