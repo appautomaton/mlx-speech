@@ -124,7 +124,7 @@ class _MaskedSemanticModel:
     def fast_forward(self, hidden_state, previous_codebooks):
         del hidden_state
         self.fast_calls.append(previous_codebooks)
-        token_id = 4 if previous_codebooks.shape[1] == 0 else 2
+        token_id = 4 if previous_codebooks.shape[1] == 1 else 2
         logits = mx.full((1, 32), -1e9, dtype=mx.float32)
         logits[:, token_id] = 0.0
         return logits
@@ -146,7 +146,7 @@ class _SparseSemanticModel:
     def fast_forward(self, hidden_state, previous_codebooks):
         del hidden_state
         self.fast_calls.append(previous_codebooks)
-        token_id = 4 if previous_codebooks.shape[1] == 0 else 2
+        token_id = 4 if previous_codebooks.shape[1] == 1 else 2
         logits = mx.full((1, 32), -1e9, dtype=mx.float32)
         logits[:, token_id] = 0.0
         return logits
@@ -173,6 +173,32 @@ class _RepeatedSemanticModel:
         self._next_fast_token = 2 if self._next_fast_token == 4 else 4
         logits = mx.full((1, 32), -1e9, dtype=mx.float32)
         logits[:, token_id] = 0.0
+        return logits
+
+
+class _SemanticAwareFastModel:
+    def __init__(self):
+        self.calls = []
+        self.fast_calls = []
+
+    def __call__(self, cur):
+        self.calls.append(cur)
+        logits = mx.full((1, 1, 2000), -1e9, dtype=mx.float32)
+        logits[:, :, 1009] = 0.0
+        hidden_states = mx.ones((1, 1, 4), dtype=mx.float32)
+        return SimpleNamespace(logits=logits, hidden_states=hidden_states)
+
+    def fast_forward(self, hidden_state, previous_codebooks):
+        del hidden_state
+        self.fast_calls.append(previous_codebooks)
+        logits = mx.full((1, 32), -1e9, dtype=mx.float32)
+        tokens = previous_codebooks.tolist()
+        if tokens == [[3]]:
+            logits[:, 5] = 0.0
+        elif tokens == [[3, 5]]:
+            logits[:, 1] = 0.0
+        else:
+            logits[:, 0] = 0.0
         return logits
 
 
@@ -330,6 +356,19 @@ def test_generate_codes_avoids_semantic_collapse_with_fallback_sample(monkeypatc
     codes = runtime._generate_codes(mx.zeros((4, 2), dtype=mx.int32), max_new_tokens=2)
 
     assert codes[0].tolist() == [7, 3]
+
+
+def test_generate_codes_feeds_semantic_code_into_fast_decoder_context():
+    runtime = FishS2ProRuntime(
+        model=_SemanticAwareFastModel(),
+        tokenizer=_FakeTokenizer(),
+        codec=_FakeCodec(),
+        config=_config(),
+    )
+
+    codes = runtime._generate_codes(mx.zeros((4, 2), dtype=mx.int32), max_new_tokens=1)
+
+    assert codes.tolist() == [[3], [5], [1]]
 
 
 def test_synthesize_builds_prompt_and_decodes_codes():

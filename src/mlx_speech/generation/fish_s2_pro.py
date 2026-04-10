@@ -208,7 +208,7 @@ class FishS2ProRuntime:
             semantic_code = self._semantic_code_from_token_id(next_semantic_token_id)
             recent_semantic_token_ids.append(next_semantic_token_id)
             recent_semantic_token_ids = recent_semantic_token_ids[-_RAS_WINDOW:]
-            previous_codebooks = mx.zeros((1, 0), dtype=mx.int32)
+            previous_codebooks = mx.array([[semantic_code]], dtype=mx.int32)
             step_codes = [mx.array([semantic_code], dtype=mx.int32)]
 
             for _codebook_idx in range(1, num_codebooks):
@@ -232,10 +232,7 @@ class FishS2ProRuntime:
                 step_codes.append(next_codebook)
 
             generated.append(mx.stack(step_codes, axis=0))
-            step_codebooks = mx.concatenate(
-                [mx.array([[semantic_code]], dtype=mx.int32), previous_codebooks],
-                axis=1,
-            )
+            step_codebooks = previous_codebooks
 
             next_frame = mx.zeros((1, num_codebooks + 1, 1), dtype=mx.int32)
             next_frame[:, 0, 0] = next_semantic
