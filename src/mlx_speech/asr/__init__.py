@@ -9,9 +9,8 @@ Usage::
     # result.text: str, result.language: str
 """
 
-from __future__ import annotations
-
-from .._hub import get_model_path, list_models as _list_all
+from .._hub import get_model_path as _get_model_path
+from .._hub import list_models as _list_all
 from ._adapter import ASRModel, ASROutput
 from ._registry import _resolve_asr_family
 
@@ -42,7 +41,7 @@ def load(
     Returns:
         An :class:`ASRModel` with a ``.generate(audio, ...)`` method.
     """
-    model_dir = get_model_path(path_or_hf_repo, revision=revision)
+    model_dir = _get_model_path(path_or_hf_repo, revision=revision)
     family = _resolve_asr_family(model_dir)
 
     if family == "cohere":

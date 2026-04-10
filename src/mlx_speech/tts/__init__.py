@@ -9,11 +9,9 @@ Usage::
     # result.waveform: mx.array, result.sample_rate: int
 """
 
-from __future__ import annotations
-
-from pathlib import Path
-
-from .._hub import get_model_path, list_models as _list_all, resolve_codec_path
+from .._hub import get_model_path as _get_model_path
+from .._hub import list_models as _list_all
+from .._hub import resolve_codec_path as _resolve_codec_path
 from ._adapter import TTSModel, TTSOutput
 from ._registry import _resolve_tts_family
 
@@ -47,7 +45,7 @@ def load(
     Returns:
         A :class:`TTSModel` with a ``.generate(text, ...)`` method.
     """
-    model_dir = get_model_path(path_or_hf_repo, revision=revision)
+    model_dir = _get_model_path(path_or_hf_repo, revision=revision)
     family = _resolve_tts_family(model_dir)
 
     if family == "fish_s2_pro":
@@ -66,7 +64,7 @@ def load(
         return LongCatAdapter.from_dir(model_dir)
 
     if family in ("moss_local", "moss_delay"):
-        codec_dir = resolve_codec_path(codec_path_or_repo, revision=revision)
+        codec_dir = _resolve_codec_path(codec_path_or_repo, revision=revision)
         if family == "moss_local":
             from ._adapters.moss_local import MossLocalAdapter
 
