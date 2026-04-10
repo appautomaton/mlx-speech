@@ -151,8 +151,13 @@ class StepAudioCosyVoiceFrontEnd:
 
     @classmethod
     def from_model_dir(cls, model_dir: str | Path) -> "StepAudioCosyVoiceFrontEnd":
-        cosyvoice_dir = resolve_step_audio_cosyvoice_dir(model_dir)
-        config = StepAudioCosyVoiceMelConfig.from_yaml_path(cosyvoice_dir / "cosyvoice.yaml")
+        resolved = Path(model_dir)
+        try:
+            cosyvoice_dir = resolve_step_audio_cosyvoice_dir(resolved)
+            config = StepAudioCosyVoiceMelConfig.from_yaml_path(cosyvoice_dir / "cosyvoice.yaml")
+        except FileNotFoundError:
+            cosyvoice_dir = resolved
+            config = StepAudioCosyVoiceMelConfig()
         return cls(config, cosyvoice_dir=cosyvoice_dir)
 
     def extract_speech_feat(

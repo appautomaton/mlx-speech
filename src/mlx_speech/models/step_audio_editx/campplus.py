@@ -81,7 +81,7 @@ class StepAudioCampPlusCheckpoint:
     model_dir: Path
     config: StepAudioCampPlusConfig
     state_dict: dict[str, mx.array]
-    graph: LoadedOnnxGraph
+    graph: LoadedOnnxGraph | None = None
 
 
 @dataclass(frozen=True)
@@ -531,11 +531,38 @@ def validate_step_audio_campplus_checkpoint_against_model(
     )
 
 
+def _load_campplus_from_safetensors(model_dir: Path) -> LoadedStepAudioCampPlusModel:
+    import json
+
+    with (model_dir / "campplus-config.json").open(encoding="utf-8") as f:
+        payload = json.load(f)
+    payload.pop("quantization", None)
+    if "block_layers" in payload:
+        payload["block_layers"] = tuple(payload["block_layers"])
+    config = StepAudioCampPlusConfig(**payload)
+    model = StepAudioCampPlusModel(config)
+    weights = mx.load(str(model_dir / "campplus.safetensors"))
+    model.load_weights(list(weights.items()))
+    runtime = StepAudioCampPlusRuntime(model=model, config=config)
+    return LoadedStepAudioCampPlusModel(
+        model_dir=model_dir, config=config,
+        checkpoint=StepAudioCampPlusCheckpoint(model_dir=model_dir, config=config, state_dict=weights),
+        model=model,
+        alignment_report=StepAudioCampPlusAlignmentReport(
+            missing_in_model=(), missing_in_checkpoint=(), shape_mismatches=(),
+        ),
+        runtime=runtime,
+    )
+
+
 def load_step_audio_campplus_model(
     model_dir: str | Path,
     *,
     strict: bool = True,
 ) -> LoadedStepAudioCampPlusModel:
+    resolved = Path(model_dir)
+    if (resolved / "campplus.safetensors").exists():
+        return _load_campplus_from_safetensors(resolved)
     checkpoint = load_step_audio_campplus_checkpoint(model_dir)
     model = StepAudioCampPlusModel(checkpoint.config)
     report = validate_step_audio_campplus_checkpoint_against_model(model, checkpoint)

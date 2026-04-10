@@ -645,11 +645,40 @@ def validate_step_audio_hift_checkpoint_against_model(
     )
 
 
+def _load_hift_from_safetensors(model_dir: Path) -> LoadedStepAudioHiFTModel:
+    import json
+
+    with (model_dir / "hift-config.json").open(encoding="utf-8") as f:
+        payload = json.load(f)
+    payload.pop("quantization", None)
+    f0_cfg = StepAudioHiFTF0PredictorConfig(**payload.pop("f0_predictor"))
+    for key, value in payload.items():
+        if isinstance(value, list):
+            payload[key] = tuple(
+                tuple(v) if isinstance(v, list) else v for v in value
+            )
+    config = StepAudioHiFTConfig(**payload, f0_predictor=f0_cfg)
+    model = StepAudioHiFTGenerator(config)
+    weights = mx.load(str(model_dir / "hift.safetensors"))
+    model.load_weights(list(weights.items()))
+    return LoadedStepAudioHiFTModel(
+        model_dir=model_dir, config=config,
+        checkpoint=StepAudioHiFTCheckpoint(model_dir=model_dir, config=config, state_dict=weights),
+        model=model,
+        alignment_report=StepAudioHiFTAlignmentReport(
+            missing_in_model=(), missing_in_checkpoint=(), shape_mismatches=(),
+        ),
+    )
+
+
 def load_step_audio_hift_model(
     model_dir: str | Path,
     *,
     strict: bool = True,
 ) -> LoadedStepAudioHiFTModel:
+    resolved = Path(model_dir)
+    if (resolved / "hift.safetensors").exists():
+        return _load_hift_from_safetensors(resolved)
     checkpoint = load_step_audio_hift_checkpoint(model_dir)
     model = StepAudioHiFTGenerator(checkpoint.config)
     report = validate_step_audio_hift_checkpoint_against_model(model, checkpoint)

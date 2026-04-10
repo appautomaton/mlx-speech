@@ -22,7 +22,7 @@ class StepAudioVQ06Checkpoint:
     model_dir: Path
     config: StepAudioVQ06Config
     state_dict: dict[str, mx.array]
-    graph: LoadedOnnxGraph
+    graph: LoadedOnnxGraph | None = None
 
 
 @dataclass(frozen=True)
@@ -408,12 +408,47 @@ def validate_step_audio_vq06_checkpoint_against_model(
     )
 
 
+def _load_vq06_from_safetensors(
+    safetensors_dir: str | Path,
+    assets: "StepAudioTokenizerAssets",
+) -> LoadedStepAudioVQ06Model:
+    import json
+
+    resolved = Path(safetensors_dir)
+    with (resolved / "vq06-config.json").open(encoding="utf-8") as f:
+        payload = json.load(f)
+    payload.pop("quantization", None)
+    config = StepAudioVQ06Config(**payload)
+    model = StepAudioVQ06Model(config)
+    weights = mx.load(str(resolved / "vq06.safetensors"))
+    model.load_weights(list(weights.items()))
+    runtime = StepAudioVQ06Runtime(
+        assets=assets, config=config,
+        processor=StepAudioTokenizerProcessor(assets),
+        model=model,
+    )
+    return LoadedStepAudioVQ06Model(
+        assets=assets, config=config,
+        checkpoint=StepAudioVQ06Checkpoint(
+            model_dir=resolved, config=config, state_dict=weights, graph=None,
+        ),
+        model=model,
+        alignment_report=StepAudioVQ06AlignmentReport(
+            missing_in_model=(), missing_in_checkpoint=(), shape_mismatches=(),
+        ),
+        runtime=runtime,
+    )
+
+
 def load_step_audio_vq06_model(
     model_dir: str | Path | None = None,
     *,
     strict: bool = True,
+    safetensors_dir: str | Path | None = None,
 ) -> LoadedStepAudioVQ06Model:
     assets = load_step_audio_tokenizer_assets(model_dir)
+    if safetensors_dir is not None and (Path(safetensors_dir) / "vq06.safetensors").exists():
+        return _load_vq06_from_safetensors(safetensors_dir, assets)
     checkpoint = load_step_audio_vq06_checkpoint(model_dir)
     model = StepAudioVQ06Model(checkpoint.config)
     report = validate_step_audio_vq06_checkpoint_against_model(model, checkpoint)

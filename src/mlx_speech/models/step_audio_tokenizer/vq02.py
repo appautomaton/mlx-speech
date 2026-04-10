@@ -741,12 +741,67 @@ def validate_step_audio_vq02_checkpoint_against_model(
     )
 
 
+def _load_vq02_from_safetensors(
+    safetensors_dir: str | Path,
+    assets: "StepAudioTokenizerAssets",
+) -> "LoadedStepAudioVQ02Model":
+    import json
+
+    resolved = Path(safetensors_dir)
+    with (resolved / "vq02-config.json").open(encoding="utf-8") as f:
+        payload = json.load(f)
+    quantization = payload.pop("quantization", None)
+    from .config import StepAudioVQ02EncoderConfig, StepAudioVQ02FrontendConfig
+
+    config = StepAudioVQ02Config(
+        model_name=payload["model_name"],
+        frontend=StepAudioVQ02FrontendConfig(**payload["frontend"]),
+        encoder=StepAudioVQ02EncoderConfig(**payload["encoder"]),
+    )
+    model = StepAudioVQ02Model(config)
+    if quantization is not None:
+        import mlx.nn as nn
+
+        nn.quantize(
+            model,
+            group_size=quantization["group_size"],
+            bits=quantization["bits"],
+            mode=quantization.get("mode", "affine"),
+            class_predicate=lambda p, m: (
+                hasattr(m, "weight") and hasattr(m, "to_quantized")
+                and m.weight.shape[-1] % quantization["group_size"] == 0
+            ),
+        )
+    weights = mx.load(str(resolved / "vq02.safetensors"))
+    model.load_weights(list(weights.items()))
+    runtime = StepAudioVQ02Runtime(
+        assets=assets, config=config,
+        frontend=StepAudioVQ02Frontend(config, _load_cmvn(assets.funasr_model_dir / "am.mvn")),
+        processor=StepAudioTokenizerProcessor(assets),
+        model=model,
+    )
+    return LoadedStepAudioVQ02Model(
+        assets=assets, config=config,
+        checkpoint=StepAudioVQ02Checkpoint(
+            model_dir=resolved, config=config, state_dict=weights,
+        ),
+        model=model,
+        alignment_report=StepAudioVQ02AlignmentReport(
+            missing_in_model=(), missing_in_checkpoint=(), shape_mismatches=(),
+        ),
+        runtime=runtime,
+    )
+
+
 def load_step_audio_vq02_model(
     model_dir: str | Path | None = None,
     *,
     strict: bool = True,
+    safetensors_dir: str | Path | None = None,
 ) -> "LoadedStepAudioVQ02Model":
     assets = load_step_audio_tokenizer_assets(model_dir)
+    if safetensors_dir is not None and (Path(safetensors_dir) / "vq02.safetensors").exists():
+        return _load_vq02_from_safetensors(safetensors_dir, assets)
     checkpoint = load_step_audio_vq02_checkpoint(model_dir)
     model = StepAudioVQ02Model(checkpoint.config)
     report = validate_step_audio_vq02_checkpoint_against_model(model, checkpoint)

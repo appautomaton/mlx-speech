@@ -68,6 +68,9 @@ class LoadedStateDict:
 
 
 def _discover_non_sharded_files(model_dir: Path) -> tuple[Path, ...]:
+    files = tuple(sorted(model_dir.glob("model*.safetensors")))
+    if files:
+        return files
     return tuple(sorted(model_dir.glob("*.safetensors")))
 
 

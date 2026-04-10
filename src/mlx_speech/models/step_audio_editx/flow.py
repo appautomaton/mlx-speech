@@ -202,7 +202,7 @@ class StepAudioFlowConditioner(nn.Module):
                 f"Expected dual tokens with shape (batch, time, 2), got {dual.shape}."
             )
         embedded = self.input_embedding(mx.array(np.maximum(dual, 0), dtype=mx.int64))
-        return np.asarray(embedded, dtype=np.float32)
+        return np.asarray(embedded.astype(mx.float32), dtype=np.float32)
 
     def prepare_nonstream_inputs(
         self,
@@ -299,11 +299,41 @@ def validate_step_audio_flow_conditioning_checkpoint_against_model(
     )
 
 
+def _load_flow_conditioner_from_safetensors(
+    model_dir: Path,
+) -> LoadedStepAudioFlowConditioner:
+    import json
+
+    config_path = model_dir / "flow-conditioner-config.json"
+    with config_path.open(encoding="utf-8") as f:
+        payload = json.load(f)
+    config = StepAudioFlowConditioningConfig(**{
+        k: v for k, v in payload.items() if k != "quantization"
+    })
+    model = StepAudioFlowConditioner(config)
+    weights = mx.load(str(model_dir / "flow-conditioner.safetensors"))
+    model.load_weights(list(weights.items()))
+    return LoadedStepAudioFlowConditioner(
+        model_dir=model_dir,
+        config=config,
+        checkpoint=StepAudioFlowConditioningCheckpoint(
+            model_dir=model_dir, config=config, state_dict=weights,
+        ),
+        model=model,
+        alignment_report=StepAudioFlowConditioningAlignmentReport(
+            missing_in_model=(), missing_in_checkpoint=(), shape_mismatches=(),
+        ),
+    )
+
+
 def load_step_audio_flow_conditioner(
     model_dir: str | Path,
     *,
     strict: bool = True,
 ) -> LoadedStepAudioFlowConditioner:
+    resolved = Path(model_dir)
+    if (resolved / "flow-conditioner.safetensors").exists():
+        return _load_flow_conditioner_from_safetensors(resolved)
     checkpoint = load_step_audio_flow_conditioning_checkpoint(model_dir)
     model = StepAudioFlowConditioner(checkpoint.config)
     report = validate_step_audio_flow_conditioning_checkpoint_against_model(

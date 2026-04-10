@@ -126,6 +126,8 @@ python scripts/convert_cohere_asr.py
 
 Each family has a doc covering behavior, flags, and known limitations:
 
+- [Fish S2 Pro](./docs/fish-s2-pro.md)
+- [LongCat AudioDiT](./docs/longcat-audiodit.md)
 - [MossTTSLocal](./docs/moss-local.md)
 - [MOSS-TTSD](./docs/moss-ttsd.md)
 - [MOSS-SoundEffect](./docs/moss-sound-effect.md)

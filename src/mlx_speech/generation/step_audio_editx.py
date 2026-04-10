@@ -163,17 +163,39 @@ class StepAudioEditXModel:
             prefer_mlx_int8=prefer_mlx_int8,
             strict=strict,
         )
-        resolved_tokenizer_dir = resolve_step_audio_tokenizer_model_dir(tokenizer_dir)
+        model_path = step1.model_dir
+
+        # Check if VQ safetensors are bundled in the model dir
+        has_bundled_vq = (model_path / "vq02.safetensors").exists()
+        if has_bundled_vq:
+            resolved_tokenizer_dir = resolve_step_audio_tokenizer_model_dir(
+                tokenizer_dir
+            )
+            vq02 = load_step_audio_vq02_model(
+                resolved_tokenizer_dir, strict=strict,
+                safetensors_dir=model_path,
+            )
+            vq06 = load_step_audio_vq06_model(
+                resolved_tokenizer_dir, strict=strict,
+                safetensors_dir=model_path,
+            )
+        else:
+            resolved_tokenizer_dir = resolve_step_audio_tokenizer_model_dir(
+                tokenizer_dir
+            )
+            vq02 = load_step_audio_vq02_model(resolved_tokenizer_dir, strict=strict)
+            vq06 = load_step_audio_vq06_model(resolved_tokenizer_dir, strict=strict)
+
         return cls(
             step1=step1,
-            tokenizer=StepAudioEditXTokenizer.from_path(step1.model_dir),
+            tokenizer=StepAudioEditXTokenizer.from_path(model_path),
             tokenizer_dir=resolved_tokenizer_dir,
-            vq02=load_step_audio_vq02_model(resolved_tokenizer_dir, strict=strict),
-            vq06=load_step_audio_vq06_model(resolved_tokenizer_dir, strict=strict),
-            frontend=StepAudioCosyVoiceFrontEnd.from_model_dir(step1.model_dir),
-            conditioner=load_step_audio_flow_conditioner(step1.model_dir),
-            flow=load_step_audio_flow_model(step1.model_dir),
-            hift=load_step_audio_hift_model(step1.model_dir),
+            vq02=vq02,
+            vq06=vq06,
+            frontend=StepAudioCosyVoiceFrontEnd.from_model_dir(model_path),
+            conditioner=load_step_audio_flow_conditioner(model_path),
+            flow=load_step_audio_flow_model(model_path),
+            hift=load_step_audio_hift_model(model_path),
         )
 
     @classmethod

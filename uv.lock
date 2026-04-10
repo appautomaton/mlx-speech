@@ -276,7 +276,7 @@ wheels = [
 
 [[package]]
 name = "mlx-speech"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "huggingface-hub" },
@@ -308,7 +308,6 @@ dev = [
     { name = "pytest", specifier = ">=8.3,<9" },
     { name = "ruff", specifier = ">=0.11,<0.12" },
 ]
-release = []
 
 [[package]]
 name = "numpy"

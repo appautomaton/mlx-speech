@@ -395,7 +395,11 @@ class Step1ForCausalLM(nn.Module):
         max_length: int,
         dtype: mx.Dtype | None = None,
     ) -> Step1KVCacheCollection:
-        resolved_dtype = self.get_input_embeddings().weight.dtype if dtype is None else dtype
+        if dtype is not None:
+            resolved_dtype = dtype
+        else:
+            embed = self.get_input_embeddings()
+            resolved_dtype = getattr(embed, "scales", embed.weight).dtype
         return Step1KVCacheCollection.allocate(
             self.config,
             batch_size=batch_size,

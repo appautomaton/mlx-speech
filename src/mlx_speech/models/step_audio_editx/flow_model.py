@@ -873,11 +873,87 @@ def validate_step_audio_flow_checkpoint_against_model(
     )
 
 
+def _load_flow_model_from_safetensors(
+    model_dir: Path,
+) -> LoadedStepAudioFlowModel:
+    import json
+
+    config_path = model_dir / "flow-model-config.json"
+    with config_path.open(encoding="utf-8") as f:
+        payload = json.load(f)
+    quantization = payload.pop("quantization", None)
+    config = StepAudioFlowRuntimeConfig(**payload)
+
+    estimator = StepAudioDiT(
+        in_channels=config.estimator_in_channels,
+        out_channels=config.estimator_out_channels,
+        mlp_ratio=config.estimator_mlp_ratio,
+        depth=config.estimator_depth,
+        num_heads=config.estimator_num_heads,
+        head_dim=config.estimator_head_dim,
+        hidden_size=config.estimator_hidden_size,
+    )
+    decoder = StepAudioCausalConditionalCFM(
+        estimator, inference_cfg_rate=config.inference_cfg_rate,
+    )
+    encoder = StepAudioUpsampleConformerEncoderV2(
+        input_size=config.input_size,
+        output_size=config.encoder_output_size,
+        pre_lookahead_len=config.pre_lookahead_len,
+        num_blocks=config.num_blocks,
+        num_up_blocks=config.num_up_blocks,
+        up_stride=config.up_stride,
+        up_scale_factor=config.up_scale_factor,
+        attention_heads=config.attention_heads,
+        linear_units=config.linear_units,
+        key_bias=config.key_bias,
+    )
+    conditioner = load_step_audio_flow_conditioner(model_dir)
+    model = StepAudioCausalMaskedDiffWithXvec(
+        input_size=config.input_size,
+        output_size=config.output_size,
+        spk_embed_dim=config.spk_embed_dim,
+        vocab_size=config.vocab_size,
+        encoder=encoder,
+        decoder=decoder,
+        input_embedding=conditioner.model.input_embedding,
+    )
+    if quantization is not None:
+        import mlx.nn as nn
+
+        nn.quantize(
+            model,
+            group_size=quantization["group_size"],
+            bits=quantization["bits"],
+            mode=quantization.get("mode", "affine"),
+            class_predicate=lambda p, m: (
+                hasattr(m, "weight") and hasattr(m, "to_quantized")
+                and m.weight.shape[-1] % quantization["group_size"] == 0
+            ),
+        )
+    weights = mx.load(str(model_dir / "flow-model.safetensors"))
+    model.load_weights(list(weights.items()))
+    return LoadedStepAudioFlowModel(
+        model_dir=model_dir,
+        config=config,
+        checkpoint=StepAudioFlowCheckpoint(
+            model_dir=model_dir, config=config, state_dict=weights,
+        ),
+        model=model,
+        alignment_report=StepAudioFlowAlignmentReport(
+            missing_in_model=(), missing_in_checkpoint=(), shape_mismatches=(),
+        ),
+    )
+
+
 def load_step_audio_flow_model(
     model_dir: str | Path,
     *,
     strict: bool = True,
 ) -> LoadedStepAudioFlowModel:
+    resolved = Path(model_dir)
+    if (resolved / "flow-model.safetensors").exists():
+        return _load_flow_model_from_safetensors(resolved)
     checkpoint = load_step_audio_flow_checkpoint(model_dir)
     config = checkpoint.config
     estimator = StepAudioDiT(
