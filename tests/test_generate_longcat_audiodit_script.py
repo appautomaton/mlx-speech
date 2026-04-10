@@ -8,4 +8,3 @@ def test_generate_script_builds_parser() -> None:
     assert args.output_audio == "out.wav"
     assert args.guidance_method == "cfg"
     assert args.nfe == 16
-    assert args.seed == 1024

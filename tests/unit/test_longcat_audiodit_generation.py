@@ -76,7 +76,6 @@ def test_synthesize_longcat_audiodit_returns_result_dataclass() -> None:
         nfe=12,
         guidance_method="cfg",
         guidance_strength=3.5,
-        seed=1024,
     )
 
     assert isinstance(result, LongCatSynthesisOutput)
@@ -85,7 +84,6 @@ def test_synthesize_longcat_audiodit_returns_result_dataclass() -> None:
     assert tokenizer.calls == [["prompt line.  hello world "]]
     assert model.calls[0]["steps"] == 12
     assert model.calls[0]["cfg_strength"] == 3.5
-    assert model.calls[0]["seed"] == 1024
 
 
 def test_generation_package_exports_longcat_surface() -> None:

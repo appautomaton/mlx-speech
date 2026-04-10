@@ -84,8 +84,6 @@ class LongCatAudioDiTModel(nn.Module):
         steps: int = 16,
         cfg_strength: float = 4.0,
         guidance_method: str = "cfg",
-        seed: int | None = None,
-        initial_noise: mx.array | None = None,
     ) -> LongCatAudioDiTOutput:
         sr = self.config.sampling_rate
         full_hop = self.config.latent_hop
@@ -194,19 +192,9 @@ class LongCatAudioDiTModel(nn.Module):
                 return mx.pad(out, ((0, 0), (prompt_dur, 0), (0, 0)))
             return out
 
-        if initial_noise is not None:
-            expected_shape = (batch, total_duration, self.config.latent_dim)
-            if tuple(int(dim) for dim in initial_noise.shape) != expected_shape:
-                raise ValueError(
-                    f"initial_noise must have shape {expected_shape}, got {tuple(int(dim) for dim in initial_noise.shape)}"
-                )
-            y0 = initial_noise.astype(mx.float32)
-        else:
-            if seed is not None:
-                mx.random.seed(seed)
-            y0 = mx.random.normal(
-                (batch, total_duration, self.config.latent_dim), dtype=mx.float32
-            )
+        y0 = mx.random.normal(
+            (batch, total_duration, self.config.latent_dim), dtype=mx.float32
+        )
         t = mx.linspace(0.0, 1.0, steps)
         prompt_noise = (
             y0[:, :prompt_dur]

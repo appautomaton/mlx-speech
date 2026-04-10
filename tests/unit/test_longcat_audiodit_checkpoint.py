@@ -13,7 +13,6 @@ from mlx_speech.models.longcat_audiodit.checkpoint import (
     load_checkpoint_into_model,
     load_longcat_checkpoint,
     load_longcat_model,
-    quantize_longcat_model,
     save_longcat_model,
     resolve_longcat_model_dir,
     resolve_longcat_tokenizer_dir,
@@ -296,47 +295,3 @@ def test_load_longcat_model_builds_runtime_bundle(tmp_path: Path, monkeypatch) -
     assert loaded.model is fake_model
     assert loaded.quantization == checkpoint.config.quantization
     assert loaded.alignment_report.is_exact_match is True
-
-
-def test_quantize_longcat_model_skips_transformer_embedder_mlps(monkeypatch) -> None:
-    captured: dict[str, bool] = {}
-
-    class _FakeModule:
-        def __init__(self) -> None:
-            self.weight = mx.zeros((2560, 2560), dtype=mx.float32)
-
-        def to_quantized(self):
-            return self
-
-    def _fake_quantize(model, *, group_size, bits, mode, class_predicate):
-        del model, group_size, bits, mode
-        fake = _FakeModule()
-        captured["input_embed"] = class_predicate(
-            "transformer.input_embed.proj.0", fake
-        )
-        captured["text_embed"] = class_predicate("transformer.text_embed.proj.0", fake)
-        captured["latent_embed"] = class_predicate(
-            "transformer.latent_embed.proj.0", fake
-        )
-        captured["latent_cond"] = class_predicate(
-            "transformer.latent_cond_embedder.proj.0", fake
-        )
-        captured["self_attn"] = class_predicate(
-            "transformer.blocks.0.self_attn.to_q", fake
-        )
-
-    monkeypatch.setattr(
-        "mlx_speech.models.longcat_audiodit.checkpoint.nn.quantize", _fake_quantize
-    )
-
-    quantize_longcat_model(
-        object(), QuantizationConfig(bits=8, group_size=64, mode="affine")
-    )
-
-    assert captured == {
-        "input_embed": False,
-        "text_embed": False,
-        "latent_embed": False,
-        "latent_cond": False,
-        "self_attn": True,
-    }

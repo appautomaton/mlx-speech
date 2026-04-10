@@ -16,7 +16,6 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--nfe", type=int, default=16)
     parser.add_argument("--guidance-method", choices=["cfg", "apg"], default="cfg")
     parser.add_argument("--guidance-strength", type=float, default=4.0)
-    parser.add_argument("--seed", type=int, default=1024)
     return parser
 
 
@@ -32,7 +31,6 @@ def main() -> None:
         nfe=args.nfe,
         guidance_method=args.guidance_method,
         guidance_strength=args.guidance_strength,
-        seed=args.seed,
     )
 
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import mlx.core as mx
-import pytest
 
 from mlx_speech.models.longcat_audiodit.config import LongCatAudioDiTConfig
 from mlx_speech.models.longcat_audiodit.model import LongCatAudioDiTModel
@@ -120,47 +119,3 @@ def test_model_forward_trims_prompt_frames_before_decode() -> None:
     assert output.latent.shape == (1, 4, 2)
     assert output.waveform.shape == (1, 2)
     assert vae.decoded_inputs[-1].shape == (1, 4, 2)
-
-
-def test_model_forward_uses_explicit_initial_noise() -> None:
-    vae = _FakeVae()
-    model = LongCatAudioDiTModel(
-        LongCatAudioDiTConfig(latent_dim=4, latent_hop=4, max_wav_duration=2),
-        text_encoder=_FakeTextEncoder(),
-        transformer=_FakeTransformer(),
-        vae=vae,
-    )
-
-    initial_noise = mx.full((1, 2, 4), 2.0, dtype=mx.float32)
-    output = model(
-        input_ids=mx.array([[1, 2, 3]], dtype=mx.int32),
-        attention_mask=mx.array([[1, 1, 1]], dtype=mx.int32),
-        duration=2,
-        steps=2,
-        cfg_strength=0.0,
-        guidance_method="cfg",
-        initial_noise=initial_noise,
-    )
-
-    expected = mx.full((1, 4, 2), 5.0, dtype=mx.float32)
-    assert mx.allclose(output.latent, expected)
-
-
-def test_model_forward_rejects_bad_initial_noise_shape() -> None:
-    model = LongCatAudioDiTModel(
-        LongCatAudioDiTConfig(latent_dim=4, latent_hop=4, max_wav_duration=2),
-        text_encoder=_FakeTextEncoder(),
-        transformer=_FakeTransformer(),
-        vae=_FakeVae(),
-    )
-
-    with pytest.raises(ValueError, match="initial_noise"):
-        model(
-            input_ids=mx.array([[1, 2, 3]], dtype=mx.int32),
-            attention_mask=mx.array([[1, 1, 1]], dtype=mx.int32),
-            duration=2,
-            steps=2,
-            cfg_strength=0.0,
-            guidance_method="cfg",
-            initial_noise=mx.zeros((1, 3, 4), dtype=mx.float32),
-        )
