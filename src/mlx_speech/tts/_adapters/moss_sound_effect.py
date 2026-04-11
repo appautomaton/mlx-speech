@@ -46,15 +46,32 @@ class MossSoundEffectAdapter:
             MossTTSDelayGenerationConfig,
             synthesize_moss_tts_delay_conversations,
         )
-        from ...models.moss_delay.sound_effect import build_sound_effect_conversation
+        from ...models.moss_delay.sound_effect import (
+            SOUND_EFFECT_DEFAULT_AUDIO_REPETITION_PENALTY,
+            SOUND_EFFECT_DEFAULT_AUDIO_TEMPERATURE,
+            SOUND_EFFECT_DEFAULT_AUDIO_TOP_K,
+            SOUND_EFFECT_DEFAULT_AUDIO_TOP_P,
+            SOUND_EFFECT_DEFAULT_MAX_NEW_TOKENS,
+            build_sound_effect_conversation,
+        )
 
-        conversations, expected_tokens = build_sound_effect_conversation(
+        conversations, _expected_tokens = build_sound_effect_conversation(
             self._processor,
             ambient_sound=text,
             duration_seconds=duration_seconds,
         )
+        # Use sound-effect-specific defaults (temp=1.5, top_p=0.6, rep_pen=1.2,
+        # max_new_tokens=4096), not the dialogue-TTSD defaults.
+        # NOTE: expected_tokens is a prompt HINT baked into the conversation
+        # (telling the model the target length); it is NOT a generation budget.
+        # Use SOUND_EFFECT_DEFAULT_MAX_NEW_TOKENS so the model can actually
+        # run to its natural stop.
         config = MossTTSDelayGenerationConfig(
-            max_new_tokens=max_new_tokens or expected_tokens,
+            max_new_tokens=max_new_tokens or SOUND_EFFECT_DEFAULT_MAX_NEW_TOKENS,
+            audio_temperature=SOUND_EFFECT_DEFAULT_AUDIO_TEMPERATURE,
+            audio_top_p=SOUND_EFFECT_DEFAULT_AUDIO_TOP_P,
+            audio_top_k=SOUND_EFFECT_DEFAULT_AUDIO_TOP_K,
+            audio_repetition_penalty=SOUND_EFFECT_DEFAULT_AUDIO_REPETITION_PENALTY,
         )
         batch = synthesize_moss_tts_delay_conversations(
             self._model,

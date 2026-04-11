@@ -48,10 +48,14 @@ class MossDelayAdapter:
         config = MossTTSDelayGenerationConfig(
             **({"max_new_tokens": max_new_tokens} if max_new_tokens else {}),
         )
+        # Build a proper TTSD user message via the processor. Passing a raw
+        # `{"role": "user", "content": text}` dict would drop the text because
+        # the processor reads `message["text"]`, not `message["content"]`.
+        user_message = self._processor.build_user_message(text=text)
         batch_result = synthesize_moss_tts_delay_conversations(
             self._model,
             self._processor,
-            conversations=[[{"role": "user", "content": text}]],
+            conversations=[[user_message]],
             mode="generation",
             config=config,
         )

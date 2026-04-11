@@ -37,7 +37,10 @@ _CLONE_SYSTEM_PROMPT = (
 def _apply_top_k(logits: mx.array, top_k: int) -> mx.array:
     if top_k <= 0 or top_k >= int(logits.shape[-1]):
         return logits
-    kth_values = mx.topk(logits, k=top_k, axis=-1)[..., -1:]
+    # mx.topk returns top-k in ASCENDING order, so index 0 is the k-th
+    # largest (the threshold). Index -1 is the maximum, which would
+    # degenerate top_k into argmax.
+    kth_values = mx.topk(logits, k=top_k, axis=-1)[..., 0:1]
     neg_inf = mx.array(mx.finfo(logits.dtype).min, dtype=logits.dtype)
     return mx.where(logits < kth_values, neg_inf, logits)
 
