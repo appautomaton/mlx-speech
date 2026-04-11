@@ -1,8 +1,8 @@
 """Smoke test for VibeVoice Large generation.
 
 Usage:
-    python scripts/generate_vibevoice.py --text "Hello world"
-    python scripts/generate_vibevoice.py --text "Hello" --reference-audio ref.wav -o out.wav
+    python scripts/generate/vibevoice.py --text "Hello world"
+    python scripts/generate/vibevoice.py --text "Hello" --reference-audio ref.wav -o out.wav
 """
 
 from __future__ import annotations

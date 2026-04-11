@@ -41,7 +41,7 @@ It is intended for local transcription with [`mlx-speech`](https://github.com/ap
 Command-line transcription with [`mlx-speech`](https://github.com/appautomaton/mlx-speech):
 
 ```bash
-python scripts/transcribe_cohere_asr.py \
+python scripts/generate/cohere_asr.py \
   --audio input.wav \
   --output transcript.txt
 ```

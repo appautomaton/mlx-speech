@@ -47,7 +47,7 @@ This repository contains an MLX-native int8 conversion of MOSS TTSD v1.0 for mul
 Command-line generation with [`mlx-speech`](https://github.com/appautomaton/mlx-speech):
 
 ```bash
-python scripts/generate_moss_ttsd.py \
+python scripts/generate/moss_ttsd.py \
   --text "[S1] Watson, I think we should go. [S2] Give me one moment." \
   --output outputs/dialogue.wav
 ```

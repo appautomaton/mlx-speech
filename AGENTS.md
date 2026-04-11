@@ -49,7 +49,7 @@ Add only when the implementation proves it necessary.
 
 ```
 src/mlx_speech/     # Published library code
-scripts/            # Conversion and generation entry points
+scripts/            # Conversion, generation, eval, and audit entry points
 models/             # Local checkpoints — not in git
 tests/              # Focused package tests
 docs/               # Model-family behavior guides

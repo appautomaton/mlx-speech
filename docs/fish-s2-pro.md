@@ -115,7 +115,7 @@ If generation cuts off mid-sentence, increase `max_new_tokens`.
 The low-level script offers additional post-processing flags:
 
 ```bash
-python scripts/generate_fish_s2_pro.py \
+python scripts/generate/fish_s2_pro.py \
   --text "[whisper] Hello." \
   --model-dir models/fish_s2_pro/mlx-int8 \
   --output outputs/sample.wav \

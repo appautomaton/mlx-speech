@@ -56,7 +56,7 @@ Note: the unified CLI uses `--text` for the ambient sound description.
 
 For sampling controls and `--expected-tokens` tuning, use the script directly:
 
-- `scripts/generate_moss_sound_effect.py`
+- `scripts/generate/moss_sound_effect.py`
 
 Current runtime defaults:
 
@@ -92,7 +92,7 @@ So duration is guided, not frame-perfect.
 
 The unified `mlx-speech tts` CLI exposes `--duration-seconds` and
 `--max-new-tokens`. Full sampling controls below are available via
-`scripts/generate_moss_sound_effect.py`.
+`scripts/generate/moss_sound_effect.py`.
 
 Current user-facing controls:
 

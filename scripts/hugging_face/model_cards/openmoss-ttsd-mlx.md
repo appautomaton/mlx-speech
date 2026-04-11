@@ -43,7 +43,7 @@ It is intended for local multi-speaker speech generation with [`mlx-speech`](htt
 Command-line generation with [`mlx-speech`](https://github.com/appautomaton/mlx-speech):
 
 ```bash
-python scripts/generate_moss_ttsd.py \
+python scripts/generate/moss_ttsd.py \
   --text "[S1] Watson, I think we should go. [S2] Give me one moment." \
   --output outputs/dialogue.wav
 ```

@@ -153,7 +153,7 @@ def main() -> None:
         args.input_dir, args.output_dir
     )
     generate_command = [
-        "python scripts/generate_fish_s2_pro.py",
+        "python scripts/generate/fish_s2_pro.py",
         f"--model-dir {runtime_model_dir}",
     ]
     if converted_codec:

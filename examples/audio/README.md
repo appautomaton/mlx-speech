@@ -16,7 +16,7 @@ Speaker 2: {line for speaker 2}\n\
 Speaker 3: {line for speaker 3}\n\
 Speaker 4: {line for speaker 4}'
 
-python scripts/generate_vibevoice.py \
+python scripts/generate/vibevoice.py \
   --text "$TEXT" \
   --output outputs/vibevoice_4speaker_convo.wav
 ```

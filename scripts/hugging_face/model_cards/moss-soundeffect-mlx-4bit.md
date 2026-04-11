@@ -46,7 +46,7 @@ This repository contains an MLX-native 4-bit conversion of MOSS SoundEffect for 
 Command-line generation with [`mlx-speech`](https://github.com/appautomaton/mlx-speech):
 
 ```bash
-python scripts/generate_moss_sound_effect.py \
+python scripts/generate/moss_sound_effect.py \
   --ambient-sound "rolling thunder with steady rainfall on a metal roof" \
   --duration-seconds 8 \
   --output outputs/thunder.wav

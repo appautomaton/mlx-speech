@@ -34,7 +34,7 @@ A hybrid LLM + diffusion architecture built for long-form speech and voice-condi
 Via [mlx-speech](https://github.com/appautomaton/mlx-speech):
 
 ```bash
-python scripts/generate_vibevoice.py \
+python scripts/generate/vibevoice.py \
   --text "Hello from VibeVoice." \
   --diffusion-steps 20 \
   --diffusion-steps-fast 8 \

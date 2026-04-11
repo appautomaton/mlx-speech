@@ -1,0 +1,36 @@
+Speaker 1: Today we are talking about VibeVoice, and specifically how it actually works under the hood.
+Speaker 2: Right. And this is a genuinely unusual architecture, because it is not a single model. It is two completely different inference paradigms chained together.
+Speaker 1: Walk me through the big picture first.
+Speaker 2: Sure. At the top you have a large language model. It is a Qwen2-7B transformer, thirty-two layers, grouped-query attention. Standard stuff.
+Speaker 1: But it is not generating text.
+Speaker 2: Correct. It is generating speech control tokens. Specifically, it is constrained to only four possible outputs at every step. Speech start, speech diffusion, speech end, and end of sequence.
+Speaker 1: So it is an autoregressive controller, not a text generator.
+Speaker 2: Exactly. And the interesting part happens when it emits a speech diffusion token.
+Speaker 1: What happens?
+Speaker 2: That token triggers a full diffusion denoise. A four-layer adaLN diffusion head takes the language model hidden state as its conditioning signal and runs twenty denoising steps to produce a single acoustic latent frame.
+Speaker 1: Sixty-four dimensions.
+Speaker 2: Sixty-four dimensions. Then that latent gets decoded to a chunk of raw audio through a causal convolutional VAE decoder.
+Speaker 1: And then?
+Speaker 2: Then something really clever. That audio chunk is immediately re-encoded through a separate semantic encoder, also a causal conv network, which produces semantic features. Those features get projected back into the language model embedding space and fed as the next input token.
+Speaker 1: So the model is reading its own audio output at every step.
+Speaker 2: Every single step. It closes a feedback loop. The language model always knows what it just said acoustically, not just linguistically.
+Speaker 1: How does multi-speaker conditioning work then?
+Speaker 2: This is the part people usually expect to involve learnable speaker embeddings. But it does not.
+Speaker 1: What does it use instead?
+Speaker 2: The actual reference audio. You pass in a short clip for each speaker. Each clip gets encoded through the acoustic VAE into a sequence of latent frames. Those latents are spliced directly into the language model prompt, one block per speaker, ahead of the text.
+Speaker 1: So the speaker identity lives in the prompt as acoustic tokens.
+Speaker 2: Yes. The language model sees the voice references as part of its context, the same way it sees text. Then when the diffusion head runs, it conditions on a hidden state that already has the speaker acoustics baked in.
+Speaker 1: And the KV cache?
+Speaker 2: The language model uses a standard concat-based KV cache for the full prefill and decode loop. Prefill primes both the positive and negative CFG paths at once. Each decode step extends the cache. Without it you would be recomputing the full prompt context on every token, which would be painfully slow.
+Speaker 1: What about the diffusion stage?
+Speaker 2: Stateless. The diffusion head does not carry any sequential state. It just takes a condition vector and a noisy latent and denoises it. No cache needed there.
+Speaker 1: So KV cache on the LM, streaming conv cache on the acoustic decoder, nothing on diffusion.
+Speaker 2: That is the full picture. Three different caching strategies for three different parts of the same model.
+Speaker 1: One thing I find interesting is how constrained the LM actually is during generation.
+Speaker 2: It is very constrained. The logits are masked to only those four special tokens. The model has no choice but to sequence speech frames. The creativity lives in the conditioning, not in the token distribution.
+Speaker 1: And the text is just part of the prompt context.
+Speaker 2: Right. The text goes in as a text input section, with speaker labels, and the model learns from pretraining to match acoustic output to textual content and speaker reference.
+Speaker 1: So if you want a good multi-speaker result you need clean short turns and distinct reference clips.
+Speaker 2: Clean short turns per line. Distinct voice samples. And do not label turns with a speaker that has no corresponding reference audio.
+Speaker 1: That is the format contract.
+Speaker 2: That is the format contract. Get that right and VibeVoice does the rest.

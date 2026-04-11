@@ -2,13 +2,13 @@
 """Generate non-stream Step-Audio-EditX waveform output locally.
 
 Examples:
-    python scripts/generate_step_audio_editx.py clone \
+    python scripts/generate/step_audio_editx.py clone \
       --prompt-audio ref.wav \
       --prompt-text "Reference transcript." \
       --target-text "New cloned speech." \
       -o outputs/step_audio_clone.wav
 
-    python scripts/generate_step_audio_editx.py edit \
+    python scripts/generate/step_audio_editx.py edit \
       --prompt-audio ref.wav \
       --prompt-text "Reference transcript." \
       --edit-type denoise \

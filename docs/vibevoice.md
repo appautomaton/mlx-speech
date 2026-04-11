@@ -84,7 +84,7 @@ Each sample should be shaped like `(1, 1, T)` at `24 kHz`.
 For `--cfg-scale`, `--diffusion-steps`, `--temperature`, `--seed`, and
 multi-speaker `voice_samples`, use the script directly:
 
-- `scripts/generate_vibevoice.py`
+- `scripts/generate/vibevoice.py`
 
 Current flags:
 

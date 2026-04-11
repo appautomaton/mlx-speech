@@ -59,9 +59,9 @@ def _build_parser() -> argparse.ArgumentParser:
               prompt_text_speakerN
 
             Examples:
-              python scripts/generate_moss_ttsd.py --mode generation --text "[S1] Watson, we should go now." --output outputs/ttsd.wav
-              python scripts/generate_moss_ttsd.py --mode voice_clone --text "[S1] I tell you what." --prompt-audio-speaker1 outputs/source/hank_hill_ref.wav --output outputs/hank.wav
-              python scripts/generate_moss_ttsd.py --mode continuation --input-jsonl inputs/ttsd.jsonl --save-dir outputs/ttsd_batch
+              python scripts/generate/moss_ttsd.py --mode generation --text "[S1] Watson, we should go now." --output outputs/ttsd.wav
+              python scripts/generate/moss_ttsd.py --mode voice_clone --text "[S1] I tell you what." --prompt-audio-speaker1 outputs/source/hank_hill_ref.wav --output outputs/hank.wav
+              python scripts/generate/moss_ttsd.py --mode continuation --input-jsonl inputs/ttsd.jsonl --save-dir outputs/ttsd_batch
 
             Model loading:
               - Default local runtime: models/openmoss/moss_ttsd/mlx-int8

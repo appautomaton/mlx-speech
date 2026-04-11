@@ -48,7 +48,7 @@ mlx-speech tts \
 For batch JSONL mode, multi-speaker conditioning, and sampling controls, use
 the script directly:
 
-- `scripts/generate_moss_ttsd.py`
+- `scripts/generate/moss_ttsd.py`
 
 I/O shapes:
 
@@ -92,7 +92,7 @@ Current default behavior:
 ## Sampling Controls (Script only)
 
 The unified `mlx-speech tts` CLI exposes `--max-new-tokens` only. Full
-sampling controls below are available via `scripts/generate_moss_ttsd.py`.
+sampling controls below are available via `scripts/generate/moss_ttsd.py`.
 
 Current user-facing audio controls:
 

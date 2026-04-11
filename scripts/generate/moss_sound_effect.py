@@ -53,7 +53,7 @@ def _build_parser() -> argparse.ArgumentParser:
               - expected token budget is estimated from duration at 12.5 tokens / second
 
             Example:
-              python scripts/generate_moss_sound_effect.py \
+              python scripts/generate/moss_sound_effect.py \
                 --ambient-sound "a sports car roaring past on the highway." \
                 --duration-seconds 10 \
                 --output outputs/sports_car.wav

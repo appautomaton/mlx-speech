@@ -47,14 +47,14 @@ Command-line generation with [`mlx-speech`](https://github.com/appautomaton/mlx-
 
 **Generate speech:**
 ```bash
-python scripts/generate_moss_local.py \
+python scripts/generate/moss_local.py \
   --text "Hello, this is a test." \
   --output outputs/out.wav
 ```
 
 **Clone a voice:**
 ```bash
-python scripts/generate_moss_local.py \
+python scripts/generate/moss_local.py \
   --mode clone \
   --text "This is a cloned voice." \
   --reference-audio reference.wav \

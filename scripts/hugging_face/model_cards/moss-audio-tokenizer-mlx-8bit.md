@@ -55,7 +55,7 @@ model = MossAudioTokenizerModel.from_path("mlx-int8")
 The tokenizer is loaded automatically when you run OpenMOSS generation scripts. You usually do not need to instantiate it directly.
 
 ```bash
-python scripts/generate_moss_local.py \
+python scripts/generate/moss_local.py \
   --text "Hello from mlx-speech." \
   --output outputs/out.wav
 ```

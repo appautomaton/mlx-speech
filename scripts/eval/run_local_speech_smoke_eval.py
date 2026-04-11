@@ -226,7 +226,7 @@ def _build_tts_commands(output_dir: Path) -> list[tuple[str, list[str], Path, st
             "moss_local_generation",
             [
                 sys.executable,
-                "scripts/generate_moss_local.py",
+                "scripts/generate/moss_local.py",
                 "--text",
                 text,
                 "--mode",
@@ -244,7 +244,7 @@ def _build_tts_commands(output_dir: Path) -> list[tuple[str, list[str], Path, st
             "moss_ttsd_voice_clone",
             [
                 sys.executable,
-                "scripts/generate_moss_ttsd.py",
+                "scripts/generate/moss_ttsd.py",
                 "--mode",
                 "voice_clone",
                 "--text",
@@ -264,7 +264,7 @@ def _build_tts_commands(output_dir: Path) -> list[tuple[str, list[str], Path, st
             "vibevoice_generation",
             [
                 sys.executable,
-                "scripts/generate_vibevoice.py",
+                "scripts/generate/vibevoice.py",
                 "--text",
                 text,
                 "--reference-audio",

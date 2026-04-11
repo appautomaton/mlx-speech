@@ -466,7 +466,7 @@ def test_generate_rejects_dead_sampling_knobs():
 
 def test_generate_script_does_not_expose_dead_sampling_knobs(monkeypatch):
     script_path = (
-        Path(__file__).resolve().parents[2] / "scripts" / "generate_fish_s2_pro.py"
+        Path(__file__).resolve().parents[2] / "scripts" / "generate" / "fish_s2_pro.py"
     )
     spec = importlib.util.spec_from_file_location(
         "generate_fish_s2_pro_script", script_path

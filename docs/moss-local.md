@@ -47,7 +47,7 @@ mlx-speech tts \
 
 For advanced sampling controls and multi-mode inference, use the script directly:
 
-- `scripts/generate_moss_local.py`
+- `scripts/generate/moss_local.py`
 
 Supported modes:
 
@@ -84,7 +84,7 @@ Current CLI shape:
 ## Sampling Controls (Script only)
 
 The unified `mlx-speech tts` CLI exposes `--max-new-tokens` only. The full
-sampling surface below is available via `scripts/generate_moss_local.py`.
+sampling surface below is available via `scripts/generate/moss_local.py`.
 
 Local exposes separate text and audio sampling controls:
 

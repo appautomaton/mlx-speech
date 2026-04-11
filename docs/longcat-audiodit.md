@@ -76,7 +76,7 @@ result = model.generate(
 For batch generation from a manifest file, use the script:
 
 ```bash
-python scripts/batch_generate_longcat_audiodit.py --manifest manifest.txt
+python scripts/generate/batch_longcat_audiodit.py --manifest manifest.txt
 ```
 
 Manifest format (tab-separated):
@@ -103,7 +103,7 @@ uid	prompt_text	prompt_wav_path	gen_text
 ## Script
 
 ```bash
-python scripts/generate_longcat_audiodit.py \
+python scripts/generate/longcat_audiodit.py \
   --text "Hello from LongCat." \
   --model-dir models/longcat_audiodit/mlx-int8 \
   --output outputs/longcat.wav

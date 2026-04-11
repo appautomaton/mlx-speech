@@ -10,8 +10,8 @@ import mlx.core as mx
 import numpy as np
 import pytest
 
-import scripts.convert_fish_s2_pro as convert_script
-import scripts.generate_fish_s2_pro as generate_script
+import scripts.convert.fish_s2_pro as convert_script
+import scripts.generate.fish_s2_pro as generate_script
 from mlx_speech.models.fish_s2_pro.codec_weights import convert_codec_pth_to_assets
 from mlx_speech.models.fish_s2_pro import codec_weights
 

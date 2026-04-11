@@ -45,7 +45,7 @@ This repository contains an MLX-native int8 conversion of Cohere Transcribe 03-2
 Command-line transcription with [`mlx-speech`](https://github.com/appautomaton/mlx-speech):
 
 ```bash
-python scripts/transcribe_cohere_asr.py \
+python scripts/generate/cohere_asr.py \
   --audio input.wav \
   --output transcript.txt
 ```

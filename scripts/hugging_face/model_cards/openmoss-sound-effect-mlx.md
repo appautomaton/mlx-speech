@@ -42,7 +42,7 @@ It is intended for local environmental audio and sound-effect generation with [`
 Command-line generation with [`mlx-speech`](https://github.com/appautomaton/mlx-speech):
 
 ```bash
-python scripts/generate_moss_sound_effect.py \
+python scripts/generate/moss_sound_effect.py \
   --ambient-sound "rolling thunder with steady rainfall on a metal roof" \
   --duration-seconds 8 \
   --output outputs/thunder.wav

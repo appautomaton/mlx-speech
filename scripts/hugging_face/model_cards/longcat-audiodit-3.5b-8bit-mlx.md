@@ -52,7 +52,7 @@ This bundle is self-contained and includes:
 Command-line generation with [`mlx-speech`](https://github.com/appautomaton/mlx-speech):
 
 ```bash
-python scripts/generate_longcat_audiodit.py \
+python scripts/generate/longcat_audiodit.py \
   --text "Hello from LongCat AudioDiT." \
   --model-dir /path/to/longcat-audiodit-3.5b-8bit-mlx \
   --output-audio outputs/longcat.wav
@@ -61,7 +61,7 @@ python scripts/generate_longcat_audiodit.py \
 Voice cloning:
 
 ```bash
-python scripts/generate_longcat_audiodit.py \
+python scripts/generate/longcat_audiodit.py \
   --text "Hello from LongCat AudioDiT." \
   --prompt-text "Original speaker text." \
   --prompt-audio /path/to/prompt.wav \

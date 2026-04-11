@@ -13,7 +13,7 @@ locally, not committed.
 Materialize the reference audio:
 
 ```bash
-uv run python scripts/materialize_clone_eval_macos.py \
+uv run python scripts/eval/materialize_clone_eval_macos.py \
   --manifest examples/clone_eval/macos_builtin_en.json \
   --output-dir outputs/clone_eval/macos_builtin_en
 ```
@@ -21,7 +21,7 @@ uv run python scripts/materialize_clone_eval_macos.py \
 Run a clone preset sweep:
 
 ```bash
-uv run python scripts/sweep_clone_presets.py \
+uv run python scripts/eval/sweep_clone_presets.py \
   --manifest examples/clone_eval/macos_builtin_en.json \
   --reference-dir outputs/clone_eval/macos_builtin_en/references \
   --output-dir outputs/clone_eval/macos_builtin_en/runs

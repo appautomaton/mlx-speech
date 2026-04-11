@@ -83,7 +83,7 @@ mlx-speech tts \
 
 For `--temperature`, `--seed`, `--flow-steps`, and original-weight path:
 
-- `scripts/generate_step_audio_editx.py`
+- `scripts/generate/step_audio_editx.py`
 
 Modes:
 
@@ -190,7 +190,7 @@ result = model.clone(
 Script CLI clone (advanced flags):
 
 ```bash
-python scripts/generate_step_audio_editx.py \
+python scripts/generate/step_audio_editx.py \
   --prompt-audio reference.wav \
   --prompt-text "Reference transcript." \
   --output outputs/step_audio_clone.wav \
@@ -201,7 +201,7 @@ python scripts/generate_step_audio_editx.py \
 Script CLI edit:
 
 ```bash
-python scripts/generate_step_audio_editx.py \
+python scripts/generate/step_audio_editx.py \
   --prompt-audio noisy.wav \
   --prompt-text "Reference transcript." \
   --output outputs/step_audio_denoise.wav \

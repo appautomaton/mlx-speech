@@ -131,12 +131,12 @@ Use `mlx_speech.tts.load("alias")` or `mlx_speech.tts.load("appautomaton/repo-na
 Convert from upstream source weights:
 
 ```bash
-python scripts/convert_fish_s2_pro.py
-python scripts/convert_longcat_audiodit.py
-python scripts/convert_vibevoice.py
-python scripts/convert_moss_local.py
-python scripts/convert_moss_ttsd.py
-python scripts/convert_cohere_asr.py
+python scripts/convert/fish_s2_pro.py
+python scripts/convert/longcat_audiodit.py
+python scripts/convert/vibevoice.py
+python scripts/convert/moss_local.py
+python scripts/convert/moss_ttsd.py
+python scripts/convert/cohere_asr.py
 ```
 
 ## Model Guides
@@ -165,7 +165,7 @@ uv run ruff check .
 ```text
 mlx-speech/
   src/mlx_speech/    library code
-  scripts/           conversion and generation entry points
+  scripts/           conversion, generation, eval, and audit entry points
   models/            local checkpoints (not in git)
   tests/             unit, checkpoint, runtime, integration tests
   docs/              model-family behavior guides

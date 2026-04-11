@@ -2,10 +2,10 @@
 """Transcribe audio with CohereLabs/cohere-transcribe-03-2026 (MLX).
 
 Examples:
-    python scripts/transcribe_cohere_asr.py --audio speech.wav
-    python scripts/transcribe_cohere_asr.py --audio speech.wav --language fr
-    python scripts/transcribe_cohere_asr.py --audio speech.wav --no-punctuation
-    python scripts/transcribe_cohere_asr.py --audio speech.wav --itn
+    python scripts/generate/cohere_asr.py --audio speech.wav
+    python scripts/generate/cohere_asr.py --audio speech.wav --language fr
+    python scripts/generate/cohere_asr.py --audio speech.wav --no-punctuation
+    python scripts/generate/cohere_asr.py --audio speech.wav --itn
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ def main() -> None:
     if not model_dir.exists():
         print(
             f"Error: model directory not found: {model_dir}\n"
-            "Run scripts/convert_cohere_asr.py first.",
+            "Run scripts/convert/cohere_asr.py first.",
             file=sys.stderr,
         )
         sys.exit(1)

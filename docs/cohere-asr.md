@@ -62,8 +62,8 @@ script directly:
 
 Scripts:
 
-- `scripts/transcribe_cohere_asr.py`
-- `scripts/convert_cohere_asr.py`
+- `scripts/generate/cohere_asr.py`
+- `scripts/convert/cohere_asr.py`
 
 Transcription flags:
 
@@ -117,7 +117,7 @@ print(result.text)
 Script CLI:
 
 ```bash
-python scripts/transcribe_cohere_asr.py \
+python scripts/generate/cohere_asr.py \
   --audio speech.wav \
   --language en
 ```

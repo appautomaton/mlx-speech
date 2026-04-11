@@ -60,7 +60,7 @@ codes into waveform output.
 Command-line generation with [`mlx-speech`](https://github.com/appautomaton/mlx-speech):
 
 ```bash
-python scripts/generate_fish_s2_pro.py \
+python scripts/generate/fish_s2_pro.py \
   --text "Hello from Fish S2." \
   --model-dir /path/to/fishaudio-s2-pro-8bit-mlx \
   --output outputs/fish_s2_pro.wav
