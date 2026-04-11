@@ -21,16 +21,19 @@ Shared codec default:
 
 ## Quick Start
 
+**Text must include `[S1]`/`[S2]` speaker tags.** Omitting them produces degraded or incoherent
+output — the model depends on these tags to assign audio channels to speakers.
+
 ```python
 import mlx_speech
 
 model = mlx_speech.tts.load("moss-ttsd")
-result = model.generate("Hello from OpenMOSS TTS Delay!")
+result = model.generate("[S1] Hello from OpenMOSS TTS Delay!")
 # result.waveform, result.sample_rate
 ```
 
 ```bash
-mlx-speech tts --model moss-ttsd --text "Hello!" -o output.wav
+mlx-speech tts --model moss-ttsd --text "[S1] Hello!" -o output.wav
 ```
 
 Local paths (skips HF download):
@@ -39,7 +42,7 @@ Local paths (skips HF download):
 mlx-speech tts \
   --model models/openmoss/moss_ttsd/mlx-int8 \
   --codec models/openmoss/moss_audio_tokenizer/mlx-int8 \
-  --text "Hello!" \
+  --text "[S1] Hello!" \
   -o output.wav
 ```
 

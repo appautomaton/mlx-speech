@@ -47,6 +47,9 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
         epilog=textwrap.dedent(
             """\
+            IMPORTANT: --text must include [S1] / [S2] speaker tags (e.g. "[S1] Hello.").
+            Omitting them produces degraded or incoherent output.
+
             Mode requirements:
               generation: --text only
               continuation: --text plus at least one paired prompt_audio_speakerN and prompt_text_speakerN

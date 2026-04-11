@@ -52,14 +52,6 @@ python scripts/generate/moss_sound_effect.py \
   --output outputs/thunder.wav
 ```
 
-Minimal Python usage:
-
-```python
-from mlx_speech.generation import MossSoundEffectModel
-
-model = MossSoundEffectModel.from_path("mlx-4bit")
-```
-
 ## Notes
 
 - This repo contains the quantized MLX runtime artifact only.

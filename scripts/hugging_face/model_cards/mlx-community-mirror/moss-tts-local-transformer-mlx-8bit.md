@@ -61,14 +61,6 @@ python scripts/generate/moss_local.py \
   --output outputs/clone.wav
 ```
 
-Minimal Python usage:
-
-```python
-from mlx_speech.generation import MossTTSLocalModel
-
-model = MossTTSLocalModel.from_path("mlx-int8")
-```
-
 ## Notes
 
 - This repo contains the quantized MLX runtime artifact only.
