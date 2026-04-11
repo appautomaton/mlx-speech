@@ -17,8 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-"mlx-speech-tts" = "mlx_speech.tts.generate:main"
-"mlx-speech-asr" = "mlx_speech.asr.generate:main"
+"mlx-speech" = "mlx_speech.cli:main"
 
 [dependency-groups]
 dev = [

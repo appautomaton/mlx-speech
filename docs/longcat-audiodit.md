@@ -25,7 +25,7 @@ result = model.generate("Hello from LongCat AudioDiT!")
 ```
 
 ```bash
-mlx-speech-tts --model longcat --text "Hello!" -o output.wav
+mlx-speech tts --model longcat --text "Hello!" -o output.wav
 ```
 
 ## Voice Cloning
@@ -41,7 +41,7 @@ result = model.generate(
 ```
 
 ```bash
-mlx-speech-tts --model longcat \
+mlx-speech tts --model longcat \
   --text "New speech in the cloned voice." \
   --reference-audio reference.wav \
   --reference-text "Transcript of the reference audio." \

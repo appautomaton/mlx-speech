@@ -26,11 +26,16 @@ def _resolve_tts_family(model_dir: Path) -> str:
         return "vibevoice"
     if model_type == "audiodit":
         return "longcat"
+    if model_type == "step1":
+        return "step_audio"
     if model_type == "moss_tts_delay":
+        dir_lower = str(model_dir).lower()
+        if "sound_effect" in dir_lower or "sound-effect" in dir_lower:
+            return "moss_sound_effect"
         n_vq = int(payload.get("n_vq", 0))
         return "moss_local" if n_vq > 20 else "moss_delay"
 
     raise ValueError(
         f"Unknown TTS model_type {model_type!r} in {model_dir}. "
-        "Supported: fish_qwen3_omni, vibevoice, audiodit, moss_tts_delay."
+        "Supported: fish_qwen3_omni, vibevoice, audiodit, step1, moss_tts_delay."
     )

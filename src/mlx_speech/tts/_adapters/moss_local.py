@@ -55,6 +55,7 @@ class MossLocalAdapter:
             self._processor,
             self._codec,
             text=text,
+            use_duration_estimate=True,
             config=config,
         )
         return TTSOutput(waveform=result.waveform, sample_rate=self._sample_rate)

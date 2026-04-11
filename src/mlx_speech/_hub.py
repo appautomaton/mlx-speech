@@ -5,20 +5,55 @@ from __future__ import annotations
 from pathlib import Path
 
 
-_TTS_MODELS: dict[str, tuple[str, str]] = {
-    "fish-s2-pro": ("appautomaton/fishaudio-s2-pro-8bit-mlx", "Fish S2 Pro — dual-AR TTS, voice cloning, emotion tags"),
-    "vibevoice": ("appautomaton/vibevoice-mlx", "VibeVoice Large — hybrid LLM+diffusion TTS, voice cloning"),
-    "longcat": ("appautomaton/longcat-audiodit-3.5b-8bit-mlx", "LongCat AudioDiT — flow-matching diffusion TTS"),
-    "moss-local": ("appautomaton/openmoss-tts-local-mlx", "OpenMOSS TTS Local — local-attention multi-VQ TTS"),
-    "moss-ttsd": ("appautomaton/openmoss-ttsd-mlx", "OpenMOSS TTS Delay — delay-pattern dialogue TTS"),
+# alias -> (hf_repo_id, description, family_hint)
+_TTS_MODELS: dict[str, tuple[str, str, str]] = {
+    "fish-s2-pro": (
+        "appautomaton/fishaudio-s2-pro-8bit-mlx",
+        "Fish S2 Pro — dual-AR TTS, voice cloning, emotion tags",
+        "fish_s2_pro",
+    ),
+    "vibevoice": (
+        "appautomaton/vibevoice-mlx",
+        "VibeVoice Large — hybrid LLM+diffusion TTS, voice cloning",
+        "vibevoice",
+    ),
+    "longcat": (
+        "appautomaton/longcat-audiodit-3.5b-8bit-mlx",
+        "LongCat AudioDiT — flow-matching diffusion TTS",
+        "longcat",
+    ),
+    "moss-local": (
+        "appautomaton/openmoss-tts-local-mlx",
+        "OpenMOSS TTS Local — local-attention multi-VQ TTS",
+        "moss_local",
+    ),
+    "moss-ttsd": (
+        "appautomaton/openmoss-ttsd-mlx",
+        "OpenMOSS TTS Delay — delay-pattern dialogue TTS",
+        "moss_delay",
+    ),
+    "moss-sound-effect": (
+        "appautomaton/openmoss-sound-effect-mlx",
+        "OpenMOSS Sound Effect — text-to-sound-effect generation",
+        "moss_sound_effect",
+    ),
+    "step-audio": (
+        "appautomaton/step-audio-editx-8bit-mlx",
+        "Step-Audio-EditX — voice cloning + audio editing (emotion, style, speed)",
+        "step_audio",
+    ),
 }
 
-_ASR_MODELS: dict[str, tuple[str, str]] = {
-    "cohere-asr": ("appautomaton/cohere-asr-mlx", "Cohere Transcribe — multilingual ASR"),
+_ASR_MODELS: dict[str, tuple[str, str, str]] = {
+    "cohere-asr": (
+        "appautomaton/cohere-asr-mlx",
+        "Cohere Transcribe — multilingual ASR",
+        "cohere",
+    ),
 }
 
 _ALIASES: dict[str, str] = {
-    alias: repo for alias, (repo, _) in {**_TTS_MODELS, **_ASR_MODELS}.items()
+    alias: entry[0] for alias, entry in {**_TTS_MODELS, **_ASR_MODELS}.items()
 }
 _ALIASES["moss-tts-local"] = _TTS_MODELS["moss-local"][0]
 
@@ -32,11 +67,15 @@ def list_models(category: str | None = None) -> dict[str, tuple[str, str]]:
     Returns:
         Dict mapping alias → (hf_repo_id, description).
     """
+
+    def _strip(models: dict[str, tuple[str, str, str]]) -> dict[str, tuple[str, str]]:
+        return {alias: (repo, desc) for alias, (repo, desc, _) in models.items()}
+
     if category == "tts":
-        return dict(_TTS_MODELS)
+        return _strip(_TTS_MODELS)
     if category == "asr":
-        return dict(_ASR_MODELS)
-    return {**_TTS_MODELS, **_ASR_MODELS}
+        return _strip(_ASR_MODELS)
+    return {**_strip(_TTS_MODELS), **_strip(_ASR_MODELS)}
 
 MOSS_CODEC_REPO = "appautomaton/openmoss-audio-tokenizer-mlx"
 

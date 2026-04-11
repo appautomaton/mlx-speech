@@ -26,7 +26,7 @@ result = model.generate("Hello from Fish S2 Pro!")
 ```
 
 ```bash
-mlx-speech-tts --model fish-s2-pro --text "Hello!" -o output.wav
+mlx-speech tts --model fish-s2-pro --text "Hello!" -o output.wav
 ```
 
 ## Emotion and Style Tags
@@ -68,7 +68,7 @@ result = model.generate(
 ```
 
 ```bash
-mlx-speech-tts --model fish-s2-pro \
+mlx-speech tts --model fish-s2-pro \
   --text "[excited] I tell you what!" \
   --reference-audio reference.wav \
   --reference-text "Transcript of the reference audio." \

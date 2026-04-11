@@ -65,27 +65,41 @@ mlx_speech.asr.list_models()
 
 ```bash
 # Generate speech
-mlx-speech-tts --model fish-s2-pro --text "Hello!" -o output.wav
+mlx-speech tts --model fish-s2-pro --text "Hello!" -o output.wav
 
-# Voice cloning
-mlx-speech-tts --model fish-s2-pro \
+# Voice cloning with emotion tags
+mlx-speech tts --model fish-s2-pro \
   --text "[whisper] Just between us..." \
   --reference-audio ref.wav \
   --reference-text "Transcript of reference." \
   -o cloned.wav
 
-# Transcribe audio
-mlx-speech-asr --model cohere-asr --audio speech.wav
+# Step Audio emotion editing
+mlx-speech tts --model step-audio \
+  --reference-audio input.wav \
+  --reference-text "Transcript." \
+  --edit-type emotion --edit-info happy \
+  -o happy.wav
 
-# List available models
-mlx-speech-tts --list-models
-mlx-speech-asr --list-models
+# Sound effect generation
+mlx-speech tts --model moss-sound-effect \
+  --text "rolling thunder with rainfall" \
+  --duration-seconds 8 \
+  -o thunder.wav
+
+# Transcribe audio
+mlx-speech asr --model cohere-asr --audio speech.wav
+
+# Discover models
+mlx-speech tts --list-models
+mlx-speech asr --list-models
+mlx-speech --help
 ```
 
 **Local model paths work too:**
 
 ```bash
-mlx-speech-tts --model models/fish_s2_pro/mlx-int8 --text "Hello!" -o output.wav
+mlx-speech tts --model models/fish_s2_pro/mlx-int8 --text "Hello!" -o output.wav
 ```
 
 ## Models
@@ -100,14 +114,9 @@ Use `mlx_speech.tts.load("alias")` or `mlx_speech.tts.load("appautomaton/repo-na
 | `longcat` | [longcat-audiodit-3.5b-8bit-mlx](https://huggingface.co/appautomaton/longcat-audiodit-3.5b-8bit-mlx) | int8 |
 | `moss-local` | [openmoss-tts-local-mlx](https://huggingface.co/appautomaton/openmoss-tts-local-mlx) | int8 |
 | `moss-ttsd` | [openmoss-ttsd-mlx](https://huggingface.co/appautomaton/openmoss-ttsd-mlx) | int8 |
+| `moss-sound-effect` | [openmoss-sound-effect-mlx](https://huggingface.co/appautomaton/openmoss-sound-effect-mlx) | 4-bit |
+| `step-audio` | [step-audio-editx-8bit-mlx](https://huggingface.co/appautomaton/step-audio-editx-8bit-mlx) | int8 |
 | `cohere-asr` | [cohere-asr-mlx](https://huggingface.co/appautomaton/cohere-asr-mlx) | int8 |
-
-Additional models available via `scripts/`:
-
-| Model | Script | Notes |
-| --- | --- | --- |
-| MOSS-SoundEffect | `scripts/generate_moss_sound_effect.py` | Text-to-sound-effect |
-| Step-Audio-EditX | `scripts/generate_step_audio_editx.py` | Voice cloning and audio editing |
 
 ## Conversion
 

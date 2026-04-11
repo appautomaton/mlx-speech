@@ -9,6 +9,7 @@ Usage::
     # result.waveform: mx.array, result.sample_rate: int
 """
 
+from .._hub import _TTS_MODELS
 from .._hub import get_model_path as _get_model_path
 from .._hub import list_models as _list_all
 from .._hub import resolve_codec_path as _resolve_codec_path
@@ -45,8 +46,16 @@ def load(
     Returns:
         A :class:`TTSModel` with a ``.generate(text, ...)`` method.
     """
+    # Alias-first resolution: if the user passed a known alias, we already
+    # know the family (needed to disambiguate moss-sound-effect from moss-ttsd
+    # since both have the same model_type).
+    hint_family: str | None = None
+    if path_or_hf_repo in _TTS_MODELS:
+        repo, _desc, hint_family = _TTS_MODELS[path_or_hf_repo]
+        path_or_hf_repo = repo
+
     model_dir = _get_model_path(path_or_hf_repo, revision=revision)
-    family = _resolve_tts_family(model_dir)
+    family = hint_family or _resolve_tts_family(model_dir)
 
     if family == "fish_s2_pro":
         from ._adapters.fish_s2_pro import FishS2ProAdapter
@@ -63,12 +72,21 @@ def load(
 
         return LongCatAdapter.from_dir(model_dir)
 
-    if family in ("moss_local", "moss_delay"):
+    if family == "step_audio":
+        from ._adapters.step_audio import StepAudioAdapter
+
+        return StepAudioAdapter.from_dir(model_dir)
+
+    if family in ("moss_local", "moss_delay", "moss_sound_effect"):
         codec_dir = _resolve_codec_path(codec_path_or_repo, revision=revision)
         if family == "moss_local":
             from ._adapters.moss_local import MossLocalAdapter
 
             return MossLocalAdapter.from_dir(model_dir, codec_dir=codec_dir)
+        if family == "moss_sound_effect":
+            from ._adapters.moss_sound_effect import MossSoundEffectAdapter
+
+            return MossSoundEffectAdapter.from_dir(model_dir, codec_dir=codec_dir)
 
         from ._adapters.moss_delay import MossDelayAdapter
 
