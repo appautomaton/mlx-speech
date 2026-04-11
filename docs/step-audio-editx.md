@@ -12,11 +12,8 @@ It is currently best thought of as:
 
 Current local runtime target:
 
-- default: `models/stepfun/step_audio_editx/original`
-- optional quantized path: `models/stepfun/step_audio_editx/mlx-int8`
-
-The public default is **original-first** right now. `mlx-int8` exists and loads,
-but it is not the default until parity is more thoroughly diffed.
+- `models/stepfun/step_audio_editx/mlx-int8` (unified CLI default)
+- `models/stepfun/step_audio_editx/original` (script default)
 
 ## Main Python API
 
@@ -42,9 +39,49 @@ Return type:
   - `stop_reason`
   - `mode`
 
-## Current CLI
+## Quick Start
 
-Script:
+```python
+import mlx_speech
+
+model = mlx_speech.tts.load("step-audio")
+result = model.generate(
+    "New cloned speech.",
+    reference_audio="reference.wav",
+    reference_text="Transcript of the reference audio.",
+)
+```
+
+```bash
+# Clone
+mlx-speech tts --model step-audio \
+  --reference-audio reference.wav \
+  --reference-text "Transcript of the reference audio." \
+  --text "New cloned speech." \
+  -o cloned.wav
+
+# Edit (emotion)
+mlx-speech tts --model step-audio \
+  --reference-audio reference.wav \
+  --reference-text "Transcript of the reference audio." \
+  --edit-type emotion --edit-info happy \
+  -o happy.wav
+```
+
+Local path (skips HF download):
+
+```bash
+mlx-speech tts \
+  --model models/stepfun/step_audio_editx/mlx-int8 \
+  --reference-audio reference.wav \
+  --reference-text "Transcript." \
+  --text "New speech." \
+  -o output.wav
+```
+
+## Script CLI (Advanced)
+
+For `--temperature`, `--seed`, `--flow-steps`, and original-weight path:
 
 - `scripts/generate_step_audio_editx.py`
 
@@ -66,10 +103,10 @@ Current key flags:
 - `--flow-steps`
 - `--prefer-mlx-int8`
 
-Important current default:
+Important script default:
 
-- the CLI is also **original-first**
-- pass `--prefer-mlx-int8` only when you explicitly want the quantized Step1 path
+- the script defaults to **original** weights
+- pass `--prefer-mlx-int8` to use the quantized path via the script
 
 ## Clone and Edit Semantics
 
@@ -131,7 +168,7 @@ Current caveats:
 
 ## Example Usage
 
-Python clone:
+Python (low-level API):
 
 ```python
 import numpy as np
@@ -140,8 +177,7 @@ from mlx_speech.generation import StepAudioEditXModel
 
 audio, sr = load_audio("reference.wav", mono=True)
 model = StepAudioEditXModel.from_dir(
-    "models/stepfun/step_audio_editx/original",
-    tokenizer_dir="models/stepfun/step_audio_tokenizer/original",
+    "models/stepfun/step_audio_editx/mlx-int8",
 )
 result = model.clone(
     np.asarray(audio, dtype=np.float32),
@@ -151,7 +187,7 @@ result = model.clone(
 )
 ```
 
-CLI clone:
+Script CLI clone (advanced flags):
 
 ```bash
 python scripts/generate_step_audio_editx.py \
@@ -162,7 +198,7 @@ python scripts/generate_step_audio_editx.py \
   --target-text "New cloned speech."
 ```
 
-CLI edit:
+Script CLI edit:
 
 ```bash
 python scripts/generate_step_audio_editx.py \

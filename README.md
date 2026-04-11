@@ -17,6 +17,8 @@ pure MLX. No cloud, no PyTorch.
 | `longcat` | TTS | LongCat AudioDiT — flow-matching diffusion TTS |
 | `moss-local` | TTS | OpenMOSS TTS Local — local-attention multi-VQ TTS |
 | `moss-ttsd` | TTS | OpenMOSS TTS Delay — delay-pattern dialogue TTS |
+| `moss-sound-effect` | TTS | OpenMOSS Sound Effect — text-to-sound-effect generation |
+| `step-audio` | TTS | Step-Audio-EditX — voice cloning + audio editing |
 | `cohere-asr` | ASR | Cohere Transcribe — multilingual ASR |
 
 ## Requirements
@@ -101,6 +103,12 @@ mlx-speech --help
 ```bash
 mlx-speech tts --model models/fish_s2_pro/mlx-int8 --text "Hello!" -o output.wav
 ```
+
+> **Note:** The `mlx-speech` CLI covers the common path — basic generation,
+> voice cloning, and editing. For advanced controls (sampling temperature,
+> top-p/k, diffusion steps, batch JSONL, duration tuning, etc.) use the
+> scripts in `scripts/` directly. Each model family has a corresponding
+> script with the full inference surface documented in `docs/`.
 
 ## Models
 

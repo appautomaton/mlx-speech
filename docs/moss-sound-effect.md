@@ -22,9 +22,39 @@ Shared codec default:
 
 - `models/openmoss/moss_audio_tokenizer/mlx-int8`
 
-## Main CLI
+## Quick Start
 
-Script:
+```python
+import mlx_speech
+
+model = mlx_speech.tts.load("moss-sound-effect")
+result = model.generate("rolling thunder with steady rainfall", duration_seconds=6)
+# result.waveform, result.sample_rate
+```
+
+```bash
+mlx-speech tts --model moss-sound-effect \
+  --text "rolling thunder with steady rainfall" \
+  --duration-seconds 6 \
+  -o output.wav
+```
+
+Local paths (skips HF download):
+
+```bash
+mlx-speech tts \
+  --model models/openmoss/moss_sound_effect/mlx-4bit \
+  --codec models/openmoss/moss_audio_tokenizer/mlx-int8 \
+  --text "rolling thunder with steady rainfall" \
+  --duration-seconds 6 \
+  -o output.wav
+```
+
+Note: the unified CLI uses `--text` for the ambient sound description.
+
+## Script CLI (Advanced)
+
+For sampling controls and `--expected-tokens` tuning, use the script directly:
 
 - `scripts/generate_moss_sound_effect.py`
 
@@ -58,7 +88,11 @@ Behavior:
 
 So duration is guided, not frame-perfect.
 
-## Sampling Controls
+## Sampling Controls (Script only)
+
+The unified `mlx-speech tts` CLI exposes `--duration-seconds` and
+`--max-new-tokens`. Full sampling controls below are available via
+`scripts/generate_moss_sound_effect.py`.
 
 Current user-facing controls:
 

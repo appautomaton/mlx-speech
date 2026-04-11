@@ -37,7 +37,28 @@ Return type:
   - `tokens`
   - `language`
 
-## Current CLI
+## Quick Start
+
+```bash
+mlx-speech asr --model cohere-asr --audio speech.wav
+```
+
+Local path (skips HF download):
+
+```bash
+mlx-speech asr --model models/cohere/cohere_transcribe/mlx-int8 --audio speech.wav
+```
+
+Language selection:
+
+```bash
+mlx-speech asr --model cohere-asr --audio speech.wav --language fr
+```
+
+## Script CLI (Advanced)
+
+For `--no-punctuation`, `--itn`, `--max-new-tokens`, and `--output`, use the
+script directly:
 
 Scripts:
 
@@ -93,7 +114,7 @@ result = model.transcribe(audio, sample_rate=16000, language="en")
 print(result.text)
 ```
 
-CLI:
+Script CLI:
 
 ```bash
 python scripts/transcribe_cohere_asr.py \

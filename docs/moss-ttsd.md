@@ -19,9 +19,34 @@ Shared codec default:
 
 - `models/openmoss/moss_audio_tokenizer/mlx-int8`
 
-## Main CLI
+## Quick Start
 
-Script:
+```python
+import mlx_speech
+
+model = mlx_speech.tts.load("moss-ttsd")
+result = model.generate("Hello from OpenMOSS TTS Delay!")
+# result.waveform, result.sample_rate
+```
+
+```bash
+mlx-speech tts --model moss-ttsd --text "Hello!" -o output.wav
+```
+
+Local paths (skips HF download):
+
+```bash
+mlx-speech tts \
+  --model models/openmoss/moss_ttsd/mlx-int8 \
+  --codec models/openmoss/moss_audio_tokenizer/mlx-int8 \
+  --text "Hello!" \
+  -o output.wav
+```
+
+## Script CLI (Advanced)
+
+For batch JSONL mode, multi-speaker conditioning, and sampling controls, use
+the script directly:
 
 - `scripts/generate_moss_ttsd.py`
 
@@ -64,7 +89,10 @@ Current default behavior:
 - same paired speaker prompt requirements as continuation-style use
 - uses those paired prompts for both continuation context and speaker anchoring
 
-## Sampling Controls
+## Sampling Controls (Script only)
+
+The unified `mlx-speech tts` CLI exposes `--max-new-tokens` only. Full
+sampling controls below are available via `scripts/generate_moss_ttsd.py`.
 
 Current user-facing audio controls:
 

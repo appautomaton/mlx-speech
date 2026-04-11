@@ -19,9 +19,33 @@ Shared codec default:
 
 - `models/openmoss/moss_audio_tokenizer/mlx-int8`
 
-## Main CLI
+## Quick Start
 
-Script:
+```python
+import mlx_speech
+
+model = mlx_speech.tts.load("moss-local")
+result = model.generate("Hello from OpenMOSS TTS Local!")
+# result.waveform, result.sample_rate
+```
+
+```bash
+mlx-speech tts --model moss-local --text "Hello!" -o output.wav
+```
+
+Local paths (skips HF download):
+
+```bash
+mlx-speech tts \
+  --model models/openmoss/moss_tts_local/mlx-int8 \
+  --codec models/openmoss/moss_audio_tokenizer/mlx-int8 \
+  --text "Hello!" \
+  -o output.wav
+```
+
+## Script CLI (Advanced)
+
+For advanced sampling controls and multi-mode inference, use the script directly:
 
 - `scripts/generate_moss_local.py`
 
@@ -57,7 +81,10 @@ Current CLI shape:
 - in `continue_clone`, that same reference path is used for both prompt context
   and voice conditioning
 
-## Sampling Controls
+## Sampling Controls (Script only)
+
+The unified `mlx-speech tts` CLI exposes `--max-new-tokens` only. The full
+sampling surface below is available via `scripts/generate_moss_local.py`.
 
 Local exposes separate text and audio sampling controls:
 
@@ -76,7 +103,7 @@ Current default runtime:
 - KV cache on for eligible single-sample paths
 - `--no-kv-cache` is available as a debug fallback
 
-## Duration Controls
+## Duration Controls (Script only)
 
 Local also exposes duration-style prompt controls:
 
@@ -100,7 +127,7 @@ Also:
 - continuation outputs usually contain the new continuation segment
 - they do not necessarily replay the prompt audio transcript verbatim
 
-## Output Polishing Flags
+## Output Polishing Flags (Script only)
 
 Current convenience flags:
 

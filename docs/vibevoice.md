@@ -13,6 +13,29 @@ Current local default runtime:
 
 - `models/vibevoice/mlx-int8`
 
+## Quick Start
+
+```python
+import mlx_speech
+
+model = mlx_speech.tts.load("vibevoice")
+result = model.generate("Hello from VibeVoice!")
+# result.waveform, result.sample_rate
+```
+
+```bash
+mlx-speech tts --model vibevoice --text "Hello!" -o output.wav
+```
+
+Local path (skips HF download):
+
+```bash
+mlx-speech tts \
+  --model models/vibevoice/mlx-int8 \
+  --text "Hello!" \
+  -o output.wav
+```
+
 ## Current Python Module API
 
 Current entry points are split across direct modules.
@@ -56,9 +79,10 @@ Each sample should be shaped like `(1, 1, T)` at `24 kHz`.
 - `seed`
 - `safety_max_new_tokens`
 
-## Current CLI
+## Script CLI (Advanced)
 
-Script:
+For `--cfg-scale`, `--diffusion-steps`, `--temperature`, `--seed`, and
+multi-speaker `voice_samples`, use the script directly:
 
 - `scripts/generate_vibevoice.py`
 
