@@ -72,9 +72,16 @@ class MossTTSDelayConfig:
 
     @classmethod
     def from_path(cls, model_dir: str | Path) -> "MossTTSDelayConfig":
-        config_path = Path(model_dir) / "config.json"
+        model_dir = Path(model_dir)
+        config_path = model_dir / "config.json"
         if not config_path.exists():
-            raise FileNotFoundError(f"Config file not found: {config_path}")
+            for subdir in ("mlx-4bit", "mlx-int8", "mlx-8bit"):
+                candidate = model_dir / subdir / "config.json"
+                if candidate.exists():
+                    config_path = candidate
+                    break
+            else:
+                raise FileNotFoundError(f"Config file not found: {config_path}")
         with config_path.open(encoding="utf-8") as f:
             payload = json.load(f)
         return cls.from_dict(payload)
