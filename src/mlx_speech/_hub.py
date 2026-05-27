@@ -96,6 +96,29 @@ def _is_local_path(path: str) -> bool:
     return path.startswith((".", "/", "~"))
 
 
+# Most published MLX repos host artifacts inside a quantization subdirectory
+# (mlx-int8/, mlx-4bit/, mlx-8bit/) rather than at the snapshot root, so the
+# snapshot returned by snapshot_download doesn't have config.json directly.
+# Listed in priority order — int8 is the default runtime target.
+_QUANTIZATION_SUBDIRS: tuple[str, ...] = ("mlx-int8", "mlx-4bit", "mlx-8bit")
+
+
+def _resolve_snapshot_dir(root: Path) -> Path:
+    """Return ``root`` or a recognized quantization subdir containing config.json.
+
+    Preserves the path as-is when ``root/config.json`` exists. Otherwise
+    descends into the first known quantization subdirectory that has a
+    config.json. Falls back to ``root`` when nothing matches so downstream
+    callers can raise their own, clearer error.
+    """
+    if (root / "config.json").exists():
+        return root
+    for subdir in _QUANTIZATION_SUBDIRS:
+        if (root / subdir / "config.json").exists():
+            return root / subdir
+    return root
+
+
 def get_model_path(
     path_or_hf_repo: str,
     *,
@@ -107,15 +130,17 @@ def get_model_path(
 
     Resolution order:
       1. Check alias dict for short names (e.g. "fish-s2-pro")
-      2. If local path exists → return it
+      2. If local path exists → return it (descending into a quantization
+         subdir when config.json is not directly inside)
       3. If it looks like a local path but doesn't exist → FileNotFoundError
-      4. Otherwise → snapshot_download from HuggingFace Hub
+      4. Otherwise → snapshot_download from HuggingFace Hub, then descend
+         into a quantization subdir if needed
     """
     resolved = _ALIASES.get(path_or_hf_repo, path_or_hf_repo)
 
     local = Path(resolved).expanduser()
     if local.exists():
-        return local
+        return _resolve_snapshot_dir(local)
 
     if _is_local_path(resolved):
         raise FileNotFoundError(
@@ -124,7 +149,7 @@ def get_model_path(
 
     from huggingface_hub import snapshot_download
 
-    return Path(
+    snapshot = Path(
         snapshot_download(
             resolved,
             revision=revision,
@@ -132,6 +157,7 @@ def get_model_path(
             force_download=force_download,
         )
     )
+    return _resolve_snapshot_dir(snapshot)
 
 
 def resolve_codec_path(
