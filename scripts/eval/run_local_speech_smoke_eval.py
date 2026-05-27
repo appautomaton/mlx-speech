@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a small local speech smoke-eval suite and write artifacts under outputs/tests.
+"""Run a small local speech smoke-eval suite and write artifacts under outputs/smoke.
 
 This script is intentionally sequential. It exercises the real local inference entry
 points for ASR and TTS-family models, saves generated WAVs, transcribes them with the
@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import soundfile as sf
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
@@ -267,18 +267,62 @@ def _build_tts_commands(output_dir: Path) -> list[tuple[str, list[str], Path, st
                 "scripts/generate/vibevoice.py",
                 "--text",
                 text,
-                "--reference-audio",
+                "--reference-audio-speaker0",
                 "outputs/source/hank_hill_ref.wav",
                 "--output",
                 str(output_dir / "generated" / "vibevoice_smoke.wav"),
-                "--diffusion-steps",
-                "10",
-                "--seed",
-                "123",
-                "--max-new-tokens",
-                "256",
             ],
             output_dir / "generated" / "vibevoice_smoke.wav",
+            text,
+        ),
+        (
+            "longcat_generation",
+            [
+                sys.executable,
+                "scripts/generate/longcat_audiodit.py",
+                "--text",
+                text,
+                "--output-audio",
+                str(output_dir / "generated" / "longcat_smoke.wav"),
+            ],
+            output_dir / "generated" / "longcat_smoke.wav",
+            text,
+        ),
+        (
+            "step_audio_clone",
+            [
+                sys.executable,
+                "scripts/generate/step_audio_editx.py",
+                "--prefer-mlx-int8",
+                "--prompt-audio",
+                "outputs/source/hank_hill_ref.wav",
+                "--prompt-text",
+                (
+                    "Loud is not allowed. Now you listen to me, mister. "
+                    "I work for a living. And I mean real work, not writing down gobbledygook."
+                ),
+                "-o",
+                str(output_dir / "generated" / "step_audio_smoke.wav"),
+                "clone",
+                "--target-text",
+                text,
+            ],
+            output_dir / "generated" / "step_audio_smoke.wav",
+            text,
+        ),
+        (
+            "fish_s2_pro_generation",
+            [
+                sys.executable,
+                "scripts/generate/fish_s2_pro.py",
+                "--text",
+                text,
+                "--model-dir",
+                "models/fish_s2_pro/mlx-int8",
+                "--output",
+                str(output_dir / "generated" / "fish_s2_pro_smoke.wav"),
+            ],
+            output_dir / "generated" / "fish_s2_pro_smoke.wav",
             text,
         ),
     ]
@@ -310,7 +354,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output-dir",
-        default="outputs/tests",
+        default="outputs/smoke",
         help="Directory for generated smoke-eval artifacts and summary files.",
     )
     parser.add_argument(
