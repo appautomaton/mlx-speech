@@ -81,6 +81,38 @@ class SmokeCaseResult:
     notes: str | None = None
 
 
+def _validate_audio_file(
+    path: Path,
+    *,
+    min_duration_seconds: float = 0.5,
+    min_peak: float = 0.05,
+) -> tuple[bool, float | None, float | None, str]:
+    """Verify a generated audio file is non-trivial.
+
+    Returns ``(ok, duration_seconds, peak, reason)``. Used for non-speech
+    outputs (e.g. sound effects) where ASR roundtrip is not a meaningful PASS
+    criterion. PASS = file exists + duration above ``min_duration_seconds`` +
+    peak amplitude above ``min_peak`` (rules out silent or empty output).
+    """
+    if not path.exists():
+        return False, None, None, f"missing file: {path}"
+    info = sf.info(path)
+    duration = info.frames / info.samplerate
+    audio, _ = sf.read(path, dtype="float32", always_2d=False)
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+    peak = float(np.max(np.abs(audio))) if audio.size else 0.0
+    if duration < min_duration_seconds:
+        return False, duration, peak, (
+            f"duration {duration:.2f}s below threshold {min_duration_seconds}s"
+        )
+    if peak < min_peak:
+        return False, duration, peak, (
+            f"peak {peak:.3f} below threshold {min_peak} (silent or near-silent)"
+        )
+    return True, duration, peak, f"duration={duration:.2f}s peak={peak:.3f}"
+
+
 def _write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -219,6 +251,66 @@ def _run_tts_case(
     )
 
 
+def _run_sfx_case(
+    *,
+    name: str,
+    command: list[str],
+    output_path: Path,
+    prompt: str,
+    output_dir: Path,
+) -> SmokeCaseResult:
+    """Run a non-speech TTS case (e.g. moss-sound-effect) with a file-validity verifier.
+
+    ASR roundtrip is skipped — transcription of non-speech audio is not a
+    meaningful PASS criterion. The verifier asserts: file exists, duration is
+    above a small threshold, and peak amplitude is above a near-silent floor.
+    """
+    exit_code, stdout, stderr, elapsed = _run_command(command, REPO_ROOT)
+    log_path = output_dir / "logs" / f"{name}.log"
+    _write_text(
+        log_path,
+        "\n".join(
+            [
+                "COMMAND:",
+                " ".join(command),
+                "",
+                "STDOUT:",
+                stdout,
+                "",
+                "STDERR:",
+                stderr,
+            ]
+        ),
+    )
+    if exit_code != 0:
+        return SmokeCaseResult(
+            name=name,
+            category="sfx_generation",
+            ok=False,
+            output_path=str(output_path.relative_to(REPO_ROOT)),
+            transcript=None,
+            expected_text=prompt,
+            expected_match=None,
+            duration_sec=elapsed,
+            command=command,
+            notes=f"Generator exited with code {exit_code}. See {log_path.relative_to(REPO_ROOT)}.",
+        )
+
+    ok, duration, peak, reason = _validate_audio_file(output_path)
+    return SmokeCaseResult(
+        name=name,
+        category="sfx_generation",
+        ok=ok,
+        output_path=str(output_path.relative_to(REPO_ROOT)),
+        transcript=None,
+        expected_text=prompt,
+        expected_match=None,
+        duration_sec=round(duration, 3) if duration is not None else None,
+        command=command,
+        notes=reason,
+    )
+
+
 def _build_tts_commands(output_dir: Path) -> list[tuple[str, list[str], Path, str]]:
     text = "This is a local smoke test for the MLX speech runtime."
     return [
@@ -328,6 +420,28 @@ def _build_tts_commands(output_dir: Path) -> list[tuple[str, list[str], Path, st
     ]
 
 
+def _build_sfx_commands(output_dir: Path) -> list[tuple[str, list[str], Path, str]]:
+    """Sound-effect cases — non-speech generation verified by file validity."""
+    prompt = "rolling thunder with rainfall"
+    return [
+        (
+            "moss_sound_effect",
+            [
+                sys.executable,
+                "scripts/generate/moss_sound_effect.py",
+                "--ambient-sound",
+                prompt,
+                "--duration-seconds",
+                "3",
+                "--output",
+                str(output_dir / "generated" / "moss_sound_effect_smoke.wav"),
+            ],
+            output_dir / "generated" / "moss_sound_effect_smoke.wav",
+            prompt,
+        ),
+    ]
+
+
 def _render_report(results: list[SmokeCaseResult]) -> str:
     lines = ["# Local Speech Smoke Eval", ""]
     for result in results:
@@ -394,6 +508,18 @@ def main() -> None:
             )
         )
 
+    for name, command, wav_path, prompt in _build_sfx_commands(output_dir):
+        print(f"Running {name} ...")
+        results.append(
+            _run_sfx_case(
+                name=name,
+                command=command,
+                output_path=wav_path,
+                prompt=prompt,
+                output_dir=output_dir,
+            )
+        )
+
     summary = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "repo_root": str(REPO_ROOT),
@@ -409,6 +535,8 @@ def main() -> None:
         print(f"[{status}] {result.name}")
         if result.transcript:
             print(f"  transcript: {result.transcript}")
+        elif result.notes:
+            print(f"  {result.notes}")
 
     print(f"\nSummary written to {output_dir / 'summary.json'}")
     print(f"Report written to {output_dir / 'report.md'}")
