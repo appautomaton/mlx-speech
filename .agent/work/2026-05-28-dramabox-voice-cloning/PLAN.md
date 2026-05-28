@@ -62,6 +62,9 @@ Required:
 **Verification:** `.venv/bin/python -m pytest tests/unit/test_dramabox_dit.py tests/unit/test_dramabox_sampling.py -q -k "mask or sampling"`
 **Execution:** subagent recommended
 **Touches:** `dit/model.py`, `dit/block.py`, `sampling/x0_model.py`, `sampling/loop.py`, `tests/unit/test_dramabox_dit.py`
+**Status:** complete
+**Evidence:** threaded additive self-attention masks through `src/mlx_speech/models/dramabox/dit/{model.py,block.py}` and `src/mlx_speech/models/dramabox/sampling/{x0_model.py,loop.py}`, with mask equivalence/effect tests in `tests/unit/test_dramabox_dit.py` and loop propagation coverage in `tests/unit/test_dramabox_sampling.py`; `.venv/bin/python -m pytest tests/unit/test_dramabox_dit.py tests/unit/test_dramabox_sampling.py -q -k "mask or sampling"` passed (`16 passed, 7 deselected`); `.venv/bin/python -m pytest tests/unit/` passed (`306 passed`).
+**Risks / next:** none.
 
 ### Slice 5: Reference-latent conditioning
 

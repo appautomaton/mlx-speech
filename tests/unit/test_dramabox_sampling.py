@@ -9,8 +9,10 @@ from mlx_speech.models.dramabox.sampling import (
     GuiderParams,
     MultiModalGuider,
     auto_rescale_for_cfg,
+    euler_denoising_loop,
     silence_prior_fix,
 )
+from mlx_speech.models.dramabox.diffusion import LatentState
 
 
 # --------------------------------------------------------------------------- #
@@ -125,6 +127,42 @@ def test_silence_prior_modifies_frames_512_513():
     # Frame 513 = 1/3 * latent[511] + 2/3 * latent[514]
     expected_513 = latent[:, :, 511, :] * (1 / 3) + latent[:, :, 514, :] * (2 / 3)
     assert mx.allclose(out[:, :, 513, :], expected_513, atol=1e-5).item()
+
+
+# --------------------------------------------------------------------------- #
+# Denoising loop attention mask
+# --------------------------------------------------------------------------- #
+
+def test_euler_loop_passes_state_attention_mask_to_x0_model():
+    class RecordingX0:
+        def __init__(self):
+            self.attention_masks = []
+
+        def __call__(self, latent, *, a_ctx, sigma, positions=None, rope_cos_sin=None, attention_mask=None):
+            self.attention_masks.append(attention_mask)
+            return latent
+
+    mask = mx.zeros((1, 1, 4, 4), dtype=mx.float32)
+    state = LatentState(
+        latent=mx.zeros((1, 4, 8), dtype=mx.float32),
+        denoise_mask=mx.ones((1, 4, 1), dtype=mx.float32),
+        positions=mx.zeros((1, 1, 4, 2), dtype=mx.float32),
+        clean_latent=mx.zeros((1, 4, 8), dtype=mx.float32),
+        attention_mask=mask,
+    )
+    x0 = RecordingX0()
+
+    euler_denoising_loop(
+        state,
+        mx.array([1.0, 0.0], dtype=mx.float32),
+        x0_model=x0,
+        a_ctx=mx.zeros((1, 2, 8), dtype=mx.float32),
+        a_ctx_neg=None,
+        params=GuiderParams(cfg_scale=1.0, stg_scale=0.0, rescale_scale=0.0, modality_scale=1.0),
+        positions=state.positions,
+    )
+
+    assert x0.attention_masks == [mask]
 
 
 # --------------------------------------------------------------------------- #

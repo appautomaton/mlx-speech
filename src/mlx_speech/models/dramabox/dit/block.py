@@ -91,6 +91,7 @@ class LTXBlock(nn.Module):
         prompt_ada_emb: mx.array | None,
         context: mx.array,
         rope_cos_sin: tuple[mx.array, mx.array] | None,
+        self_attention_mask: mx.array | None = None,
         context_mask: mx.array | None = None,
     ) -> mx.array:
         """Forward.
@@ -101,6 +102,7 @@ class LTXBlock(nn.Module):
             prompt_ada_emb: ``[B, 2 * dim]`` cross-attn context AdaLN bias.
             context: ``[B, T_text, context_dim]`` ``a_ctx`` from the prompt encoder.
             rope_cos_sin: pre-computed RoPE (cos, sin) for the audio sequence.
+            self_attention_mask: optional additive mask for audio self-attn.
             context_mask: optional additive mask for cross-attn (None means no mask).
         Returns:
             ``[B, T_audio, dim]``.
@@ -117,7 +119,7 @@ class LTXBlock(nn.Module):
         scale_msa = ada[:, :, 1, :]
         gate_msa = ada[:, :, 2, :]
         h = functional_rms_norm(x, eps=self.norm_eps) * (1 + scale_msa) + shift_msa
-        x = x + self.audio_attn1(h, rope_cos_sin=rope_cos_sin) * gate_msa
+        x = x + self.audio_attn1(h, rope_cos_sin=rope_cos_sin, mask=self_attention_mask) * gate_msa
 
         # Cross-attention sub-block (factors 6..8 for q, prompt-AdaLN for kv)
         shift_q = ada[:, :, 6, :]

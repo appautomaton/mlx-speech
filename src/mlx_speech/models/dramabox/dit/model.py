@@ -93,6 +93,7 @@ class LTXModel(nn.Module):
         sigma: mx.array,
         positions: mx.array | None = None,
         rope_cos_sin: tuple[mx.array, mx.array] | None = None,
+        attention_mask: mx.array | None = None,
     ) -> mx.array:
         """Forward returning velocity ``[B, T_audio, audio_out_channels=128]``.
 
@@ -108,6 +109,8 @@ class LTXModel(nn.Module):
             rope_cos_sin: optional pre-computed RoPE; takes precedence over
                 ``positions``. Used by callers that batch multiple guidance
                 passes through the DiT and want to share the RoPE table.
+            attention_mask: optional additive self-attention mask broadcastable
+                to ``[B, heads, T_audio, T_audio]``.
 
         Returns:
             velocity ``[B, T_audio, 128]``.
@@ -151,6 +154,7 @@ class LTXModel(nn.Module):
                 prompt_ada_emb=prompt_ada,
                 context=a_ctx,
                 rope_cos_sin=rope_cos_sin,
+                self_attention_mask=attention_mask,
             )
 
         # Final AdaLN + output projection

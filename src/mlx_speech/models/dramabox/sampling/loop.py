@@ -59,11 +59,13 @@ def euler_denoising_loop(
         cond = x0_model(
             state.latent, a_ctx=a_ctx, sigma=sigma_batched,
             positions=positions, rope_cos_sin=rope_cos_sin,
+            attention_mask=state.attention_mask,
         )
         uncond = (
             x0_model(
                 state.latent, a_ctx=a_ctx_neg, sigma=sigma_batched,
                 positions=positions, rope_cos_sin=rope_cos_sin,
+                attention_mask=state.attention_mask,
             )
             if params.needs_uncond and a_ctx_neg is not None
             else None

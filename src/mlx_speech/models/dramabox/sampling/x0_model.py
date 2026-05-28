@@ -35,6 +35,7 @@ class X0Model:
         sigma: mx.array,
         positions: mx.array | None = None,
         rope_cos_sin: tuple[mx.array, mx.array] | None = None,
+        attention_mask: mx.array | None = None,
     ) -> mx.array:
         """Return denoised ``x0 [B, T, 128]`` for the given inputs.
 
@@ -45,6 +46,7 @@ class X0Model:
             positions: optional ``[B, 1, T, 2]`` patchifier start/end timings;
                 passed through to the velocity model for RoPE.
             rope_cos_sin: optional pre-computed RoPE table.
+            attention_mask: optional additive self-attention mask.
         """
         velocity = self.velocity_model(
             latent,
@@ -52,6 +54,7 @@ class X0Model:
             sigma=sigma,
             positions=positions,
             rope_cos_sin=rope_cos_sin,
+            attention_mask=attention_mask,
         )
         # For our broadcast-sigma baseline (no voice ref), timesteps == sigma scalar.
         return to_denoised(latent, velocity, float(sigma[0]))

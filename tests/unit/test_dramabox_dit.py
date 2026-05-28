@@ -7,6 +7,7 @@ on a tiny config.
 from __future__ import annotations
 
 import mlx.core as mx
+import numpy as np
 import pytest
 
 from mlx_speech.models.dramabox.dit import DiTConfig, LTXModel
@@ -109,6 +110,67 @@ def test_ltx_model_velocity_shape():
     velocity = model(x, a_ctx=a_ctx, sigma=sigma, positions=positions)
     assert velocity.shape == (B, T_audio, 8)
     assert mx.all(mx.isfinite(velocity)).item()
+
+
+def test_ltx_model_all_allow_attention_mask_matches_no_mask():
+    cfg = DiTConfig(
+        audio_in_channels=8,
+        audio_out_channels=8,
+        audio_num_attention_heads=2,
+        audio_attention_head_dim=4,
+        audio_cross_attention_dim=8,
+        num_layers=2,
+        cross_attention_adaln=True,
+        apply_gated_attention=True,
+    )
+    model = LTXModel(cfg)
+
+    B, T_audio, T_text = 1, 4, 8
+    x = mx.random.normal((B, T_audio, 8), dtype=mx.float32)
+    a_ctx = mx.random.normal((B, T_text, 8), dtype=mx.float32)
+    sigma = mx.array([0.5], dtype=mx.float32)
+    positions = mx.broadcast_to(
+        mx.arange(T_audio, dtype=mx.float32)[None, None, :, None],
+        (B, 1, T_audio, 2),
+    )
+    all_allow = mx.zeros((B, 1, T_audio, T_audio), dtype=mx.float32)
+
+    no_mask = model(x, a_ctx=a_ctx, sigma=sigma, positions=positions)
+    with_mask = model(x, a_ctx=a_ctx, sigma=sigma, positions=positions, attention_mask=all_allow)
+
+    assert mx.allclose(with_mask, no_mask, atol=1e-5, rtol=1e-5).item()
+
+
+def test_ltx_model_blocked_attention_mask_changes_output():
+    cfg = DiTConfig(
+        audio_in_channels=8,
+        audio_out_channels=8,
+        audio_num_attention_heads=2,
+        audio_attention_head_dim=4,
+        audio_cross_attention_dim=8,
+        num_layers=2,
+        cross_attention_adaln=True,
+        apply_gated_attention=True,
+    )
+    model = LTXModel(cfg)
+
+    B, T_audio, T_text = 1, 4, 8
+    x = mx.random.normal((B, T_audio, 8), dtype=mx.float32)
+    a_ctx = mx.random.normal((B, T_text, 8), dtype=mx.float32)
+    sigma = mx.array([0.5], dtype=mx.float32)
+    positions = mx.broadcast_to(
+        mx.arange(T_audio, dtype=mx.float32)[None, None, :, None],
+        (B, 1, T_audio, 2),
+    )
+    mask_np = np.zeros((B, 1, T_audio, T_audio), dtype=np.float32)
+    mask_np[:, :, 0, 1:] = -1.0e4
+    blocked = mx.array(mask_np, dtype=mx.float32)
+
+    no_mask = model(x, a_ctx=a_ctx, sigma=sigma, positions=positions)
+    with_mask = model(x, a_ctx=a_ctx, sigma=sigma, positions=positions, attention_mask=blocked)
+    diff = float(mx.max(mx.abs(with_mask - no_mask)).item())
+
+    assert diff > 1e-6
 
 
 def test_dit_config_default_audio_inner_dim():
