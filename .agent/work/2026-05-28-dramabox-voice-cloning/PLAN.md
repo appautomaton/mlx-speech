@@ -47,6 +47,9 @@ Required:
 **Verification:** `.venv/bin/python -m pytest tests/unit/test_dramabox_reference_prep.py -q`
 **Touches:** new `src/mlx_speech/models/dramabox/audio_vae/reference_prep.py` (or `generation/`), `tests/unit/test_dramabox_reference_prep.py`
 **Produces:** pure-MLX/numpy resample + normalize helper.
+**Status:** complete
+**Evidence:** added `src/mlx_speech/models/dramabox/audio_vae/reference_prep.py` and `tests/unit/test_dramabox_reference_prep.py`; `.venv/bin/python -m pytest tests/unit/test_dramabox_reference_prep.py -q` passed (`3 passed`); `.venv/bin/python -m pytest tests/unit/` passed (`303 passed`).
+**Risks / next:** none.
 
 ### Slice 4: Self-attention mask plumbing
 
