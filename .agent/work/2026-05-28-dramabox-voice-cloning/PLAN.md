@@ -34,6 +34,9 @@ Required:
 **Verification:** `.venv/bin/python -m pytest tests/checkpoint/test_dramabox_audio_vae_checkpoint.py -q -k encode`
 **Execution:** subagent recommended
 **Touches:** `src/mlx_speech/models/dramabox/audio_vae/{model.py,encoder_decoder.py}`, `tests/checkpoint/test_dramabox_audio_vae_checkpoint.py`, `tests/fixtures/`
+**Status:** complete
+**Evidence:** generated `tests/fixtures/dramabox/audio_vae_encode_fixture.npz` from `.venv-torch` upstream AudioEncoder on a fixed 10 s stereo mel and added encode parity coverage in `tests/checkpoint/test_dramabox_audio_vae_checkpoint.py`; `.venv/bin/python -m pytest tests/checkpoint/test_dramabox_audio_vae_checkpoint.py -q -k encode` passed (`1 passed, 2 deselected`); `.venv/bin/python -m pytest tests/unit/` passed (`300 passed`).
+**Risks / next:** none.
 
 ### Slice 3: Reference prep
 

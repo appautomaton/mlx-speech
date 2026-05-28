@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import mlx.core as mx
+import numpy as np
 import pytest
 
 from mlx_speech.models.dramabox.audio_vae import (
@@ -18,6 +19,7 @@ from mlx_speech.models.dramabox.audio_vae import (
 )
 
 AUDIO_COMPONENTS = Path("models/dramabox/dramabox-audio-components.safetensors")
+ENCODE_FIXTURE = Path("tests/fixtures/dramabox/audio_vae_encode_fixture.npz")
 
 pytestmark = pytest.mark.skipif(
     not AUDIO_COMPONENTS.is_file(),
@@ -58,3 +60,28 @@ def test_audio_vae_decode_forward_does_not_nan():
     # mel_bins should be cfg.mel_bins = 64 after 2 upsamples (16 → 32 → 64)
     # but the upsample drops first H-row each time so T is irregular; check finiteness only
     assert mx.all(mx.isfinite(out.astype(mx.float32))).item()
+
+
+def test_audio_vae_encode_matches_upstream_fixture():
+    """Encode fixed 10 s mel fixture and compare against upstream torch encoder."""
+    cfg = AudioVAEConfig()
+    vae = AudioVAE(cfg)
+    state = mx.load(str(AUDIO_COMPONENTS))
+    load_audio_vae_weights(vae, state)
+
+    fixture = np.load(ENCODE_FIXTURE)
+    expected = fixture["latent"].astype(np.float32)
+    mel = mx.array(fixture["mel"], dtype=mx.float32)
+    latent = vae.encode(mel)
+    mx.eval(latent)
+
+    actual = np.asarray(latent.astype(mx.float32))
+    assert actual.shape == expected.shape
+    assert np.isfinite(actual).all()
+
+    actual_by_channel = actual.transpose(1, 0, 2, 3).reshape(actual.shape[1], -1)
+    expected_by_channel = expected.transpose(1, 0, 2, 3).reshape(expected.shape[1], -1)
+    numerator = np.sum(actual_by_channel * expected_by_channel, axis=1)
+    denominator = np.linalg.norm(actual_by_channel, axis=1) * np.linalg.norm(expected_by_channel, axis=1)
+    cosine = numerator / np.maximum(denominator, 1e-12)
+    assert float(np.min(cosine)) >= 0.99
