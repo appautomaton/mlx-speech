@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/ac/.nvm/versions/node/v24.14.0/bin/node' \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.mjs"
+          }
+        ]
+      }
+    ]
+  }
+}

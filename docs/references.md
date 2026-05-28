@@ -32,6 +32,10 @@ As of March 29, 2026:
 - `.references/mlx-audio`: `main` at `6408d2a410eb8c57464e07725b92271860199250`
 - `.references/transformers`: `main` at `8213e0d920d52cb00dcade16b6d1f6e952ac0a8c` (sparse: `src/transformers/models/cohere_asr`, `src/transformers/models/moonshine`, `src/transformers/models/parakeet`)
 - `.references/Step-Audio-EditX`: `main` at `8fa0a3e96979d3c47f6e6b531d234ff98acac878`
+- `.references/DramaBox`: `main` at `a70a5818e103c1c9fef22409c1e0c707ebf4f8a7` (2026-05-23)
+  — Resemble's flow-matching diffusion TTS. Source-truth for the v5 plan.
+  Vendors a subset of LTX-2 (`ltx2/ltx_core`, `ltx2/ltx_pipelines`) as the
+  diffusion framework. Read-only.
 
 ## Notes
 

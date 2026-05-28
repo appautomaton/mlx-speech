@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/ac/.nvm/versions/node/v24.14.0/bin/node' '/Users/ac/dev/ai/genai/mlx-voice/.codex/hooks/session-start.mjs'"
+          }
+        ]
+      }
+    ]
+  }
+}

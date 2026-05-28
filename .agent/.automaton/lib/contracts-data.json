@@ -1,0 +1,37 @@
+{
+  "stages": ["frame", "plan", "execute", "verify", "verified", "resume"],
+  "lenses": ["product", "engineering", "design", "security", "runtime", "content"],
+  "executionRoutes": ["direct", "subagent recommended", "subagent required"],
+  "checkpointTypes": ["none", "human-verify", "decision", "human-action"],
+  "topologyLabels": {
+    "parallelSafeGroups": "Parallel-safe groups:"
+  },
+  "artifactLayout": {
+    "agentRoot": ".agent",
+    "runtimeRoot": ".agent/.automaton",
+    "steeringDir": "steering",
+    "wikiDir": "wiki",
+    "workDir": "work"
+  },
+  "stagePrerequisites": {
+    "frame": [],
+    "plan": ["canonicalSpec"],
+    "execute": ["canonicalPlan"],
+    "verify": ["canonicalPlan"],
+    "verified": ["canonicalPlan"],
+    "resume": []
+  },
+  "reviewVerdicts": {
+    "product": ["approved", "approved_with_risks", "needs_clarification", "descoped"],
+    "engineering": ["approved", "approved_with_risks", "needs_correction"]
+  },
+  "prerequisiteDiagnosticCodes": {
+    "canonicalSpec": "missing_canonical_spec",
+    "canonicalPlan": "missing_canonical_plan"
+  },
+  "canonicalPointerChecks": [
+    { "field": "canonicalSpec", "code": "stale_canonical_spec", "level": "error" },
+    { "field": "canonicalPlan", "code": "stale_canonical_plan", "level": "error" },
+    { "field": "canonicalDesign", "code": "stale_canonical_design", "level": "warning" }
+  ]
+}

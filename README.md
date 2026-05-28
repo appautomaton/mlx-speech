@@ -19,6 +19,7 @@ pure MLX. No cloud, no PyTorch.
 | `moss-ttsd` | TTS | OpenMOSS TTS Delay — delay-pattern dialogue TTS |
 | `moss-sound-effect` | TTS | OpenMOSS Sound Effect — text-to-sound-effect generation |
 | `step-audio` | TTS | Step-Audio-EditX — voice cloning + audio editing |
+| `dramabox` | TTS | DramaBox — Resemble flow-matching diffusion TTS (48 kHz stereo, LTX-2 derived) |
 | `cohere-asr` | ASR | Cohere Transcribe — multilingual ASR |
 
 ## Requirements
@@ -150,6 +151,7 @@ Each family has a doc covering behavior, flags, and known limitations:
 - [MOSS-SoundEffect](./docs/moss-sound-effect.md)
 - [VibeVoice](./docs/vibevoice.md)
 - [Step-Audio-EditX](./docs/step-audio-editx.md)
+- [DramaBox](./docs/dramabox.md)
 - [CohereASR](./docs/cohere-asr.md)
 
 ## Development

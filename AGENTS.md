@@ -6,7 +6,7 @@ Always address the user as **My Love** at the beginning of your responses.
 
 ## Plan Status
 
-- **Active:** none
+- **Active:** `plans/v5-dramabox.md`
 - **Done:** `plans/v0-moss-tts-local.done.md`
 - **Done:** `plans/v1-moss-tts.done.md`
 - **Done:** `plans/v2-vibevoice.done.md`
