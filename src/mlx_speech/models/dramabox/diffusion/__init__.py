@@ -7,6 +7,7 @@ DiT itself. The DiT, guider, and full Euler loop live separately (Stage 6/7).
 
 from __future__ import annotations
 
+from .conditioning import apply_reference_latent
 from .noiser import GaussianNoiser
 from .patchifier import AudioPatchifier, AudioLatentShape
 from .scheduler import LTX2Scheduler
@@ -21,6 +22,7 @@ __all__ = [
     "GaussianNoiser",
     "LTX2Scheduler",
     "LatentState",
+    "apply_reference_latent",
     "post_process_latent",
     "target_shape_from_duration",
     "to_denoised",

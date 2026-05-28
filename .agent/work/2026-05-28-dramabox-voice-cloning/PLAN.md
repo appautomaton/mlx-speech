@@ -78,6 +78,9 @@ Required:
 **Depends on:** Slice 4
 **Execution:** subagent recommended
 **Touches:** new `src/mlx_speech/models/dramabox/diffusion/conditioning.py`, `tests/unit/test_dramabox_conditioning.py`
+**Status:** complete
+**Evidence:** added `src/mlx_speech/models/dramabox/diffusion/conditioning.py`, exported `apply_reference_latent`, and added `tests/unit/test_dramabox_conditioning.py`; `.venv/bin/python -m pytest tests/unit/test_dramabox_conditioning.py -q` passed (`3 passed`); `.venv/bin/python -m pytest tests/unit/` passed (`309 passed`).
+**Risks / next:** none.
 
 ### Slice 6: API wiring + end-to-end
 
