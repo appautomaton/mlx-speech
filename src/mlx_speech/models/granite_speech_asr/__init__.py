@@ -6,6 +6,7 @@ from .config import (
     GraniteSpeechProjectorConfig,
     GraniteSpeechTextConfig,
 )
+from .feature_extraction import GraniteSpeechAudioShape, GraniteSpeechFeatureExtractor
 from .tokenizer import GraniteSpeechTokenizer
 
 __all__ = [
@@ -13,5 +14,7 @@ __all__ = [
     "GraniteSpeechEncoderConfig",
     "GraniteSpeechProjectorConfig",
     "GraniteSpeechTextConfig",
+    "GraniteSpeechAudioShape",
+    "GraniteSpeechFeatureExtractor",
     "GraniteSpeechTokenizer",
 ]

@@ -52,6 +52,10 @@ Use the design in `.agent/work/2026-05-29-granite-speech-asr/DESIGN.md`: a local
 
 **Touches:** `src/mlx_speech/models/granite_speech_asr/feature_extraction.py`, processor tests.
 
+**Status:** complete
+**Evidence:** added pure-numpy Granite HTK log-mel frontend, pair-stacking, preflight sizing, and audio-token count tests; `.venv/bin/python -m pytest tests/unit/test_granite_speech_feature_extraction.py` passed (6 tests); `.venv/bin/python -m pytest tests/unit/` passed (331 tests).
+**Risks / next:** feature numerics are source-shaped but not reference-parity checked; continue to checkpoint sanitizer and key accounting.
+
 ### Slice 3: Checkpoint Loader And Sanitizer
 
 **Objective:** Add deterministic loading and key accounting for original Granite Speech `.safetensors` shards.
