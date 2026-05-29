@@ -129,17 +129,24 @@ class GraniteSpeechAsrModel:
                 f"Granite Speech requires {target_sample_rate} Hz audio; got {sample_rate} Hz."
             )
 
-        features_np, num_audio_tokens = self.feature_extractor(audio_np)
-        input_features = mx.array(features_np, dtype=mx.float32)
-        audio_features = self.model.get_audio_features(input_features)
-        mx.eval(audio_features)
-
+        audio_shape = self.feature_extractor.preflight_shape(int(audio_np.shape[0]))
+        num_audio_tokens = audio_shape.audio_tokens
         prompt_ids = self.tokenizer.build_prompt_ids(num_audio_tokens, prompt)
         validate_context_window(
             prompt_tokens=len(prompt_ids),
             max_new_tokens=max_new_tokens,
             max_position_embeddings=self.config.text.max_position_embeddings,
         )
+
+        features_np, extracted_audio_tokens = self.feature_extractor(audio_np)
+        if extracted_audio_tokens != num_audio_tokens:
+            raise RuntimeError(
+                f"Granite Speech audio token preflight mismatch: "
+                f"preflight={num_audio_tokens}, extracted={extracted_audio_tokens}"
+            )
+        input_features = mx.array(features_np, dtype=mx.float32)
+        audio_features = self.model.get_audio_features(input_features)
+        mx.eval(audio_features)
 
         input_ids = mx.array([prompt_ids], dtype=mx.int32)
         masked_ids = mask_audio_token_ids(

@@ -66,8 +66,10 @@ class _FakeModel:
     def __init__(self):
         self.language_model = _FakeLanguageModel()
         self.last_masked_ids = None
+        self.audio_features_called = False
 
     def get_audio_features(self, input_features):
+        self.audio_features_called = True
         assert input_features.shape == (1, 4, 8)
         return mx.ones((1, 2, 8), dtype=mx.float32) * 99.0
 
@@ -80,7 +82,21 @@ class _FakeModel:
 class _FakeFeatureExtractor:
     sample_rate = 16000
 
+    def __init__(self):
+        self.preflight_called = False
+        self.extract_called = False
+
+    def preflight_shape(self, sample_count):
+        self.preflight_called = True
+        assert sample_count == 160
+
+        class Shape:
+            audio_tokens = 2
+
+        return Shape()
+
     def __call__(self, waveform):
+        self.extract_called = True
         assert waveform.dtype == np.float32
         return np.zeros((1, 4, 8), dtype=np.float32), 2
 
@@ -97,20 +113,24 @@ class _FakeTokenizer:
 
 def _runtime(*, max_position_embeddings: int = 32):
     model = _FakeModel()
+    feature_extractor = _FakeFeatureExtractor()
     runtime = GraniteSpeechAsrModel(
         model=model,
-        feature_extractor=_FakeFeatureExtractor(),
+        feature_extractor=feature_extractor,
         tokenizer=_FakeTokenizer(),
         config=_config(max_position_embeddings=max_position_embeddings),
     )
-    return runtime, model
+    return runtime, model, feature_extractor
 
 
 def test_granite_generation_replaces_audio_embeddings_and_greedy_decodes():
-    runtime, model = _runtime()
+    runtime, model, feature_extractor = _runtime()
 
     result = runtime.transcribe(np.zeros((160,), dtype=np.float32), max_new_tokens=2)
 
+    assert feature_extractor.preflight_called is True
+    assert feature_extractor.extract_called is True
+    assert model.audio_features_called is True
     np.testing.assert_array_equal(np.array(model.last_masked_ids), np.array([[1, 0, 0, 2]]))
     prefill_inputs = np.array(model.language_model.prefill_inputs)
     assert prefill_inputs.shape == (1, 4, 8)
@@ -123,9 +143,12 @@ def test_granite_generation_replaces_audio_embeddings_and_greedy_decodes():
 
 
 def test_granite_generation_validates_context_before_prefill():
-    runtime, model = _runtime(max_position_embeddings=5)
+    runtime, model, feature_extractor = _runtime(max_position_embeddings=5)
 
     with pytest.raises(ValueError, match="exceeds context"):
         runtime.transcribe(np.zeros((160,), dtype=np.float32), max_new_tokens=2)
 
+    assert feature_extractor.preflight_called is True
+    assert feature_extractor.extract_called is False
+    assert model.audio_features_called is False
     assert model.language_model.prefill_inputs is None

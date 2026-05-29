@@ -53,6 +53,10 @@ Use `.agent/work/2026-05-29-granite-speech-long-audio-memory/DESIGN.md`. The key
 
 **Touches:** `src/mlx_speech/generation/granite_speech_asr.py`, unit tests.
 
+**Status:** complete
+**Evidence:** moved Granite prompt/context validation to sample-count preflight before feature extraction and audio projection, with mismatch protection between preflight and extraction token counts; `.venv/bin/python -m pytest tests/unit/test_granite_speech_generation.py tests/unit/test_granite_speech_memory_bounds.py` passed (5 tests), including the over-context path proving feature extraction and `get_audio_features(...)` are not called.
+**Risks / next:** normal generation remains unit-proven; full runtime smoke remains in final verification.
+
 ### Slice 3: Coarse MLX Memory Telemetry
 
 **Objective:** Add reusable coarse memory snapshots and include them in Granite diagnostic summaries without polling.
