@@ -93,6 +93,12 @@ Use `.agent/work/2026-05-29-granite-speech-long-audio-memory/DESIGN.md`. The key
 
 **Touches:** `scripts/generate/granite_speech_asr.py` or `scripts/eval/granite_speech_long_audio.py`, unit tests.
 
+**Status:** complete
+
+**Evidence:** added `scripts/eval/granite_speech_long_audio.py`, a `/tmp`-validated long-audio benchmark driver that downloads/reuses the LibriVox/Gutenberg source, extracts the known chapter script, chunks audio into WAVs under `/tmp`, reuses Granite transcription diagnostics with memory telemetry, writes combined transcript and `summary.json`, and reports duration, chunk, token, timing, RTF/RTFx, memory, non-empty, and normalized word metrics; `.venv/bin/python -m pytest tests/unit/test_granite_speech_diagnostics.py tests/unit/test_granite_speech_long_audio_benchmark.py` passed (9 tests), and `.venv/bin/python -m ruff check scripts/eval/granite_speech_long_audio.py tests/unit/test_granite_speech_long_audio_benchmark.py` passed.
+
+**Risks / next:** unit tests prove planning/scoring shape without network or weights; slice 5 performs the real `/tmp` benchmark run.
+
 ### Slice 5: Final Granite Verification And Long-Audio Measurement
 
 **Objective:** Prove the fixed runtime still passes Granite gates and collect post-fix `/tmp` long-audio behavior evidence.
