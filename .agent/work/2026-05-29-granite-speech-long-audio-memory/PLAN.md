@@ -72,6 +72,12 @@ Use `.agent/work/2026-05-29-granite-speech-long-audio-memory/DESIGN.md`. The key
 
 **Touches:** `scripts/generate/granite_speech_asr.py`, optional helper under `src/mlx_speech/`, unit tests.
 
+**Status:** complete
+
+**Evidence:** added `src/mlx_speech/diagnostics.py` with explicit MLX active/cache/peak snapshots, peak reset, and cache clearing; Granite diagnostic summaries now optionally include timing, token counts, and named memory snapshots at request boundaries; `.venv/bin/python -m pytest tests/unit/test_granite_speech_diagnostics.py tests/unit/test_granite_speech_memory_bounds.py` passed (8 tests).
+
+**Risks / next:** telemetry is summary-shape/unit-proven; real long-audio memory behavior is measured in slice 5.
+
 ### Slice 4: `/tmp` Long-Audio Benchmark Driver
 
 **Objective:** Add a repeatable `/tmp`-only benchmark path for public-domain long audio with known script comparison.

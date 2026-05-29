@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import sys
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -31,6 +32,10 @@ class TranscriptRecord:
     output_path: str
     non_empty: bool
     error: str | None = None
+    prompt_tokens: int | None = None
+    generated_tokens: int | None = None
+    wall_time_s: float | None = None
+    memory_snapshots: list[dict[str, int | str | None]] | None = None
 
 
 def _slug(text: str) -> str:
@@ -75,6 +80,7 @@ def transcribe_paths(
     max_new_tokens: int,
     prompt: str | None,
     language: str,
+    memory_telemetry: bool = False,
 ) -> list[TranscriptRecord]:
     records: list[TranscriptRecord] = []
     transcripts_dir = output_dir / "transcripts"
@@ -82,6 +88,13 @@ def transcribe_paths(
 
     for audio_path in audio_paths:
         output_path = transcript_path_for(audio_path, output_dir)
+        started = time.perf_counter()
+        snapshots: list[dict[str, int | str | None]] | None = None
+        if memory_telemetry:
+            from mlx_speech.diagnostics import reset_mlx_peak_memory, snapshot_mlx_memory
+
+            reset_mlx_peak_memory()
+            snapshots = [snapshot_mlx_memory("before_transcribe").to_dict()]
         try:
             result = runtime.transcribe(
                 audio_path,
@@ -89,6 +102,13 @@ def transcribe_paths(
                 prompt=prompt,
                 language=language,
             )
+            wall_time_s = time.perf_counter() - started
+            if memory_telemetry:
+                from mlx_speech.diagnostics import clear_mlx_cache, snapshot_mlx_memory
+
+                snapshots.append(snapshot_mlx_memory("after_transcribe").to_dict())
+                clear_mlx_cache()
+                snapshots.append(snapshot_mlx_memory("after_clear_cache").to_dict())
             output_path.write_text(result.text + "\n", encoding="utf-8")
             records.append(
                 TranscriptRecord(
@@ -96,15 +116,28 @@ def transcribe_paths(
                     output_path=str(output_path),
                     non_empty=bool(result.text.strip()),
                     error=None,
+                    prompt_tokens=result.prompt_tokens,
+                    generated_tokens=len(result.tokens),
+                    wall_time_s=wall_time_s,
+                    memory_snapshots=snapshots,
                 )
             )
         except Exception as exc:
+            wall_time_s = time.perf_counter() - started
+            if memory_telemetry:
+                from mlx_speech.diagnostics import clear_mlx_cache, snapshot_mlx_memory
+
+                snapshots.append(snapshot_mlx_memory("after_error").to_dict())
+                clear_mlx_cache()
+                snapshots.append(snapshot_mlx_memory("after_clear_cache").to_dict())
             records.append(
                 TranscriptRecord(
                     input_path=str(audio_path),
                     output_path=str(output_path),
                     non_empty=False,
                     error=str(exc),
+                    wall_time_s=wall_time_s,
+                    memory_snapshots=snapshots,
                 )
             )
     return records
@@ -131,6 +164,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prompt", default=None)
     parser.add_argument("--max-new-tokens", type=int, default=200)
     parser.add_argument("--limit", type=int, default=None, help="Limit discovered inputs.")
+    parser.add_argument(
+        "--memory-telemetry",
+        action="store_true",
+        help="Record coarse MLX memory snapshots in summary.json.",
+    )
     return parser.parse_args()
 
 
@@ -161,6 +199,7 @@ def main() -> None:
         max_new_tokens=args.max_new_tokens,
         prompt=args.prompt,
         language=args.language,
+        memory_telemetry=args.memory_telemetry,
     )
     summary_path = write_summary(records, output_dir)
     failures = sum(1 for record in records if record.error or not record.non_empty)
