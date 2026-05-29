@@ -169,6 +169,10 @@ Use the design in `.agent/work/2026-05-29-granite-speech-asr/DESIGN.md`: a local
 
 **Touches:** `src/mlx_speech/generation/granite_speech_asr.py`, `src/mlx_speech/asr/__init__.py`, `src/mlx_speech/asr/_adapters/granite_speech.py`, tests.
 
+**Status:** complete
+**Evidence:** added Granite greedy transcription runtime, strict context-window validation, audio embedding prompt prefill, bounded KV-cache generation loop, generic ASR adapter, and `asr.load` dispatch; `.venv/bin/python -m pytest tests/unit/test_granite_speech_generation.py tests/unit/test_granite_speech_adapter.py tests/unit/test_granite_speech_memory_bounds.py` passed (8 tests); `.venv/bin/python -m pytest tests/unit/` passed (363 tests).
+**Risks / next:** runtime path is unit-proven with fakes; real local transcript quality waits for gated slice 9 smoke and diagnostics.
+
 ### Slice 9: Gated Runtime Smoke, Diagnostics, And Documentation
 
 **Objective:** Prove local end-to-end transcription on the downloaded checkpoint, add local transcript diagnostics under `outputs/granite_speech_asr/`, then document Granite Speech support.

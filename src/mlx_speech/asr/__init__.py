@@ -48,5 +48,9 @@ def load(
         from ._adapters.cohere import CohereASRAdapter
 
         return CohereASRAdapter.from_dir(model_dir)
+    if family == "granite":
+        from ._adapters.granite_speech import GraniteSpeechASRAdapter
+
+        return GraniteSpeechASRAdapter.from_dir(model_dir)
 
     raise ValueError(f"Unsupported ASR family: {family!r}")
