@@ -105,14 +105,23 @@ Use `.agent/work/2026-05-29-granite-speech-long-audio-memory/DESIGN.md`. The key
 
 **Acceptance criteria:**
 
-- Existing Granite unit, checkpoint, runtime smoke, and dependency guard tests pass.
+- The default unit suite remains weight-free and passes.
+- Local Granite checkpoint and runtime smoke tests pass when the IBM checkpoint is available, and remain skip-gated when weights are absent.
 - A real `/tmp` long-audio run uses a public-domain >10-minute file with matching script and completes with context-safe chunking.
 - Final evidence reports peak MLX memory, active/cache memory after cleanup, duration, wall time, RTF/RTFx, token counts, and word-level accuracy/coverage.
 - The report explicitly compares post-fix memory behavior with the prior 100+ GB memory-pressure observation and says whether the issue is resolved or still reproducible.
 
 **Verification:** `.venv/bin/python -m pytest tests/unit/ tests/checkpoint/test_granite_speech_full_load.py tests/runtime/test_granite_speech_smoke.py && tmpdir=$(mktemp -d /tmp/granite-long-audio-fixed.XXXXXX) && .venv/bin/python scripts/eval/granite_speech_long_audio.py --output-dir "$tmpdir" --source three-bears-catamount --chunk-seconds 120 --max-new-tokens 350`
 
+The checkpoint/runtime portions are local-weight verification only: they are expected to skip cleanly for users without `models/ibm/granite_4_0_1b_speech/original`. The long-audio benchmark is manual and writes under `/tmp`, not a default automated-build step.
+
 **Touches:** PLAN evidence, docs if behavior notes change.
+
+**Status:** complete
+
+**Evidence:** `.venv/bin/python -m pytest tests/unit/ tests/checkpoint/test_granite_speech_full_load.py tests/runtime/test_granite_speech_smoke.py` passed locally (377 tests, including the unit dependency guard, strict Granite checkpoint load, and runtime smoke; checkpoint/runtime paths remain skip-gated for users without IBM weights). Real benchmark command passed with `/tmp/granite-long-audio-fixed.3Uc4ON`: duration `1069.17s`, chunks `9`, prompt tokens `10854`, generated tokens `2807`, transcription wall time `33.73s`, RTF `0.0316`, RTFx `31.69`, non-empty chunks `9/9`, peak MLX memory `14.83 GiB`, final active memory `4.31 GiB`, final cache memory `0`, reference coverage `0.883`, word accuracy `0.858`, hypothesis precision `0.965`. Updated `docs/granite-speech-asr.md` to document telemetry, `/tmp` benchmark use, efficient attention, early context validation, and long-audio chunking limits.
+
+**Risks / next:** post-fix `/tmp` run did not reproduce the prior 100+ GB memory-pressure pattern; remaining accuracy gaps are chunking/generation-quality behavior rather than the old explicit attention allocation blow-up.
 
 ## Aggregate Verification Commands
 

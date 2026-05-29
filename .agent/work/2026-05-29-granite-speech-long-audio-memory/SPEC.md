@@ -63,9 +63,9 @@ The user wants IBM Granite Speech ASR to behave like the repo's other local MLX 
 - Granite LM attention no longer explicitly materializes `[B, heads, L, L]` scores/weights in the local implementation, and uses `mx.fast.scaled_dot_product_attention` or an equivalently efficient MLX primitive that supports GQA without pre-tiling KV heads.
 - Unit tests prove tiny Granite LM prefill and cached decode still work, cache length increments correctly, and cache dtype follows the configured/runtime dtype.
 - A preflight/context test proves an over-context long audio request fails before `get_audio_features(...)` or encoder/projector execution.
-- The existing Granite verification set still passes: unit tests, strict checkpoint full-load, runtime smoke, and dependency guard.
+- The default unit suite remains weight-free. Local Granite verification still passes where weights are present: strict checkpoint full-load and runtime smoke must stay skip-gated for users without IBM checkpoint files.
 - Diagnostic scripts can emit coarse memory metrics in their summary without continuous polling.
-- A `/tmp` long-audio run using a public-domain >10-minute file and matching script completes through the fixed path with context-safe chunking, records memory and timing metrics, and produces an accuracy/coverage report against the script.
+- A manually invoked `/tmp` long-audio run using a public-domain >10-minute file and matching script completes through the fixed path with context-safe chunking, records memory and timing metrics, and produces an accuracy/coverage report against the script.
 - The final report includes before/after interpretation of memory behavior and efficiency, including whether the prior 100+ GB memory-pressure pattern is resolved or still reproducible.
 
 ## Anti-Goals
