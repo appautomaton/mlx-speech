@@ -21,6 +21,11 @@ Current guides:
 - [CohereASR](./cohere-asr.md)
 - [Granite Speech ASR](./granite-speech-asr.md)
 
+Benchmarks:
+
+- [Granite Speech long-audio benchmark, 2026-05-29](./benchmarks/granite-speech-long-audio-2026-05-29.md)
+- [Cohere ASR long-audio benchmark, 2026-05-29](./benchmarks/cohere-asr-long-audio-2026-05-29.md)
+
 Guide scope:
 
 - guides describe runtime behavior plus CLI or module entry points
