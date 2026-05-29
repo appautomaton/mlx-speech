@@ -62,6 +62,18 @@ def test_granite_lm_one_step_cached_decode_extends_cache():
     assert step.kv_cache.current_length == 4
 
 
+def test_granite_lm_cache_dtype_follows_model_dtype():
+    model = GraniteCausalLM(_tiny_config())
+    model.set_dtype(mx.bfloat16)
+
+    out = model.prefill(input_ids=mx.array([[1, 2, 3]], dtype=mx.int32), max_cache_len=8)
+    mx.eval(out.logits)
+
+    assert out.kv_cache is not None
+    assert out.kv_cache.layers[0].keys.dtype == mx.bfloat16
+    assert out.kv_cache.layers[0].values.dtype == mx.bfloat16
+
+
 def test_granite_lm_greedy_next_token_uses_final_position():
     logits = mx.array([[[0.0, 5.0, 1.0], [3.0, 1.0, 9.0]]], dtype=mx.float32)
 

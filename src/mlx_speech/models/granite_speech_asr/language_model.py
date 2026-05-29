@@ -10,31 +10,6 @@ import mlx.nn as nn
 from .config import GraniteSpeechTextConfig
 
 
-def _repeat_kv(x: mx.array, repeats: int) -> mx.array:
-    if repeats == 1:
-        return x
-    return mx.repeat(x, repeats, axis=1)
-
-
-def _make_additive_causal_mask(
-    query_len: int,
-    key_len: int,
-    *,
-    offset: int,
-    dtype: mx.Dtype,
-) -> mx.array | None:
-    if query_len == 1:
-        return None
-    query_positions = mx.arange(offset, offset + query_len)[:, None]
-    key_positions = mx.arange(key_len)[None, :]
-    allowed = query_positions >= key_positions
-    return mx.where(
-        allowed,
-        mx.array(0, dtype=dtype),
-        mx.array(mx.finfo(dtype).min, dtype=dtype),
-    )[None, None, :, :]
-
-
 @dataclass
 class GraniteLayerKVCache:
     batch_size: int
@@ -112,7 +87,6 @@ class GraniteAttention(nn.Module):
         self.num_attention_heads = config.num_attention_heads
         self.num_key_value_heads = config.num_key_value_heads
         self.head_dim = config.hidden_size // config.num_attention_heads
-        self.kv_repeat = config.num_attention_heads // config.num_key_value_heads
         self.scale = config.attention_multiplier
         bias = config.attention_bias
 
@@ -147,14 +121,13 @@ class GraniteAttention(nn.Module):
             layer_cache.append(k, v)
             k, v = layer_cache.get()
 
-        k = _repeat_kv(k, self.kv_repeat)
-        v = _repeat_kv(v, self.kv_repeat)
-        scores = mx.matmul(q.astype(mx.float32), k.astype(mx.float32).transpose(0, 1, 3, 2)) * self.scale
-        mask = _make_additive_causal_mask(seq_len, int(k.shape[2]), offset=offset, dtype=mx.float32)
-        if mask is not None:
-            scores = scores + mask
-        weights = mx.softmax(scores, axis=-1).astype(q.dtype)
-        out = mx.matmul(weights.astype(mx.float32), v.astype(mx.float32))
+        out = mx.fast.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            scale=self.scale,
+            mask="causal",
+        )
         out = out.transpose(0, 2, 1, 3).reshape(batch, seq_len, -1)
         return self.o_proj(out).astype(x.dtype)
 
@@ -281,12 +254,16 @@ class GraniteCausalLM(nn.Module):
         inputs_embeds: mx.array | None = None,
         max_cache_len: int,
     ) -> GraniteCausalLMOutput:
-        batch_size = int((inputs_embeds if inputs_embeds is not None else input_ids).shape[0])
+        if (input_ids is None) == (inputs_embeds is None):
+            raise ValueError("Specify exactly one of input_ids or inputs_embeds.")
+        input_source = inputs_embeds if inputs_embeds is not None else input_ids
+        batch_size = int(input_source.shape[0])
+        cache_dtype = inputs_embeds.dtype if inputs_embeds is not None else self.model.embed_tokens.weight.dtype
         cache = GraniteKVCache.allocate(
             self.config,
             batch_size=batch_size,
             max_length=max_cache_len,
-            dtype=mx.float32,
+            dtype=cache_dtype,
         )
         logits = self(input_ids=input_ids, inputs_embeds=inputs_embeds, kv_cache=cache)
         cache.prompt_length = int(logits.shape[1])
