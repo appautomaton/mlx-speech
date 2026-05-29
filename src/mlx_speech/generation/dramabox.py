@@ -288,6 +288,12 @@ class DramaBoxModel:
             ref_mel = AudioProcessor().waveform_to_mel(ref_audio.waveform, sample_rate=ref_audio.sample_rate)
             ref_latent = self.audio_vae.encode(ref_mel)
             state = apply_reference_latent(state, ref_latent, patchifier=patchifier)
+            # Per-token timesteps (denoise_mask * sigma) keep the appended reference
+            # tokens modulated as clean (timestep 0) in the DiT AdaLN. None for the
+            # no-ref path → bit-identical scalar-sigma baseline.
+            loop_denoise_mask = state.denoise_mask
+        else:
+            loop_denoise_mask = None
 
         # ----- Noise -----
         noiser = GaussianNoiser(seed=seed)
@@ -308,6 +314,7 @@ class DramaBoxModel:
             a_ctx_neg=a_ctx_neg,
             params=params,
             positions=state.positions,
+            denoise_mask=loop_denoise_mask,
         )
 
         # ----- Strip appended reference tokens before VAE decode -----

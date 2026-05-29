@@ -98,7 +98,9 @@ class LTXBlock(nn.Module):
 
         Args:
             x: ``[B, T_audio, dim]`` patchified latent.
-            ada_emb: ``[B, ada_coeff * dim]`` per-batch AdaLN bias.
+            ada_emb: AdaLN bias — per-batch ``[B, ada_coeff * dim]`` (broadcast
+                over tokens) or per-token ``[B, T_audio, ada_coeff * dim]`` (used
+                for voice-ref conditioning so ref tokens get clean modulation).
             prompt_ada_emb: ``[B, 2 * dim]`` cross-attn context AdaLN bias.
             context: ``[B, T_text, context_dim]`` ``a_ctx`` from the prompt encoder.
             rope_cos_sin: pre-computed RoPE (cos, sin) for the audio sequence.
@@ -110,9 +112,14 @@ class LTXBlock(nn.Module):
         B = x.shape[0]
         dim = self.dim
 
-        # Slice the global ada_emb into 9 per-block factor vectors of shape (B, 1, dim)
-        # then add the per-block bias table.
-        ada = ada_emb.reshape(B, 1, 9, dim) + self.audio_scale_shift_table[None, None]
+        # Slice ada_emb into 9 per-block factor vectors then add the per-block bias
+        # table. Per-batch ada_emb [B, 9*dim] → (B, 1, 9, dim) broadcasts over
+        # tokens; per-token ada_emb [B, T, 9*dim] → (B, T, 9, dim) modulates each
+        # token (ref tokens carry clean timestep-0 factors).
+        if ada_emb.ndim == 2:
+            ada = ada_emb.reshape(B, 1, 9, dim) + self.audio_scale_shift_table[None, None]
+        else:
+            ada = ada_emb.reshape(B, ada_emb.shape[1], 9, dim) + self.audio_scale_shift_table[None, None]
 
         # Self-attention sub-block (factors 0..2)
         shift_msa = ada[:, :, 0, :]

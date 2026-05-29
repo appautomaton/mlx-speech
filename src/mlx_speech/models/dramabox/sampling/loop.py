@@ -30,6 +30,7 @@ def euler_denoising_loop(
     params: GuiderParams,
     positions: mx.array | None = None,
     rope_cos_sin: tuple[mx.array, mx.array] | None = None,
+    denoise_mask: mx.array | None = None,
 ) -> LatentState:
     """Run the 30-step Euler denoising loop.
 
@@ -44,6 +45,9 @@ def euler_denoising_loop(
             forwarded to the DiT so RoPE matches the reference.
         rope_cos_sin: optional pre-computed RoPE table; takes precedence over
             ``positions``.
+        denoise_mask: optional ``[B, T, 1]`` per-token mask forwarded to the
+            x0_model/DiT so reference tokens get per-token timestep 0. Pass
+            ``None`` (no voice ref) to keep the bit-identical scalar-sigma path.
     Returns:
         Updated `LatentState` after the final Euler step (`sigma_next == 0`).
     """
@@ -60,12 +64,14 @@ def euler_denoising_loop(
             state.latent, a_ctx=a_ctx, sigma=sigma_batched,
             positions=positions, rope_cos_sin=rope_cos_sin,
             attention_mask=state.attention_mask,
+            denoise_mask=denoise_mask,
         )
         uncond = (
             x0_model(
                 state.latent, a_ctx=a_ctx_neg, sigma=sigma_batched,
                 positions=positions, rope_cos_sin=rope_cos_sin,
                 attention_mask=state.attention_mask,
+                denoise_mask=denoise_mask,
             )
             if params.needs_uncond and a_ctx_neg is not None
             else None

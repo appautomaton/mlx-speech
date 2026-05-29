@@ -36,6 +36,7 @@ class X0Model:
         positions: mx.array | None = None,
         rope_cos_sin: tuple[mx.array, mx.array] | None = None,
         attention_mask: mx.array | None = None,
+        denoise_mask: mx.array | None = None,
     ) -> mx.array:
         """Return denoised ``x0 [B, T, 128]`` for the given inputs.
 
@@ -47,6 +48,10 @@ class X0Model:
                 passed through to the velocity model for RoPE.
             rope_cos_sin: optional pre-computed RoPE table.
             attention_mask: optional additive self-attention mask.
+            denoise_mask: optional ``[B, T, 1]`` per-token mask. When given, both
+                the DiT AdaLN and this x0 conversion use per-token
+                ``timesteps = denoise_mask * sigma`` (matches upstream `X0Model`),
+                so frozen reference tokens (mask 0) are returned unchanged.
         """
         velocity = self.velocity_model(
             latent,
@@ -55,9 +60,15 @@ class X0Model:
             positions=positions,
             rope_cos_sin=rope_cos_sin,
             attention_mask=attention_mask,
+            denoise_mask=denoise_mask,
         )
-        # For our broadcast-sigma baseline (no voice ref), timesteps == sigma scalar.
-        return to_denoised(latent, velocity, float(sigma[0]))
+        if denoise_mask is None:
+            # Broadcast-sigma baseline (no voice ref): timesteps == sigma scalar.
+            return to_denoised(latent, velocity, float(sigma[0]))
+        # Per-token timesteps = denoise_mask * sigma (ref tokens → 0 → x0 == latent).
+        timesteps = sigma.astype(mx.float32).reshape(-1, *([1] * (latent.ndim - 1))) * denoise_mask.astype(mx.float32)
+        out = latent.astype(mx.float32) - velocity.astype(mx.float32) * timesteps
+        return out.astype(latent.dtype)
 
 
 __all__ = ["X0Model"]

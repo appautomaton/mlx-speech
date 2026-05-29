@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mlx.core as mx
 import numpy as np
 
 from mlx_speech.models.step_audio_editx import (
@@ -82,6 +83,10 @@ def test_flow_conditioner_prepare_nonstream_inputs_shapes() -> None:
 
 
 def test_tiny_flow_model_inference_returns_expected_shape() -> None:
+    # Fixed seed: this builds random-weight models and runs a CFM ODE solve, so
+    # finiteness depends on the init. Without a seed it inherits global MLX RNG
+    # state (order-dependent across the suite) and can occasionally blow up to NaN.
+    mx.random.seed(0)
     conditioner = StepAudioFlowConditioner(
         StepAudioFlowConditioningConfig(
             vocab_size=64,

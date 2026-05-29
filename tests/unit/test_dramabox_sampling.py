@@ -8,6 +8,7 @@ import pytest
 from mlx_speech.models.dramabox.sampling import (
     GuiderParams,
     MultiModalGuider,
+    X0Model,
     auto_rescale_for_cfg,
     euler_denoising_loop,
     silence_prior_fix,
@@ -137,9 +138,12 @@ def test_euler_loop_passes_state_attention_mask_to_x0_model():
     class RecordingX0:
         def __init__(self):
             self.attention_masks = []
+            self.denoise_masks = []
 
-        def __call__(self, latent, *, a_ctx, sigma, positions=None, rope_cos_sin=None, attention_mask=None):
+        def __call__(self, latent, *, a_ctx, sigma, positions=None, rope_cos_sin=None,
+                     attention_mask=None, denoise_mask=None):
             self.attention_masks.append(attention_mask)
+            self.denoise_masks.append(denoise_mask)
             return latent
 
     mask = mx.zeros((1, 1, 4, 4), dtype=mx.float32)
@@ -163,6 +167,82 @@ def test_euler_loop_passes_state_attention_mask_to_x0_model():
     )
 
     assert x0.attention_masks == [mask]
+    # No denoise_mask passed → loop forwards None (scalar-sigma path preserved).
+    assert x0.denoise_masks == [None]
+
+
+def test_euler_loop_forwards_denoise_mask_to_x0_model():
+    class RecordingX0:
+        def __init__(self):
+            self.denoise_masks = []
+
+        def __call__(self, latent, *, a_ctx, sigma, positions=None, rope_cos_sin=None,
+                     attention_mask=None, denoise_mask=None):
+            self.denoise_masks.append(denoise_mask)
+            return latent
+
+    dmask = mx.array([[[1.0], [1.0], [0.0], [0.0]]], dtype=mx.float32)  # 2 target, 2 ref
+    state = LatentState(
+        latent=mx.zeros((1, 4, 8), dtype=mx.float32),
+        denoise_mask=dmask,
+        positions=mx.zeros((1, 1, 4, 2), dtype=mx.float32),
+        clean_latent=mx.zeros((1, 4, 8), dtype=mx.float32),
+        attention_mask=None,
+    )
+    x0 = RecordingX0()
+
+    euler_denoising_loop(
+        state,
+        mx.array([1.0, 0.0], dtype=mx.float32),
+        x0_model=x0,
+        a_ctx=mx.zeros((1, 2, 8), dtype=mx.float32),
+        a_ctx_neg=None,
+        params=GuiderParams(cfg_scale=1.0, stg_scale=0.0, rescale_scale=0.0, modality_scale=1.0),
+        positions=state.positions,
+        denoise_mask=dmask,
+    )
+
+    assert len(x0.denoise_masks) == 1
+    assert x0.denoise_masks[0] is dmask
+
+
+# --------------------------------------------------------------------------- #
+# X0Model per-token timesteps
+# --------------------------------------------------------------------------- #
+
+def test_x0_model_per_token_freezes_ref_tokens():
+    """With a denoise_mask, x0 = latent - velocity * (denoise_mask * sigma):
+    target tokens (mask 1) denoise at sigma; ref tokens (mask 0) stay == latent."""
+    class ConstVelocity:
+        def __call__(self, latent, *, a_ctx, sigma, positions=None, rope_cos_sin=None,
+                     attention_mask=None, denoise_mask=None):
+            return mx.ones_like(latent)  # velocity == 1 everywhere
+
+    x0 = X0Model(ConstVelocity())
+    latent = mx.full((1, 3, 4), 2.0, dtype=mx.float32)
+    dmask = mx.array([[[1.0], [0.0], [1.0]]], dtype=mx.float32)  # middle token frozen
+    sigma = mx.array([0.5], dtype=mx.float32)
+
+    out = x0(latent, a_ctx=mx.zeros((1, 2, 4)), sigma=sigma, denoise_mask=dmask)
+
+    # target: 2 - 1*0.5 = 1.5 ; frozen: 2 - 1*0 = 2.0
+    assert float(out[0, 0, 0]) == pytest.approx(1.5)
+    assert float(out[0, 1, 0]) == pytest.approx(2.0)
+    assert float(out[0, 2, 0]) == pytest.approx(1.5)
+
+
+def test_x0_model_scalar_path_unchanged_without_denoise_mask():
+    """No denoise_mask → scalar to_denoised on every token (baseline path)."""
+    class ConstVelocity:
+        def __call__(self, latent, *, a_ctx, sigma, positions=None, rope_cos_sin=None,
+                     attention_mask=None, denoise_mask=None):
+            return mx.ones_like(latent)
+
+    x0 = X0Model(ConstVelocity())
+    latent = mx.full((1, 3, 4), 2.0, dtype=mx.float32)
+    sigma = mx.array([0.5], dtype=mx.float32)
+    out = x0(latent, a_ctx=mx.zeros((1, 2, 4)), sigma=sigma)
+    assert mx.allclose(out, mx.full((1, 3, 4), 1.5, dtype=mx.float32), atol=1e-6).item()
 
 
 # --------------------------------------------------------------------------- #

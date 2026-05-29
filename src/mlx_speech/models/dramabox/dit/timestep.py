@@ -28,20 +28,24 @@ def sinusoidal_timestep_embedding(
     """Standard diffusion-time sinusoidal embedding.
 
     Args:
-        timesteps: 1-D ``[B]`` float tensor.
+        timesteps: float tensor with arbitrary leading dims — ``[B]`` (per-batch)
+            or ``[B, T]`` (per-token, when timesteps vary by token under
+            voice-ref conditioning).
     Returns:
-        ``[B, embedding_dim]``.
+        ``timesteps.shape + (embedding_dim,)`` — ``[B, embedding_dim]`` or
+        ``[B, T, embedding_dim]``.
     """
     half_dim = embedding_dim // 2
     exponent = -math.log(max_period) * mx.arange(0, half_dim, dtype=mx.float32)
     exponent = exponent / (half_dim - downscale_freq_shift)
-    emb = mx.exp(exponent)
-    emb = timesteps[:, None].astype(mx.float32) * emb[None, :]
+    emb = mx.exp(exponent)  # [half_dim]
+    # Broadcast the freq band against any leading shape: [..., 1] * [half_dim].
+    emb = timesteps[..., None].astype(mx.float32) * emb
     emb = mx.concatenate([mx.sin(emb), mx.cos(emb)], axis=-1)
     if flip_sin_to_cos:
-        emb = mx.concatenate([emb[:, half_dim:], emb[:, :half_dim]], axis=-1)
+        emb = mx.concatenate([emb[..., half_dim:], emb[..., :half_dim]], axis=-1)
     if embedding_dim % 2 == 1:
-        emb = mx.concatenate([emb, mx.zeros_like(emb[:, :1])], axis=-1)
+        emb = mx.concatenate([emb, mx.zeros_like(emb[..., :1])], axis=-1)
     return emb
 
 
@@ -74,7 +78,10 @@ class PixArtAlphaCombinedTimestepEmbedder(nn.Module):
 
 class AdaLayerNormSingle(nn.Module):
     """PixArt-Alpha ``AdaLayerNormSingle`` — produces ``coeff * hidden`` AdaLN
-    factors from a scalar timestep.
+    factors from a timestep. Accepts a per-batch ``[B]`` timestep or a per-token
+    ``[B, T]`` timestep (the latter for voice-ref conditioning, where reference
+    tokens carry timestep 0); the MLP/linear act on the last axis, so the leading
+    shape passes through.
 
     Saved keys:
         emb.timestep_embedder.linear_1.{weight, bias}
@@ -90,9 +97,11 @@ class AdaLayerNormSingle(nn.Module):
     def __call__(self, timesteps: mx.array, dtype: mx.Dtype) -> tuple[mx.array, mx.array]:
         """Returns ``(ada_factors, embedded_timestep)``.
 
-        ``ada_factors`` is ``[B, coeff * hidden]`` (the output of the linear);
-        ``embedded_timestep`` is ``[B, hidden]`` (the MLP output before linear) —
-        used by the model-level final-AdaLN.
+        For ``[B]`` input: ``ada_factors`` is ``[B, coeff * hidden]`` and
+        ``embedded_timestep`` is ``[B, hidden]``. For ``[B, T]`` input the leading
+        ``T`` is preserved: ``[B, T, coeff * hidden]`` and ``[B, T, hidden]``.
+        ``embedded_timestep`` (MLP output before the linear) feeds the model-level
+        final-AdaLN.
         """
         t_emb = self.emb(timesteps, dtype)
         return self.linear(nn.silu(t_emb)), t_emb

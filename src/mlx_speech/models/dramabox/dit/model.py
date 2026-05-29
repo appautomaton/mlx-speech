@@ -94,6 +94,7 @@ class LTXModel(nn.Module):
         positions: mx.array | None = None,
         rope_cos_sin: tuple[mx.array, mx.array] | None = None,
         attention_mask: mx.array | None = None,
+        denoise_mask: mx.array | None = None,
     ) -> mx.array:
         """Forward returning velocity ``[B, T_audio, audio_out_channels=128]``.
 
@@ -111,6 +112,13 @@ class LTXModel(nn.Module):
                 passes through the DiT and want to share the RoPE table.
             attention_mask: optional additive self-attention mask broadcastable
                 to ``[B, heads, T_audio, T_audio]``.
+            denoise_mask: optional ``[B, T_audio, 1]`` per-token mask (1=target,
+                0=frozen reference). When given, the AdaLN timestep is per-token
+                ``timesteps = denoise_mask * sigma`` (matches upstream
+                `timesteps_from_mask` + `_prepare_timestep`), so reference tokens
+                are modulated as clean (timestep 0) instead of at the noisy sigma.
+                When ``None`` the timestep is the per-batch scalar (no-ref path,
+                bit-identical to the pre-conditioning baseline).
 
         Returns:
             velocity ``[B, T_audio, 128]``.
@@ -137,12 +145,21 @@ class LTXModel(nn.Module):
                 out_dtype=compute_dtype,
             )
 
-        # Scaled timestep
-        sigma_scaled = sigma.astype(mx.float32) * float(self.config.timestep_scale_multiplier)
+        # Scaled timestep. Per-batch scalar drives the prompt-AdaLN (upstream feeds
+        # `modality.sigma` there); the main AdaLN uses per-token timesteps when a
+        # denoise_mask is supplied (ref tokens → timestep 0 → clean modulation).
+        scalar_scaled = sigma.astype(mx.float32) * float(self.config.timestep_scale_multiplier)  # [B]
+        if denoise_mask is None:
+            main_scaled = scalar_scaled  # [B]
+        else:
+            dm = denoise_mask
+            if dm.ndim == 3:  # [B, T, 1] → [B, T]
+                dm = dm[..., 0]
+            main_scaled = scalar_scaled[:, None] * dm.astype(mx.float32)  # [B, T]
 
-        ada_emb, embedded_t = self.audio_adaln_single(sigma_scaled, compute_dtype)  # [B, 9*hidden], [B, hidden]
+        ada_emb, embedded_t = self.audio_adaln_single(main_scaled, compute_dtype)  # [B,(T,)9*hidden],[B,(T,)hidden]
         if self.audio_prompt_adaln_single is not None:
-            prompt_ada, _ = self.audio_prompt_adaln_single(sigma_scaled, compute_dtype)
+            prompt_ada, _ = self.audio_prompt_adaln_single(scalar_scaled, compute_dtype)
         else:
             prompt_ada = None
 
@@ -157,15 +174,17 @@ class LTXModel(nn.Module):
                 self_attention_mask=attention_mask,
             )
 
-        # Final AdaLN + output projection
-        ada_out = self.audio_scale_shift_table[None, None] + embedded_t.reshape(B, 1, 1, -1)
-        # Upstream: shift, scale = scale_shift_values[:, :, 0], scale_shift_values[:, :, 1]
-        # But the bias table has shape (2, hidden), and the reshape is (B, 1, 1, hidden).
-        # Need to broadcast properly: bias is (1, 1, 2, hidden), emb is (B, 1, 1, hidden).
-        # Add via broadcasting: (B, 1, 2, hidden).
+        # Final AdaLN + output projection.
+        # bias (1,1,2,hidden) + embedded_t. embedded_t is per-batch [B, hidden]
+        # (→ (B,1,1,hidden), broadcast over tokens) or per-token [B, T, hidden]
+        # (→ (B,T,1,hidden)); both broadcast against the (2,hidden) table to give
+        # (B, 1|T, 2, hidden). shift/scale then broadcast over x's token axis.
         bias = self.audio_scale_shift_table[None, None]  # (1, 1, 2, hidden)
-        embedded = embedded_t.reshape(B, 1, 1, -1)  # (B, 1, 1, hidden) broadcasts to (B, 1, 2, hidden)
-        scale_shift = bias + embedded  # (B, 1, 2, hidden)
+        if embedded_t.ndim == 2:
+            embedded = embedded_t.reshape(B, 1, 1, -1)  # (B, 1, 1, hidden)
+        else:
+            embedded = embedded_t.reshape(B, embedded_t.shape[1], 1, -1)  # (B, T, 1, hidden)
+        scale_shift = bias + embedded  # (B, 1|T, 2, hidden)
         shift_final = scale_shift[:, :, 0, :]
         scale_final = scale_shift[:, :, 1, :]
         x = self._norm_out(x)
