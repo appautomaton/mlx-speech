@@ -193,6 +193,10 @@ Use the design in `.agent/work/2026-05-29-granite-speech-asr/DESIGN.md`: a local
 
 **Touches:** `scripts/generate/granite_speech_asr.py`, `tests/runtime/`, README/docs, dependency guard tests.
 
+**Status:** complete
+**Evidence:** added Granite diagnostic transcript script, collision-safe output paths, summary writing, banned runtime import guard, local runtime smoke with expected phrase `timothy was a spoiled cat`, README/docs coverage for local-path loading, and gated diagnostics under `outputs/granite_speech_asr/`; `.venv/bin/python scripts/generate/granite_speech_asr.py --model-dir models/ibm/granite_4_0_1b_speech/original --audio models/ibm/granite_4_0_1b_speech/original/multilingual_sample.wav --max-new-tokens 8` wrote a non-empty summary; `.venv/bin/python -m pytest tests/unit/ tests/checkpoint/test_granite_speech_full_load.py tests/runtime/test_granite_speech_smoke.py` passed (369 tests).
+**Risks / next:** runtime smoke proves local end-to-end transcription on the bundled sample; broader reference numerical parity remains a follow-up beyond this approved plan.
+
 ## Aggregate Verification Commands
 
 | Slice | Command |

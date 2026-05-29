@@ -21,6 +21,7 @@ pure MLX. No cloud, no PyTorch.
 | `step-audio` | TTS | Step-Audio-EditX — voice cloning + audio editing |
 | `dramabox` | TTS | DramaBox — Resemble flow-matching diffusion TTS (48 kHz stereo, LTX-2 derived) |
 | `cohere-asr` | ASR | Cohere Transcribe — multilingual ASR |
+| local Granite Speech path | ASR | IBM Granite Speech 4.0 1B — local-path ASR |
 
 ## Requirements
 
@@ -59,6 +60,10 @@ asr = mlx_speech.asr.load("cohere-asr")
 result = asr.generate("audio.wav")
 print(result.text)
 
+# Local Granite Speech checkpoint
+granite = mlx_speech.asr.load("models/ibm/granite_4_0_1b_speech/original")
+print(granite.generate("audio.wav").text)
+
 # List available models
 mlx_speech.tts.list_models()
 mlx_speech.asr.list_models()
@@ -92,6 +97,7 @@ mlx-speech tts --model moss-sound-effect \
 
 # Transcribe audio
 mlx-speech asr --model cohere-asr --audio speech.wav
+mlx-speech asr --model models/ibm/granite_4_0_1b_speech/original --audio speech.wav
 
 # Discover models
 mlx-speech tts --list-models
@@ -153,6 +159,7 @@ Each family has a doc covering behavior, flags, and known limitations:
 - [Step-Audio-EditX](./docs/step-audio-editx.md)
 - [DramaBox](./docs/dramabox.md)
 - [CohereASR](./docs/cohere-asr.md)
+- [Granite Speech ASR](./docs/granite-speech-asr.md)
 
 ## Development
 

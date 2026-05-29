@@ -19,6 +19,7 @@ Current guides:
 - [MossTTSLocal](./moss-local.md)
 - [MOSS-SoundEffect](./moss-sound-effect.md)
 - [CohereASR](./cohere-asr.md)
+- [Granite Speech ASR](./granite-speech-asr.md)
 
 Guide scope:
 
