@@ -147,6 +147,10 @@ Use the design in `.agent/work/2026-05-29-granite-speech-asr/DESIGN.md`: a local
 
 **Touches:** `src/mlx_speech/models/granite_speech_asr/model.py`, `checkpoint.py`, `__init__.py`, checkpoint tests.
 
+**Status:** complete
+**Evidence:** added `GraniteSpeechModel` assembly, non-retaining model bundle loader, strict checkpoint load helper, and full-load checkpoint test; `.venv/bin/python -m pytest tests/unit/test_granite_speech_model.py tests/checkpoint/test_granite_speech_full_load.py` passed (5 tests); `.venv/bin/python -m pytest tests/unit/` passed (355 tests).
+**Risks / next:** full load aligns and evaluates locally, but runtime decoding remains unproven until slice 8/9 generation wiring and smoke.
+
 ### Slice 8: Runtime Generation And ASR Adapter
 
 **Objective:** Add the public Granite ASR runtime wrapper and adapter through existing ASR surfaces.

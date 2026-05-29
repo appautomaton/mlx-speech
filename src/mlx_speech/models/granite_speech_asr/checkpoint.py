@@ -133,3 +133,22 @@ def validate_checkpoint_against_model(
 ) -> AlignmentReport:
     model_params = tree_flatten(model.parameters(), destination={})
     return build_alignment_report(model_params, checkpoint.state_dict)
+
+
+def load_checkpoint_into_model(
+    model: nn.Module,
+    checkpoint: GraniteSpeechCheckpoint,
+    *,
+    strict: bool = True,
+) -> AlignmentReport:
+    """Load sanitized Granite Speech weights after explicit key/shape accounting."""
+    report = validate_checkpoint_against_model(model, checkpoint)
+    if strict and not report.is_exact_match:
+        raise ValueError(
+            f"Checkpoint alignment failed: "
+            f"{len(report.checkpoint_only)} checkpoint-only, "
+            f"{len(report.model_only)} model-only, "
+            f"{len(report.shape_mismatches)} shape mismatches."
+        )
+    model.load_weights(list(checkpoint.state_dict.items()), strict=strict)
+    return report

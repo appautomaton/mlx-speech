@@ -4,6 +4,7 @@ from .checkpoint import (
     AlignmentReport,
     GraniteSpeechCheckpoint,
     build_alignment_report,
+    load_checkpoint_into_model,
     load_granite_speech_checkpoint,
     sanitize_state_dict,
     validate_checkpoint_against_model,
@@ -30,6 +31,7 @@ from .language_model import (
     GraniteLayerKVCache,
     greedy_next_token,
 )
+from .model import GraniteSpeechModel, GraniteSpeechModelBundle, load_granite_speech_model
 from .processor import mask_audio_token_ids, replace_audio_embeddings
 from .projector import (
     GraniteSpeechProjector,
@@ -52,6 +54,8 @@ __all__ = [
     "GraniteCausalLMOutput",
     "GraniteKVCache",
     "GraniteLayerKVCache",
+    "GraniteSpeechModel",
+    "GraniteSpeechModelBundle",
     "GraniteSpeechProjector",
     "GraniteSpeechTokenizer",
     "QFormerAttention",
@@ -67,7 +71,9 @@ __all__ = [
     "AlignmentReport",
     "build_alignment_report",
     "greedy_next_token",
+    "load_checkpoint_into_model",
     "load_granite_speech_checkpoint",
+    "load_granite_speech_model",
     "mask_audio_token_ids",
     "replace_audio_embeddings",
     "sanitize_state_dict",
