@@ -1,5 +1,13 @@
 """Granite Speech ASR model family for mlx-speech."""
 
+from .checkpoint import (
+    AlignmentReport,
+    GraniteSpeechCheckpoint,
+    build_alignment_report,
+    load_granite_speech_checkpoint,
+    sanitize_state_dict,
+    validate_checkpoint_against_model,
+)
 from .config import (
     GraniteSpeechConfig,
     GraniteSpeechEncoderConfig,
@@ -15,6 +23,12 @@ __all__ = [
     "GraniteSpeechProjectorConfig",
     "GraniteSpeechTextConfig",
     "GraniteSpeechAudioShape",
+    "GraniteSpeechCheckpoint",
     "GraniteSpeechFeatureExtractor",
     "GraniteSpeechTokenizer",
+    "AlignmentReport",
+    "build_alignment_report",
+    "load_granite_speech_checkpoint",
+    "sanitize_state_dict",
+    "validate_checkpoint_against_model",
 ]

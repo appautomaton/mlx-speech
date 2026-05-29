@@ -67,9 +67,13 @@ Use the design in `.agent/work/2026-05-29-granite-speech-asr/DESIGN.md`: a local
 - Alignment report distinguishes checkpoint-only, model-only, and shape mismatch keys.
 - Real local checkpoint header test confirms 954 indexed keys and component namespaces when files are present; it skips cleanly when absent.
 
-**Verification:** `.venv/bin/python -m pytest tests/unit/test_granite_speech_checkpoint.py tests/checkpoint/test_granite_speech_checkpoint.py`
+**Verification:** `.venv/bin/python -m pytest tests/unit/test_granite_speech_checkpoint_unit.py tests/checkpoint/test_granite_speech_checkpoint.py`
 
 **Touches:** `src/mlx_speech/models/granite_speech_asr/checkpoint.py`, checkpoint tests.
+
+**Status:** complete
+**Evidence:** added Granite sharded checkpoint loader, sanitizer, Conv1d layout fix tracking, alignment report, and index-only local checkpoint inspection; corrected pytest unit/checkpoint basename collision in the slice command; `.venv/bin/python -m pytest tests/unit/test_granite_speech_checkpoint_unit.py tests/checkpoint/test_granite_speech_checkpoint.py` passed (6 tests); `.venv/bin/python -m pytest tests/unit/` passed (336 tests).
+**Risks / next:** strict full-model alignment waits for model module paths in later slices; continue to Conformer encoder.
 
 ### Slice 4: Conformer Encoder
 
@@ -175,7 +179,7 @@ Use the design in `.agent/work/2026-05-29-granite-speech-asr/DESIGN.md`: a local
 | --- | --- |
 | 1 | `.venv/bin/python -m pytest tests/unit/test_granite_speech_config.py tests/unit/test_granite_speech_tokenizer.py tests/unit/test_asr_registry.py` |
 | 2 | `.venv/bin/python -m pytest tests/unit/test_granite_speech_feature_extraction.py` |
-| 3 | `.venv/bin/python -m pytest tests/unit/test_granite_speech_checkpoint.py tests/checkpoint/test_granite_speech_checkpoint.py` |
+| 3 | `.venv/bin/python -m pytest tests/unit/test_granite_speech_checkpoint_unit.py tests/checkpoint/test_granite_speech_checkpoint.py` |
 | 4 | `.venv/bin/python -m pytest tests/unit/test_granite_speech_encoder.py` |
 | 5 | `.venv/bin/python -m pytest tests/unit/test_granite_speech_projector.py tests/unit/test_granite_speech_processor.py` |
 | 6 | `.venv/bin/python -m pytest tests/unit/test_granite_speech_language_model.py && ! rg -n "mlx_lm" src/mlx_speech` |
