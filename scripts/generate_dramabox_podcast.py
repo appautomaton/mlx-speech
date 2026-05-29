@@ -172,9 +172,20 @@ def main() -> None:
     p.add_argument("--cfg-scale", type=float, default=2.5)
     p.add_argument("--steps", type=int, default=30)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--voice-man", type=Path, default=None,
+                   help="Reference clip cloned for MAN turns (transcript-free voice cloning)")
+    p.add_argument("--voice-woman", type=Path, default=None,
+                   help="Reference clip cloned for WOMAN turns")
+    p.add_argument("--max-turns", type=int, default=0,
+                   help="Generate only the first N turns (0 = all)")
+    p.add_argument("--speed", type=float, default=1.0,
+                   help="Speech pace multiplier. Pace = text / duration, so the "
+                        "requested duration is divided by this; 1.2 ≈ 20%% faster.")
     args = p.parse_args()
 
     turns = EPISODES[args.episode]
+    if args.max_turns > 0:
+        turns = turns[: args.max_turns]
     args.out_dir.mkdir(parents=True, exist_ok=True)
     out_path = args.out_dir / f"dive_{args.episode}.wav"
     log_path = args.out_dir / "dive_episodes.log"
@@ -188,6 +199,12 @@ def main() -> None:
     model = DramaBoxModel.from_dir(args.dramabox_dir, gemma_dir=args.gemma_dir)
     log(f"\n[{args.episode}] model loaded in {time.time() - t0:.2f}s; {len(turns)} turn(s)")
 
+    # gender → optional voice reference (transcript-free clone). None falls back
+    # to the persona prefix's described voice (the original behavior).
+    voice_map = {"woman": args.voice_woman, "man": args.voice_man, "narr": None}
+    if args.voice_man or args.voice_woman:
+        log(f"[{args.episode}] cloning: man={args.voice_man} woman={args.voice_woman}")
+
     sr = 48_000
     pieces: list[np.ndarray] = []
     total_audio = 0.0
@@ -196,23 +213,35 @@ def main() -> None:
 
     for ti, (persona, body) in enumerate(turns, 1):
         gender = "woman" if persona is WOMAN else ("man" if persona is MAN else "narr")
+        voice_ref = voice_map.get(gender)
         full_prompt = _assemble(persona, [body])
+        turn_pieces: list[np.ndarray] = []
         for ci, chunk in enumerate(chunk_prompt(full_prompt), 1):
-            dur = max(3.0, min(MAX_CHUNK_S, _est(chunk)))
+            # Pace control: shorter requested duration → faster speech (the model
+            # fills the time it's given). speed=1.2 packs the words into ~83% of
+            # the estimated time.
+            dur = max(3.0, min(MAX_CHUNK_S, _est(chunk) / args.speed))
             g0 = time.time()
             res = model.generate(
                 chunk, duration_s=dur, cfg_scale=args.cfg_scale,
                 rescale_scale="auto", steps=args.steps, seed=args.seed,
+                voice_ref=voice_ref,
             )
             gen = time.time() - g0
-            wf = np.array(res.waveform, copy=False)  # [2, T]
+            wf = np.array(res.waveform, copy=False).astype(np.float32)  # [2, T]
             audio_s = wf.shape[1] / sr
             peak = max(peak, float(np.max(np.abs(wf))))
             total_audio += audio_s
             total_gen += gen
-            pieces.append(wf.astype(np.float32))
-            log(f"  turn {ti}/{len(turns)} ({gender}) chunk {ci}: "
+            pieces.append(wf)
+            turn_pieces.append(wf)
+            clone = voice_ref.stem if voice_ref is not None else "no_ref"
+            log(f"  turn {ti}/{len(turns)} ({gender}/{clone}) chunk {ci}: "
                 f"req={dur:.1f}s audio={audio_s:.1f}s gen={gen:.1f}s RTF={gen / max(audio_s, 1e-6):.2f}x")
+        # Per-turn clip — handy for auditioning each cloned voice on its own.
+        turn_wf = crossfade_concat(turn_pieces, sr)
+        turn_path = args.out_dir / f"dive_{args.episode}_turn{ti:02d}_{gender}.wav"
+        sf.write(str(turn_path), turn_wf.T, sr, subtype="FLOAT")
 
     final = crossfade_concat(pieces, sr)
     sf.write(str(out_path), final.T, sr, subtype="FLOAT")
