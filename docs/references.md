@@ -36,6 +36,9 @@ As of March 29, 2026:
   — Resemble's flow-matching diffusion TTS. Source-truth for the v5 plan.
   Vendors a subset of LTX-2 (`ltx2/ltx_core`, `ltx2/ltx_pipelines`) as the
   diffusion framework. Read-only.
+- `.references/granite-4.0-1b-speech`: `main` at `bd87ab862416353633ea431fe49b1614003623c5` (2026-04-02)
+  — Hugging Face model repo for IBM Granite Speech 4.0 1B. Shallow clone with
+  Git LFS smudge disabled; large model files remain as LFS pointers.
 
 ## Notes
 

@@ -1,8 +1,8 @@
 {
-  "active_change": "2026-05-28-dramabox-voice-cloning",
-  "stage": "execute",
-  "canonical_spec": ".agent/work/2026-05-28-dramabox-voice-cloning/SPEC.md",
-  "canonical_design": ".agent/work/2026-05-28-dramabox-voice-cloning/DESIGN.md",
-  "canonical_plan": ".agent/work/2026-05-28-dramabox-voice-cloning/PLAN.md",
+  "active_change": "2026-05-29-granite-speech-asr",
+  "stage": "plan",
+  "canonical_spec": ".agent/work/2026-05-29-granite-speech-asr/SPEC.md",
+  "canonical_design": ".agent/work/2026-05-29-granite-speech-asr/DESIGN.md",
+  "canonical_plan": ".agent/work/2026-05-29-granite-speech-asr/PLAN.md",
   "engineering_review": "approved_with_risks"
 }
