@@ -109,9 +109,9 @@ Required:
 **Evidence:** wired `voice_ref` and `denoise_ref=False` through `src/mlx_speech/generation/dramabox.py`, added CLI flags in `scripts/generate_dramabox.py`, and added runtime A/B coverage in `tests/runtime/test_dramabox_smoke.py`; `.venv/bin/python -m pytest tests/runtime/test_dramabox_smoke.py -q -k voice_ref` passed (`1 passed, 1 deselected`); `.venv/bin/python -m pytest tests/unit/` passed (`309 passed`); generated finite A/B previews in `outputs/dramabox/prompt{1,2}_{no_ref,voice_ref}.wav`.
 **Risks / next:** superseded by VERIFY-GAP below.
 
-> **VERIFY-GAP (2026-05-28, auto-verify) — AC7 perceptual FAIL; previews are smoke-settings artifacts. [Slice-4 root cause RESOLVED; human-verify pending]**
+> **VERIFY-GAP (2026-05-28, auto-verify) — AC7 perceptual FAIL; previews are smoke-settings artifacts. [RESOLVED 2026-05-28 gap-fix]**
 > **Severity:** blocking (AC7 not met → plan fails).
-> **Progress (2026-05-28 gap-fix):** the per-token-timestep root cause (Slice-4 VERIFY-GAP) is fixed; objective A/B at real settings shows voice-ref now tracks the reference (see Slice 4). Real-settings previews regenerated into `outputs/dramabox/`. Remaining: human listen confirms the cloned voice tracks the reference (the AC7 `human-verify` checkpoint) — not auto-assertable.
+> **Resolution:** Slice-4 per-token-timestep root cause fixed; real-settings A/B previews regenerated into `outputs/dramabox/prompt{1,2}_{no_ref,voice_ref}.wav` (6 s, 30 steps, cfg 2.5; outputs/ is gitignored, local-only). **Human-verify checkpoint PASSED (2026-05-28):** user confirmed the cloned voice is clean and tracks the reference (artifacts/echoing gone). AC7 satisfied.
 > **Evidence (fresh):**
 > - The committed previews `outputs/dramabox/prompt{1,2}_{no_ref,voice_ref}.wav` were generated with **smoke-test parameters** (`duration_s=1.0, steps=3, cfg_scale=1.0`; file mtimes 20:28:02–20:28:14, 3–5 s apart): all 1.61 s, near-silent (rms 0.004–0.015, envmod 0.47). They are unfit for AC7 perceptual judgment — they are not real previews.
 > - Fresh real-settings A/B (6 s, 30 steps, cfg 2.5, seed 42, identical prompt; only `voice_ref` differs): no-ref is clean, speech-like (rms 0.058, flatness 0.072, envmod 1.43, comparable to the known-good `dive_ep01`). voice-ref is finite/clamped but **perceptually bad — artifacts + echoing (human listen, 2026-05-28)**.
