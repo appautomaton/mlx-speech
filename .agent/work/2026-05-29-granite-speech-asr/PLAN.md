@@ -32,6 +32,10 @@ Use the design in `.agent/work/2026-05-29-granite-speech-asr/DESIGN.md`: a local
 
 **Touches:** `src/mlx_speech/models/granite_speech_asr/`, `src/mlx_speech/asr/_registry.py`, unit tests.
 
+**Status:** complete
+**Evidence:** added Granite config/tokenizer package scaffolding and registry detection; `.venv/bin/python -m pytest tests/unit/test_granite_speech_config.py tests/unit/test_granite_speech_tokenizer.py tests/unit/test_asr_registry.py` passed (8 tests); `.venv/bin/python -m pytest tests/unit/` passed (325 tests).
+**Risks / next:** none for slice 1; continue to feature extraction and audio token accounting.
+
 ### Slice 2: Feature Extraction And Audio Token Accounting
 
 **Objective:** Implement Granite Speech's local audio frontend and token-count calculation.
