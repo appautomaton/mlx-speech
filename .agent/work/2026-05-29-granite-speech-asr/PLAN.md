@@ -108,6 +108,10 @@ Use the design in `.agent/work/2026-05-29-granite-speech-asr/DESIGN.md`: a local
 
 **Touches:** `src/mlx_speech/models/granite_speech_asr/projector.py`, `processor.py`, unit tests.
 
+**Status:** complete
+**Evidence:** added checkpoint-shaped QFormer projector with 15-frame window padding and 3 queries per window, plus strict audio embedding replacement helpers; `.venv/bin/python -m pytest tests/unit/test_granite_speech_projector.py tests/unit/test_granite_speech_processor.py` passed (6 tests); `.venv/bin/python -m pytest tests/unit/` passed (346 tests).
+**Risks / next:** projector numerical parity is not yet checked against reference weights; continue to local Granite causal LM primitives.
+
 ### Slice 6: Granite Causal LM And Greedy Decode Primitives
 
 **Objective:** Implement the local Granite LM pieces needed for ASR prefill and token-by-token greedy decoding.

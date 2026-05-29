@@ -23,6 +23,14 @@ from .encoder import (
     GraniteSpeechEncoder,
 )
 from .feature_extraction import GraniteSpeechAudioShape, GraniteSpeechFeatureExtractor
+from .processor import mask_audio_token_ids, replace_audio_embeddings
+from .projector import (
+    GraniteSpeechProjector,
+    QFormerAttention,
+    QFormerEncoder,
+    QFormerLayer,
+    QFormerModel,
+)
 from .tokenizer import GraniteSpeechTokenizer
 
 __all__ = [
@@ -33,7 +41,12 @@ __all__ = [
     "GraniteSpeechAudioShape",
     "GraniteSpeechCheckpoint",
     "GraniteSpeechFeatureExtractor",
+    "GraniteSpeechProjector",
     "GraniteSpeechTokenizer",
+    "QFormerAttention",
+    "QFormerEncoder",
+    "QFormerLayer",
+    "QFormerModel",
     "BatchNorm1d",
     "ConformerAttention",
     "ConformerBlock",
@@ -43,6 +56,8 @@ __all__ = [
     "AlignmentReport",
     "build_alignment_report",
     "load_granite_speech_checkpoint",
+    "mask_audio_token_ids",
+    "replace_audio_embeddings",
     "sanitize_state_dict",
     "validate_checkpoint_against_model",
 ]
