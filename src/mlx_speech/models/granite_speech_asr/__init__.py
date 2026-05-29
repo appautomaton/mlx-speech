@@ -14,6 +14,14 @@ from .config import (
     GraniteSpeechProjectorConfig,
     GraniteSpeechTextConfig,
 )
+from .encoder import (
+    BatchNorm1d,
+    ConformerAttention,
+    ConformerBlock,
+    ConformerConvModule,
+    ConformerFeedForward,
+    GraniteSpeechEncoder,
+)
 from .feature_extraction import GraniteSpeechAudioShape, GraniteSpeechFeatureExtractor
 from .tokenizer import GraniteSpeechTokenizer
 
@@ -26,6 +34,12 @@ __all__ = [
     "GraniteSpeechCheckpoint",
     "GraniteSpeechFeatureExtractor",
     "GraniteSpeechTokenizer",
+    "BatchNorm1d",
+    "ConformerAttention",
+    "ConformerBlock",
+    "ConformerConvModule",
+    "ConformerFeedForward",
+    "GraniteSpeechEncoder",
     "AlignmentReport",
     "build_alignment_report",
     "load_granite_speech_checkpoint",

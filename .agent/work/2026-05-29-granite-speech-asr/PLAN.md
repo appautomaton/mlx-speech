@@ -89,6 +89,10 @@ Use the design in `.agent/work/2026-05-29-granite-speech-asr/DESIGN.md`: a local
 
 **Touches:** `src/mlx_speech/models/granite_speech_asr/encoder.py`, unit tests.
 
+**Status:** complete
+**Evidence:** added MLX Conformer encoder with block attention, relative position embeddings, Conv1d module with BatchNorm-style running stats, midpoint CTC self-conditioning, and checkpoint-shaped parameter names; `.venv/bin/python -m pytest tests/unit/test_granite_speech_encoder.py` passed (4 tests); `.venv/bin/python -m pytest tests/unit/` passed (340 tests).
+**Risks / next:** numerical parity against reference is still deferred per engineering review; continue to QFormer projector and audio embedding replacement.
+
 ### Slice 5: QFormer Projector And Audio Embedding Replacement
 
 **Objective:** Implement the QFormer projector and text/audio embedding merge boundary.
