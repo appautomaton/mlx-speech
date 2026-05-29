@@ -15,7 +15,7 @@ First action: run `node .agent/.automaton/scripts/get-context.mjs` from the proj
 
 auto-office-hours owns clarity before framing: classify the work internally, test the missing assumptions, preserve request coverage, present approaches, and write approved intake. It does not write code or scaffold projects. It does not create SPEC.md in conversational mode. Before approval, it writes nothing.
 
-Loading discipline: keep the conversation goal, evidence, request coverage, rejected framings, and next decision in context. Read project files only when repo evidence changes the objective, especially for parity, audit, migration, coverage, or mixed work.
+Loading discipline: keep the conversation goal, evidence, request coverage, rejected framings, and next decision in context. Read project files only when repo evidence changes the objective, especially for parity, audit, migration, coverage, or mixed work. When repo evidence would otherwise pull wide reads into context, you may dispatch the read-only `automaton-librarian` for a one-shot lookup (see `.agent/.automaton/references/LIBRARIAN.md`); it returns evidence, you keep the decision.
 
 Interaction: keep chat plain, organized, and grounded in the user's words. Do not expose taxonomy labels such as mode, scale, or shape. For real branch decisions, offer 2–4 concrete options with a one-line reason for each. Use the host question tool when available; otherwise present the same options inline.
 
@@ -56,7 +56,7 @@ Before generating alternatives, build a compact coverage map from the user's req
 
 Classify each material item as:
 - **Included** in the current change.
-- **Deferred** to `ROADMAP.md` or later work, with the reason.
+- **Deferred** to later work, with the reason, recorded in `INTAKE.md`. Promote to `ROADMAP.md` only when the user approves a phased decomposition.
 - **Anti-goal** for this change.
 - **Needs decision** because the answer would change scope, approach, or verification.
 
@@ -72,7 +72,7 @@ Recommend one approach and explain what evidence supports it, what it does not p
 
 After approval, derive a date-prefixed change slug: `YYYY-MM-DD-<kebab-case-objective>` using today's date. Reuse `active_change` only when it already matches this discussion. Write `.agent/work/<change>/INTAKE.md` using `references/intake-template.md`; Content mode includes the required content fields from `references/content-intake.md`.
 
-When scale is roadmap, replace `.agent/steering/ROADMAP.md` with the approved decomposition per `.agent/.automaton/references/ROADMAP-CONTRACT.md`.
+When scale is roadmap and the user has approved a phased decomposition, replace `.agent/steering/ROADMAP.md` with that approved decomposition per `.agent/.automaton/references/ROADMAP-CONTRACT.md`. Without that explicit approval, leave `ROADMAP.md` untouched and keep deferred scope in `INTAKE.md`.
 
 Run `node .agent/.automaton/scripts/sync-status.mjs --active-change "<change>" --stage frame` from the project root. This records `active_change` and `stage` through the shared state validator.
 
@@ -109,9 +109,9 @@ Approved path:
 - Objective uses the user's final refined wording.
 - Scope coverage: included, deferred, anti-goals, and needs-decision items; omit empty groups.
 - Scope preservation records whether the intake preserves the full stated intent or intentionally decomposes it.
-- Deferred scope is named for `ROADMAP.md` or later work.
+- Deferred scope is named for later work in `INTAKE.md`; it is promoted to `ROADMAP.md` only on a user-approved phased decomposition.
 - `stage: frame` and `active_change` are recorded through `sync-status.mjs`.
-- `.agent/steering/ROADMAP.md` is updated when scale is roadmap.
+- `.agent/steering/ROADMAP.md` is updated only when the user approves a phased decomposition.
 - Approved, complete intake should flow into `auto-frame` without another user prompt when frame-ready.
 
 The INTAKE.md is a decision record, not a transcript. It is a faithful record of what the user approved, not the agent's editorial rewrite.

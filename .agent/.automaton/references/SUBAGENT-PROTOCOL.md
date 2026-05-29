@@ -1,6 +1,6 @@
 # Subagent Protocol
 
-Use this protocol when `auto-execute` chooses the subagent route for one approved plan slice. It defines shared semantics only; host-specific tool calls live in `HOST-TOOLS.md`, and static role bodies live in the host-native agent definitions sourced from `automaton/skills/auto-execute/references/*-role.md`. This file does not author role system prompts.
+Use this protocol when `auto-execute` chooses the subagent route for one approved plan slice. It defines shared semantics only; host-specific tool calls live in `HOST-TOOLS.md`, and static role bodies live in the host-native agent definitions sourced from `automaton/skills/auto-execute/role-sources/*-role.md`. This file does not author role system prompts.
 
 ## Roles
 

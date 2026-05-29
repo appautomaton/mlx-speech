@@ -14,7 +14,7 @@ Non-negotiable standards for every engineering review.
 
 6. **Diagrams earn their space.** Add an ASCII diagram only when it clarifies a non-trivial flow, state transition, dependency graph, or rollout path that would be ambiguous in prose.
 
-7. **Deferred work needs an owner surface.** Record deferred work only in the approved plan, roadmap, or review action when someone downstream will act on it. Do not create TODO files by default.
+7. **Deferred work needs an owner surface.** Record deferred work only in the approved plan or a review action when someone downstream will act on it; roadmap phases are not a review-time surface. Do not create TODO files by default.
 
 8. **Optimize for the 6-month future, not just today.** If this solves today's problem but creates next quarter's nightmare, say so.
 

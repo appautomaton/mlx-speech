@@ -15,7 +15,7 @@ First action: run `node .agent/.automaton/scripts/get-context.mjs` from the proj
 
 auto-frame produces the canonical artifact: `SPEC.md` when the request is frameable. SPEC.md is mandatory for frame completion; no file means no completed frame. It does not write code, create PLAN.md, or proceed to planning without a written spec. If one focused framing question cannot make the request frameable, continue into `auto-office-hours` rather than writing a weak SPEC.
 
-Loading discipline: hold the INTAKE when present, the objective, constraints, risks, and source evidence needed to keep the spec real. Avoid exhaustive tree walks.
+Loading discipline: hold the INTAKE when present, the objective, constraints, risks, and source evidence needed to keep the spec real. Avoid exhaustive tree walks. When locating code or tracing a flow would otherwise pull wide reads into context, you may dispatch the read-only `automaton-librarian` for a one-shot lookup (see `.agent/.automaton/references/LIBRARIAN.md`); it returns evidence, you keep the decision.
 
 Artifact discipline: `SPEC.md` is the reloadable contract, not the whole dossier. Keep it compact enough to re-read; for large coherent work, summarize the contract and link normative detail under `spec/*.md`. One coherent outcome remains one spec even when it needs progressive disclosure.
 
@@ -38,13 +38,13 @@ Adopt settled office-hours context: work scale, work shape, Broader intent, targ
 
 State the goal in one sentence. If you cannot, ask one clarifying question. If the request still needs objective discovery or multiple material decisions before any useful SPEC can be written, continue into `auto-office-hours`'s diagnostic and intake flow in the same session.
 
-If your SPEC would be narrower than the user's stated goal or office-hours broader intent, widen the SPEC, ask for confirmation, or record the narrowing as decomposition with deferred scope in `.agent/steering/ROADMAP.md` per `.agent/.automaton/references/ROADMAP-CONTRACT.md`. Silent narrowing is a framing failure.
+If your SPEC would be narrower than the user's stated goal or office-hours broader intent, widen the SPEC, ask for confirmation, or record the deferred scope as a `Deferred / Not in scope` note inside this change's SPEC. Do not create `ROADMAP.md` phases from a narrowed SPEC; phased decomposition belongs to `auto-office-hours` after the user approves it. Silent narrowing is a framing failure.
 
 ### Coverage Check
 
 If `INTAKE.md` or conversation context includes scope coverage, compare the intended SPEC against each item before writing:
 - Included items must appear in the bounded goal, required outcome, constraints, risks, or acceptance criteria.
-- Deferred items must stay deferred with a reason in ROADMAP.md or a SPEC deferred-scope note.
+- Deferred items must stay deferred with a reason in a SPEC deferred-scope note.
 - Anti-goals must appear in SPEC anti-goals.
 - Needs-decision items require one focused question or 2–3 concrete options before SPEC unless the user explicitly accepts an assumption.
 

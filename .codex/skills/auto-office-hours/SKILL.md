@@ -15,7 +15,7 @@ First action: run `node .agent/.automaton/scripts/get-context.mjs` from the proj
 
 auto-office-hours owns clarity before framing: classify the work internally, test the missing assumptions, preserve request coverage, present approaches, and write approved intake. It does not write code or scaffold projects. It does not create SPEC.md in conversational mode. Before approval, it writes nothing.
 
-Loading discipline: keep the conversation goal, evidence, request coverage, rejected framings, and next decision in context. Read project files only when repo evidence changes the objective, especially for parity, audit, migration, coverage, or mixed work.
+Loading discipline: keep the conversation goal, evidence, request coverage, rejected framings, and next decision in context. Read project files only when repo evidence changes the objective, especially for parity, audit, migration, coverage, or mixed work. When repo evidence would otherwise pull wide reads into context, you may dispatch the read-only `automaton-librarian` for a one-shot lookup (see `.agent/.automaton/references/LIBRARIAN.md`); it returns evidence, you keep the decision.
 
 Interaction: keep chat plain, organized, and grounded in the user's words. Do not expose taxonomy labels such as mode, scale, or shape. For real branch decisions, offer 2–4 concrete options with a one-line reason for each. Use the host question tool when available; otherwise present the same options inline.
 

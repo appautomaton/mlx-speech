@@ -15,7 +15,7 @@ First action: run `node .agent/.automaton/scripts/get-context.mjs` from the proj
 
 auto-frame produces the canonical artifact: `SPEC.md` when the request is frameable. SPEC.md is mandatory for frame completion; no file means no completed frame. It does not write code, create PLAN.md, or proceed to planning without a written spec. If one focused framing question cannot make the request frameable, continue into `auto-office-hours` rather than writing a weak SPEC.
 
-Loading discipline: hold the INTAKE when present, the objective, constraints, risks, and source evidence needed to keep the spec real. Avoid exhaustive tree walks.
+Loading discipline: hold the INTAKE when present, the objective, constraints, risks, and source evidence needed to keep the spec real. Avoid exhaustive tree walks. When locating code or tracing a flow would otherwise pull wide reads into context, you may dispatch the read-only `automaton-librarian` for a one-shot lookup (see `.agent/.automaton/references/LIBRARIAN.md`); it returns evidence, you keep the decision.
 
 Artifact discipline: `SPEC.md` is the reloadable contract, not the whole dossier. Keep it compact enough to re-read; for large coherent work, summarize the contract and link normative detail under `spec/*.md`. One coherent outcome remains one spec even when it needs progressive disclosure.
 
