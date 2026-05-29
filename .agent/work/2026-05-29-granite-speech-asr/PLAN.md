@@ -127,6 +127,10 @@ Use the design in `.agent/work/2026-05-29-granite-speech-asr/DESIGN.md`: a local
 
 **Touches:** `src/mlx_speech/models/granite_speech_asr/language_model.py`, model tests.
 
+**Status:** complete
+**Evidence:** added local Granite causal LM with RoPE, GQA, SwiGLU MLP, multiplier handling, KV cache prefill/decode helpers, and greedy next-token selection; `.venv/bin/python -m pytest tests/unit/test_granite_speech_language_model.py` passed (5 tests); `rg -n "mlx_lm" src/mlx_speech` found no matches; `.venv/bin/python -m pytest tests/unit/` passed (351 tests).
+**Risks / next:** LM numerical parity against mlx-lm reference remains deferred per engineering review; continue to full model assembly and strict checkpoint loading.
+
 ### Slice 7: Full Model Assembly And Strict Load
 
 **Objective:** Compose encoder, projector, and LM into a loadable Granite Speech model with strict checkpoint accounting.

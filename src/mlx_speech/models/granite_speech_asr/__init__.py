@@ -23,6 +23,13 @@ from .encoder import (
     GraniteSpeechEncoder,
 )
 from .feature_extraction import GraniteSpeechAudioShape, GraniteSpeechFeatureExtractor
+from .language_model import (
+    GraniteCausalLM,
+    GraniteCausalLMOutput,
+    GraniteKVCache,
+    GraniteLayerKVCache,
+    greedy_next_token,
+)
 from .processor import mask_audio_token_ids, replace_audio_embeddings
 from .projector import (
     GraniteSpeechProjector,
@@ -41,6 +48,10 @@ __all__ = [
     "GraniteSpeechAudioShape",
     "GraniteSpeechCheckpoint",
     "GraniteSpeechFeatureExtractor",
+    "GraniteCausalLM",
+    "GraniteCausalLMOutput",
+    "GraniteKVCache",
+    "GraniteLayerKVCache",
     "GraniteSpeechProjector",
     "GraniteSpeechTokenizer",
     "QFormerAttention",
@@ -55,6 +66,7 @@ __all__ = [
     "GraniteSpeechEncoder",
     "AlignmentReport",
     "build_alignment_report",
+    "greedy_next_token",
     "load_granite_speech_checkpoint",
     "mask_audio_token_ids",
     "replace_audio_embeddings",
