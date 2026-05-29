@@ -6,6 +6,7 @@ Example:
         --dramabox-dir models/dramabox \
         --gemma-dir models/gemma_3_12b_it_4bit \
         --prompt 'A woman speaks clearly.' \
+        --voice-ref outputs/source/hank_hill_ref.wav \
         --duration 5.0 \
         --out outputs/dramabox_smoke.wav
 """
@@ -34,6 +35,10 @@ def main() -> None:
                         help="Output WAV path")
     parser.add_argument("--duration", type=float, default=5.0,
                         help="Duration in seconds")
+    parser.add_argument("--voice-ref", type=Path, default=None,
+                        help="Optional reference audio for transcript-free voice cloning")
+    parser.add_argument("--denoise-ref", action="store_true",
+                        help="Reserved placeholder; currently raises because RE-USE is deferred")
     parser.add_argument("--cfg-scale", type=float, default=2.5)
     parser.add_argument("--stg-scale", type=float, default=0.0,
                         help="Non-zero requires STG perturbation in DiT block "
@@ -64,6 +69,8 @@ def main() -> None:
         modality_scale=args.modality_scale,
         steps=args.steps,
         seed=args.seed,
+        voice_ref=args.voice_ref,
+        denoise_ref=args.denoise_ref,
     )
 
     # waveform: [2, T_samples] fp32 in [-1, 1] → write as stereo WAV

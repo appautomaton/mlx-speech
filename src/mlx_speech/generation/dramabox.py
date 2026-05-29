@@ -9,6 +9,7 @@ Wires together every Stage 2-7 component into a single end-to-end generator:
 
     target shape from duration
       → patchifier → AudioPatchifier
+      → optional voice_ref → mel → AudioVAE.encode → appended ref tokens
       → LTX2Scheduler sigmas
       → GaussianNoiser → noised state
       → X0Model + GuiderParams in euler_denoising_loop → denoised latent
@@ -21,7 +22,7 @@ Stage 7 caveats this v5 baseline ships with:
   CFG-only. Configurable per-call.
 - ``modality_scale=1.0`` (modality guidance disabled — DramaBox warm-server
   default is also 1.0).
-- Voice-reference path (IC-LoRA) is out of scope for the v5 smoke test.
+- Voice-reference path uses raw references only (`denoise_ref=False`).
 """
 
 from __future__ import annotations
@@ -31,13 +32,20 @@ from pathlib import Path
 
 import mlx.core as mx
 
-from ..models.dramabox.audio_vae import AudioVAE, AudioVAEConfig, load_audio_vae_weights
+from ..models.dramabox.audio_vae import (
+    AudioProcessor,
+    AudioVAE,
+    AudioVAEConfig,
+    load_audio_vae_weights,
+    prepare_reference_audio,
+)
 from ..models.dramabox.diffusion import (
     AudioLatentShape,
     AudioLatentTools,
     AudioPatchifier,
     GaussianNoiser,
     LTX2Scheduler,
+    apply_reference_latent,
     target_shape_from_duration,
 )
 from ..models.dramabox.dit import DiTConfig, LTXModel, load_dit_weights
@@ -226,8 +234,13 @@ class DramaBoxModel:
         modality_scale: float = 1.0,
         steps: int = 30,
         seed: int = 42,
+        voice_ref: str | Path | None = None,
+        denoise_ref: bool = False,
     ) -> DramaBoxResult:
         """Generate one stereo waveform clip from a text prompt."""
+        if denoise_ref:
+            raise NotImplementedError("DramaBox denoise_ref=True is deferred; use denoise_ref=False.")
+
         # Resolve rescale_scale
         rescale_val = auto_rescale_for_cfg(cfg_scale) if rescale_scale == "auto" else float(rescale_scale)
 
@@ -270,6 +283,12 @@ class DramaBoxModel:
         tools = AudioLatentTools(patchifier=patchifier, target_shape=shape)
         state = tools.create_initial_state(dtype=mx.bfloat16)
 
+        if voice_ref is not None:
+            ref_audio = prepare_reference_audio(voice_ref)
+            ref_mel = AudioProcessor().waveform_to_mel(ref_audio.waveform, sample_rate=ref_audio.sample_rate)
+            ref_latent = self.audio_vae.encode(ref_mel)
+            state = apply_reference_latent(state, ref_latent, patchifier=patchifier)
+
         # ----- Noise -----
         noiser = GaussianNoiser(seed=seed)
         state = noiser(state, noise_scale=1.0)
@@ -290,6 +309,9 @@ class DramaBoxModel:
             params=params,
             positions=state.positions,
         )
+
+        # ----- Strip appended reference tokens before VAE decode -----
+        state = tools.clear_conditioning(state)
 
         # ----- Unpatchify, silence-prior fix -----
         state = tools.unpatchify_state(state)
@@ -313,6 +335,8 @@ class DramaBoxModel:
                 "steps": steps,
                 "seed": seed,
                 "duration_s": duration_s,
+                "voice_ref": str(voice_ref) if voice_ref is not None else None,
+                "denoise_ref": denoise_ref,
             },
         )
 

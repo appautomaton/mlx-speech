@@ -14,7 +14,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import mlx.core as mx
+import numpy as np
 import pytest
+import soundfile as sf
 
 DRAMABOX_DIR = Path("models/dramabox")
 GEMMA_DIR = Path("models/gemma_3_12b_it_4bit")
@@ -51,3 +53,34 @@ def test_dramabox_generate_smoke_short(monkeypatch):
     # Clipped to [-1, 1]
     assert float(mx.max(result.waveform)) <= 1.0 + 1e-5
     assert float(mx.min(result.waveform)) >= -1.0 - 1e-5
+
+
+def test_dramabox_generate_voice_ref_smoke(tmp_path):
+    """Run a short no-ref/ref A-B smoke and assert ref conditioning has an effect."""
+    from mlx_speech.generation.dramabox import DramaBoxModel
+
+    sample_rate = 16_000
+    t = np.arange(sample_rate // 2, dtype=np.float32) / sample_rate
+    reference = 0.4 * np.sin(2 * np.pi * 180.0 * t)
+    ref_path = tmp_path / "voice_ref.wav"
+    sf.write(ref_path, reference, sample_rate)
+
+    model = DramaBoxModel.from_dir(DRAMABOX_DIR, gemma_dir=GEMMA_DIR)
+    kwargs = dict(
+        duration_s=1.0,
+        cfg_scale=1.0,
+        stg_scale=0.0,
+        rescale_scale=0.0,
+        modality_scale=1.0,
+        steps=3,
+        seed=123,
+    )
+    no_ref = model.generate("A woman speaks clearly.", **kwargs)
+    with_ref = model.generate("A woman speaks clearly.", voice_ref=ref_path, **kwargs)
+
+    assert with_ref.sample_rate == 48_000
+    assert with_ref.waveform.shape == no_ref.waveform.shape
+    assert mx.all(mx.isfinite(with_ref.waveform)).item()
+    assert float(mx.max(with_ref.waveform)) <= 1.0 + 1e-5
+    assert float(mx.min(with_ref.waveform)) >= -1.0 - 1e-5
+    assert float(mx.max(mx.abs(with_ref.waveform - no_ref.waveform)).item()) > 1e-5

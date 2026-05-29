@@ -96,6 +96,9 @@ Required:
 **Checkpoint after:** human-verify
 **Checkpoint reason:** Perceptual voice-match (AC7) requires a human to listen to the previews — cannot be auto-asserted.
 **Touches:** `src/mlx_speech/generation/dramabox.py`, `scripts/generate_dramabox.py`, `tests/runtime/test_dramabox_smoke.py`
+**Status:** complete
+**Evidence:** wired `voice_ref` and `denoise_ref=False` through `src/mlx_speech/generation/dramabox.py`, added CLI flags in `scripts/generate_dramabox.py`, and added runtime A/B coverage in `tests/runtime/test_dramabox_smoke.py`; `.venv/bin/python -m pytest tests/runtime/test_dramabox_smoke.py -q -k voice_ref` passed (`1 passed, 1 deselected`); `.venv/bin/python -m pytest tests/unit/` passed (`309 passed`); generated finite A/B previews in `outputs/dramabox/prompt{1,2}_{no_ref,voice_ref}.wav`.
+**Risks / next:** human-verify checkpoint remains for perceptual voice-match listening.
 
 ## Execution routing and topology
 
