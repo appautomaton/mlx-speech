@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import mlx.core as mx
 import numpy as np
 import pytest
 
-from mlx_speech.generation.qwen3_asr import Qwen3ASRTranscriber
+from mlx_speech.generation.qwen3_asr import (
+    Qwen3ASRTranscriber,
+    resolve_eos_token_ids,
+)
 from mlx_speech.models.qwen3_asr import Qwen3ASRFeatureBatch, Qwen3ASRFeatureExtractor
 from mlx_speech.models.qwen3_asr.config import (
     Qwen3ASRAudioConfig,
@@ -17,7 +21,11 @@ from mlx_speech.models.qwen3_asr.config import (
 from mlx_speech.models.qwen3_asr.processor import Qwen3ASRProcessor
 
 
-def _config(*, max_position_embeddings: int = 64) -> Qwen3ASRConfig:
+def _config(
+    *,
+    max_position_embeddings: int = 64,
+    eos_token_id: int | list[int] | None = 9,
+) -> Qwen3ASRConfig:
     audio = Qwen3ASRAudioConfig(
         d_model=8,
         num_mel_bins=8,
@@ -42,7 +50,7 @@ def _config(*, max_position_embeddings: int = 64) -> Qwen3ASRConfig:
         max_position_embeddings=max_position_embeddings,
         rms_norm_eps=1e-6,
         rope_theta=1_000_000.0,
-        eos_token_id=9,
+        eos_token_id=eos_token_id,
     )
     return Qwen3ASRConfig(
         thinker_config=Qwen3ASRThinkerConfig(
@@ -63,10 +71,12 @@ class _FakeTokenizer:
     audio_token_id = 10
     audio_bos_token_id = 11
     audio_eos_token_id = 12
+    eos_token_id = 9
 
     _specials = {
         "<|im_start|>": 1,
         "<|im_end|>": 2,
+        "<|endoftext|>": eos_token_id,
         audio_token: audio_token_id,
         audio_bos_token: audio_bos_token_id,
         audio_eos_token: audio_eos_token_id,
@@ -92,6 +102,9 @@ class _FakeTokenizer:
         assert ids == [5, 6]
         return "language Chinese<asr_text>你好 test"
 
+    def token_to_id(self, token: str) -> int | None:
+        return self._specials.get(token)
+
 
 class _FakeFeatureExtractor(Qwen3ASRFeatureExtractor):
     def __init__(self):
@@ -114,11 +127,12 @@ class _FakeFeatureExtractor(Qwen3ASRFeatureExtractor):
 
 
 class _FakeModel:
-    def __init__(self):
+    def __init__(self, *, eos_token_id: int = 9):
         self.audio_features_called = False
         self.prefill_inputs = None
         self.decode_inputs: list[int] = []
         self.cache = object()
+        self.eos_token_id = eos_token_id
 
     def get_audio_features(self, input_features, *, feature_attention_mask):
         self.audio_features_called = True
@@ -142,12 +156,20 @@ class _FakeModel:
         token = int(np.array(input_ids).reshape(-1)[0])
         self.decode_inputs.append(token)
         logits = mx.zeros((1, 1, 32), dtype=mx.float32)
-        logits[:, -1, 6 if token == 5 else 9] = 10.0
+        logits[:, -1, 6 if token == 5 else self.eos_token_id] = 10.0
         return SimpleNamespace(logits=logits, past_key_values=kv_cache)
 
 
-def _runtime(*, max_position_embeddings: int = 64):
-    config = _config(max_position_embeddings=max_position_embeddings)
+def _runtime(
+    *,
+    max_position_embeddings: int = 64,
+    config_eos_token_id: int | list[int] | None = 9,
+    runtime_eos_token_ids: tuple[int, ...] = (),
+):
+    config = _config(
+        max_position_embeddings=max_position_embeddings,
+        eos_token_id=config_eos_token_id,
+    )
     feature_extractor = _FakeFeatureExtractor()
     processor = Qwen3ASRProcessor(
         config=config,
@@ -155,7 +177,16 @@ def _runtime(*, max_position_embeddings: int = 64):
         feature_extractor=feature_extractor,
     )
     model = _FakeModel()
-    return Qwen3ASRTranscriber(model=model, processor=processor, config=config), model, feature_extractor
+    return (
+        Qwen3ASRTranscriber(
+            model=model,
+            processor=processor,
+            config=config,
+            eos_token_ids=runtime_eos_token_ids,
+        ),
+        model,
+        feature_extractor,
+    )
 
 
 def test_qwen3_asr_generation_replaces_audio_embeddings_and_greedy_decodes():
@@ -175,6 +206,40 @@ def test_qwen3_asr_generation_replaces_audio_embeddings_and_greedy_decodes():
     assert result.tokens == [5, 6]
     assert result.language == "Chinese"
     assert result.text == "你好 test"
+
+
+def test_qwen3_asr_generation_stops_on_resolved_eos_before_budget():
+    runtime, model, _feature_extractor = _runtime(
+        config_eos_token_id=None,
+        runtime_eos_token_ids=(9,),
+    )
+
+    result = runtime.transcribe(np.zeros((1600,), dtype=np.float32), max_new_tokens=8)
+
+    assert result.tokens == [5, 6]
+    assert len(result.tokens) < 8
+    assert model.decode_inputs == [5, 6]
+
+
+def test_qwen3_asr_resolves_eos_from_generation_config(tmp_path):
+    (tmp_path / "generation_config.json").write_text(
+        json.dumps({"eos_token_id": [151643, 151645]}),
+        encoding="utf-8",
+    )
+
+    ids = resolve_eos_token_ids(
+        _config(eos_token_id=None),
+        _FakeTokenizer(),
+        model_dir=tmp_path,
+    )
+
+    assert ids == (151643, 151645)
+
+
+def test_qwen3_asr_resolves_eos_from_tokenizer_specials_when_config_missing():
+    ids = resolve_eos_token_ids(_config(eos_token_id=None), _FakeTokenizer())
+
+    assert ids == (2, 9)
 
 
 def test_qwen3_asr_generation_validates_context_before_feature_extraction():

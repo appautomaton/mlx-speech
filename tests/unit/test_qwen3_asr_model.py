@@ -115,6 +115,18 @@ def test_qwen3_asr_replace_audio_embeddings_rejects_placeholder_mismatch():
         )
 
 
+def test_qwen3_asr_prefill_allocates_cache_in_input_dtype():
+    model = Qwen3ASRModel(_config())
+    inputs_embeds = mx.zeros((1, 4, 16), dtype=mx.bfloat16)
+
+    output = model.prefill(inputs_embeds=inputs_embeds, max_cache_len=8)
+    mx.eval(output.logits)
+
+    assert output.past_key_values is not None
+    assert all(layer.keys.dtype == mx.bfloat16 for layer in output.past_key_values.layers)
+    assert all(layer.values.dtype == mx.bfloat16 for layer in output.past_key_values.layers)
+
+
 def test_qwen3_asr_model_rejects_audio_text_width_mismatch():
     config = _config()
     bad_audio = Qwen3ASRAudioConfig(

@@ -95,7 +95,7 @@ class Qwen3ASRModel(nn.Module):
             self.config.text_config,
             batch_size=int(inputs_embeds.shape[0]),
             max_length=max_cache_len,
-            dtype=mx.float32,
+            dtype=inputs_embeds.dtype,
         )
         return self.text_decoder.prefill(
             inputs_embeds=inputs_embeds,

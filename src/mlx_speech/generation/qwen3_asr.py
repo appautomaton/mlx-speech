@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,9 @@ import numpy as np
 from ..models.qwen3_asr.config import Qwen3ASRConfig
 from ..models.qwen3_asr.model import Qwen3ASRModel, replace_audio_embeddings
 from ..models.qwen3_asr.processor import Qwen3ASRProcessor, parse_asr_output
+
+
+TOKENIZER_EOS_FALLBACKS = ("<|im_end|>", "<|endoftext|>")
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,7 @@ class Qwen3ASRTranscriber:
     model: Qwen3ASRModel
     processor: Qwen3ASRProcessor
     config: Qwen3ASRConfig
+    eos_token_ids: tuple[int, ...] = ()
 
     @classmethod
     def from_dir(
@@ -64,16 +69,23 @@ class Qwen3ASRTranscriber:
             load_qwen3_asr_checkpoint,
         )
 
+        model_dir = Path(model_dir)
         checkpoint = load_qwen3_asr_checkpoint(model_dir)
         model = Qwen3ASRModel(checkpoint.config)
         load_checkpoint_into_model(model, checkpoint, strict=True)
         model.set_dtype(dtype)
         model.eval()
         mx.eval(model.parameters())
+        processor = Qwen3ASRProcessor.from_dir(model_dir)
         return cls(
             model=model,
-            processor=Qwen3ASRProcessor.from_dir(model_dir),
+            processor=processor,
             config=checkpoint.config,
+            eos_token_ids=resolve_eos_token_ids(
+                checkpoint.config,
+                processor.tokenizer,
+                model_dir=model_dir,
+            ),
         )
 
     def transcribe(
@@ -150,7 +162,10 @@ class Qwen3ASRTranscriber:
 
         next_token = _first_token_id(greedy_next_token(prefill.logits))
         generated: list[int] = []
-        eos_token_ids = _eos_token_ids(self.config.text_config.eos_token_id)
+        eos_token_ids = set(
+            self.eos_token_ids
+            or resolve_eos_token_ids(self.config, self.processor.tokenizer)
+        )
         for index in range(max_new_tokens):
             if next_token in eos_token_ids:
                 break
@@ -189,8 +204,53 @@ def _first_token_id(token: mx.array) -> int:
 
 
 def _eos_token_ids(eos_token_id: int | list[int] | None) -> set[int]:
+    return set(_normalize_eos_token_ids(eos_token_id))
+
+
+def resolve_eos_token_ids(
+    config: Qwen3ASRConfig,
+    tokenizer: Any,
+    *,
+    model_dir: str | Path | None = None,
+) -> tuple[int, ...]:
+    if model_dir is not None:
+        ids = _generation_config_eos_token_ids(Path(model_dir))
+        if ids:
+            return ids
+
+    ids = _normalize_eos_token_ids(config.text_config.eos_token_id)
+    if ids:
+        return ids
+
+    return _tokenizer_eos_token_ids(tokenizer)
+
+
+def _generation_config_eos_token_ids(model_dir: Path) -> tuple[int, ...]:
+    config_path = model_dir / "generation_config.json"
+    if not config_path.exists():
+        return ()
+    with config_path.open(encoding="utf-8") as f:
+        payload = json.load(f)
+    return _normalize_eos_token_ids(payload.get("eos_token_id"))
+
+
+def _normalize_eos_token_ids(eos_token_id: int | list[int] | tuple[int, ...] | None) -> tuple[int, ...]:
     if eos_token_id is None:
-        return set()
-    if isinstance(eos_token_id, list):
-        return {int(token_id) for token_id in eos_token_id}
-    return {int(eos_token_id)}
+        return ()
+    if isinstance(eos_token_id, (list, tuple)):
+        return tuple(dict.fromkeys(int(token_id) for token_id in eos_token_id))
+    return (int(eos_token_id),)
+
+
+def _tokenizer_eos_token_ids(tokenizer: Any) -> tuple[int, ...]:
+    ids: list[int] = []
+    for token in TOKENIZER_EOS_FALLBACKS:
+        token_id = None
+        if hasattr(tokenizer, "token_to_id"):
+            token_id = tokenizer.token_to_id(token)
+        if token_id is not None:
+            ids.append(int(token_id))
+    eos_token_id = getattr(tokenizer, "eos_token_id", None)
+    if eos_token_id is not None:
+        ids.append(int(eos_token_id))
+    return tuple(dict.fromkeys(ids))

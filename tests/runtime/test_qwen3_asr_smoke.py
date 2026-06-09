@@ -39,5 +39,6 @@ def test_qwen3_asr_local_runtime_transcribes_english_chinese_and_mixed_audio():
 
     for result in results.values():
         assert result.text.strip()
+        assert len(result.tokens) < 256
 
     assert results["English"].language != "en"
