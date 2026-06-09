@@ -275,6 +275,10 @@ Checkpoints: none.
 
 **Verification:** `.venv/bin/python -m pytest tests/runtime/test_qwen3_asr_smoke.py`
 
+**Status:** complete
+**Evidence:** added local Qwen3-ASR runtime smoke covering English, Chinese, and mixed sample paths when `models/qwen3_asr_1_7b/mlx-bf16/` and local samples exist, with clean skip when assets are absent; `.venv/bin/python -m pytest tests/runtime/test_qwen3_asr_smoke.py` passed with 1 skipped; `.venv/bin/python -m pytest tests/unit/` passed with 438 tests.
+**Risks / next:** full runtime smoke remains pending local `mlx-bf16/` conversion and sample audio files.
+
 ## Aggregate Verification Commands
 | Scope | Command |
 | --- | --- |
