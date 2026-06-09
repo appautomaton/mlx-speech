@@ -166,6 +166,15 @@ def test_qwen3_asr_parse_no_language_tag_output():
     assert parse_asr_output("plain transcription") == ("", "plain transcription")
 
 
+def test_qwen3_asr_parse_language_prefixed_output_without_asr_tag():
+    raw = (
+        "language EnglishHello from Qwen.\n\n"
+        "language EnglishHello from Qwen again."
+    )
+
+    assert parse_asr_output(raw) == ("English", "Hello from Qwen.")
+
+
 def test_qwen3_asr_parse_mixed_english_chinese_text_output():
     raw = "language Chinese<asr_text>今天 test 一下 Qwen ASR"
 

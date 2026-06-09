@@ -8,8 +8,11 @@ import numpy as np
 import pytest
 
 from scripts.convert.qwen3_asr import convert_qwen3_asr
+from mlx_speech.models.qwen3_asr.config import Qwen3ASRConfig
 from mlx_speech.models.qwen3_asr.checkpoint import (
+    Qwen3ASRCheckpoint,
     build_alignment_report,
+    load_checkpoint_into_model,
     load_qwen3_asr_checkpoint,
     sanitize_key,
     sanitize_state_dict,
@@ -185,3 +188,74 @@ def test_qwen3_asr_alignment_report_splits_missing_and_shape_mismatch():
     assert report.model_only == ("model.only",)
     assert report.shape_mismatches == (("shared.weight", (2, 3), (3, 2)),)
     assert not report.is_exact_match
+
+
+def test_qwen3_asr_strict_load_allows_generated_audio_positions():
+    class FakeModel:
+        def __init__(self):
+            self.loaded = None
+
+        def parameters(self):
+            return {
+                "audio_tower": {
+                    "positional_embedding": {
+                        "positional_embedding": mx.ones((4, 4)),
+                    },
+                },
+                "text_decoder": {
+                    "model": {
+                        "embed_tokens": {
+                            "weight": mx.ones((2, 2)),
+                        },
+                    },
+                },
+            }
+
+        def load_weights(self, weights, *, strict: bool = True):
+            self.loaded = (tuple(weights), strict)
+
+    model = FakeModel()
+    checkpoint = Qwen3ASRCheckpoint(
+        model_dir=Path("."),
+        config=Qwen3ASRConfig.from_dict(_config_payload()),
+        state_dict={"text_decoder.model.embed_tokens.weight": mx.ones((2, 2))},
+        source_files=(),
+        skipped_keys=(),
+        renamed_keys=(),
+        transposed_keys=(),
+    )
+
+    report = load_checkpoint_into_model(model, checkpoint, strict=True)
+
+    assert report.model_only == ("audio_tower.positional_embedding.positional_embedding",)
+    assert report.unexpected_model_only == ()
+    assert not report.is_exact_match
+    assert report.is_loadable_match
+    assert model.loaded is not None
+    assert model.loaded[1] is False
+
+
+def test_qwen3_asr_strict_load_rejects_unexpected_model_only_key():
+    class FakeModel:
+        def parameters(self):
+            return {
+                "unexpected": {
+                    "weight": mx.ones((1,)),
+                },
+            }
+
+        def load_weights(self, weights, *, strict: bool = True):
+            raise AssertionError("unexpected partial load")
+
+    checkpoint = Qwen3ASRCheckpoint(
+        model_dir=Path("."),
+        config=Qwen3ASRConfig.from_dict(_config_payload()),
+        state_dict={},
+        source_files=(),
+        skipped_keys=(),
+        renamed_keys=(),
+        transposed_keys=(),
+    )
+
+    with pytest.raises(ValueError, match="1 unexpected model-only"):
+        load_checkpoint_into_model(FakeModel(), checkpoint, strict=True)

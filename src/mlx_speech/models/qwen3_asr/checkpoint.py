@@ -14,6 +14,13 @@ from ...checkpoints.sharded import load_state_dict
 from .config import Qwen3ASRConfig
 
 
+GENERATED_MODEL_ONLY_KEYS = frozenset(
+    {
+        "audio_tower.positional_embedding.positional_embedding",
+    }
+)
+
+
 @dataclass(frozen=True)
 class AlignmentReport:
     checkpoint_only: tuple[str, ...]
@@ -23,6 +30,18 @@ class AlignmentReport:
     @property
     def is_exact_match(self) -> bool:
         return not self.checkpoint_only and not self.model_only and not self.shape_mismatches
+
+    @property
+    def unexpected_model_only(self) -> tuple[str, ...]:
+        return tuple(key for key in self.model_only if key not in GENERATED_MODEL_ONLY_KEYS)
+
+    @property
+    def is_loadable_match(self) -> bool:
+        return (
+            not self.checkpoint_only
+            and not self.unexpected_model_only
+            and not self.shape_mismatches
+        )
 
 
 @dataclass(frozen=True)
@@ -137,14 +156,15 @@ def load_checkpoint_into_model(
     strict: bool = True,
 ) -> AlignmentReport:
     report = validate_checkpoint_against_model(model, checkpoint)
-    if strict and not report.is_exact_match:
+    if strict and not report.is_loadable_match:
         raise ValueError(
             f"Qwen3-ASR checkpoint alignment failed: "
             f"{len(report.checkpoint_only)} checkpoint-only, "
-            f"{len(report.model_only)} model-only, "
+            f"{len(report.unexpected_model_only)} unexpected model-only, "
             f"{len(report.shape_mismatches)} shape mismatches."
         )
-    model.load_weights(list(checkpoint.state_dict.items()), strict=strict)
+    effective_strict = strict and not report.model_only
+    model.load_weights(list(checkpoint.state_dict.items()), strict=effective_strict)
     return report
 
 

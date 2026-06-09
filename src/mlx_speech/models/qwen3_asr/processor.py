@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -238,6 +239,9 @@ def parse_asr_output(
         return forced_language, text
 
     if ASR_TEXT_TAG not in text:
+        parsed = _parse_language_prefixed_text(text)
+        if parsed is not None:
+            return parsed
         return "", text
 
     meta_part, text_part = text.split(ASR_TEXT_TAG, 1)
@@ -255,6 +259,20 @@ def parse_asr_output(
             if value:
                 language = normalize_language_name(value)
             break
+    return language, transcript
+
+
+def _parse_language_prefixed_text(text: str) -> tuple[str, str] | None:
+    alternatives = "|".join(re.escape(lang) for lang in sorted(SUPPORTED_LANGUAGES, key=len, reverse=True))
+    pattern = re.compile(rf"(?:^|\n+)\s*{re.escape(LANG_PREFIX)}({alternatives})", re.IGNORECASE)
+    matches = list(pattern.finditer(text))
+    if not matches:
+        return None
+
+    language = normalize_language_name(matches[0].group(1))
+    start = matches[0].end()
+    end = matches[1].start() if len(matches) > 1 else len(text)
+    transcript = text[start:end].strip()
     return language, transcript
 
 
