@@ -81,6 +81,10 @@ Checkpoints: none.
 
 **Verification:** `.venv/bin/python -m pytest tests/unit/test_qwen3_asr_feature_extraction.py tests/test_runtime_purity.py`
 
+**Status:** complete
+**Evidence:** added Qwen3-ASR WhisperFeatureExtractor-parity frontend with dynamic padding, feature masks, output length math, and numeric reference-vector coverage; `.venv/bin/python -m pytest tests/unit/test_qwen3_asr_feature_extraction.py tests/test_runtime_purity.py` passed with 8 tests; `.venv/bin/python -m pytest tests/unit/` passed with 388 tests.
+**Risks / next:** none.
+
 ### Slice 3: Processor, Prompt, Placeholder, And Parser
 
 **Objective:** Add Qwen3-ASR processor behavior for explicit token-id prompt construction, audio placeholder expansion, and output parsing.
