@@ -20,6 +20,7 @@ Current guides:
 - [MOSS-SoundEffect](./moss-sound-effect.md)
 - [CohereASR](./cohere-asr.md)
 - [Granite Speech ASR](./granite-speech-asr.md)
+- [Qwen3-ASR](./qwen3-asr.md)
 
 Benchmarks:
 

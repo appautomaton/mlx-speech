@@ -22,6 +22,7 @@ pure MLX. No cloud, no PyTorch.
 | `dramabox` | TTS | DramaBox — Resemble flow-matching diffusion TTS (48 kHz stereo, LTX-2 derived) |
 | `cohere-asr` | ASR | Cohere Transcribe — multilingual ASR |
 | local Granite Speech path | ASR | IBM Granite Speech 4.0 1B — local-path ASR |
+| local Qwen3-ASR path | ASR | Qwen3-ASR-1.7B — English, Chinese, and mixed Chinese/English local-path ASR |
 
 ## Requirements
 
@@ -64,6 +65,10 @@ print(result.text)
 granite = mlx_speech.asr.load("models/ibm/granite_4_0_1b_speech/original")
 print(granite.generate("audio.wav").text)
 
+# Local Qwen3-ASR BF16 checkpoint
+qwen = mlx_speech.asr.load("models/qwen3_asr_1_7b/mlx-bf16")
+print(qwen.generate("audio.wav").text)
+
 # List available models
 mlx_speech.tts.list_models()
 mlx_speech.asr.list_models()
@@ -98,6 +103,8 @@ mlx-speech tts --model moss-sound-effect \
 # Transcribe audio
 mlx-speech asr --model cohere-asr --audio speech.wav
 mlx-speech asr --model models/ibm/granite_4_0_1b_speech/original --audio speech.wav
+mlx-speech asr --model models/qwen3_asr_1_7b/mlx-bf16 --audio speech.wav
+mlx-speech asr --model models/qwen3_asr_1_7b/mlx-bf16 --audio speech.wav --language Chinese
 
 # Discover models
 mlx-speech tts --list-models
@@ -144,6 +151,7 @@ python scripts/convert/vibevoice.py
 python scripts/convert/moss_local.py
 python scripts/convert/moss_ttsd.py
 python scripts/convert/cohere_asr.py
+python scripts/convert/qwen3_asr.py
 ```
 
 ## Model Guides
@@ -160,6 +168,7 @@ Each family has a doc covering behavior, flags, and known limitations:
 - [DramaBox](./docs/dramabox.md)
 - [CohereASR](./docs/cohere-asr.md)
 - [Granite Speech ASR](./docs/granite-speech-asr.md)
+- [Qwen3-ASR](./docs/qwen3-asr.md)
 
 ## Development
 

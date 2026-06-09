@@ -42,7 +42,8 @@ As of March 29, 2026:
 - `.references/Qwen3-ASR`: `main` at `c17a131fe028b2e428b6e80a33d30bb4fa57b8df` (2026-01-30)
   — Qwen3-ASR source repo. Shallow clone for studying the transformers/vLLM
   reference implementation, processor, prompt handling, streaming wrapper, and
-  forced aligner. Code reference only; model weights are not stored here.
+  forced aligner. Code reference only; model weights are not stored here, and
+  this checkout is never imported by the MLX runtime.
 
 ## Notes
 

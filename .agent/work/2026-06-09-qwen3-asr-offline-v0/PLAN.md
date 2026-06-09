@@ -254,6 +254,10 @@ Checkpoints: none.
 
 **Verification:** `.venv/bin/python -m pytest tests/unit/`
 
+**Status:** complete
+**Evidence:** added Qwen3-ASR guide documenting `original/` and `mlx-bf16/` layouts, BF16 conversion policy, English/Chinese/mixed auto behavior, explicit language forcing, runtime shape, deferred scope, and reference-source boundary; updated README, docs index, and references note; `.venv/bin/python -m pytest tests/unit/` passed with 438 tests.
+**Risks / next:** none.
+
 ### Slice 11: Local Runtime Smoke
 
 **Objective:** Validate end-to-end local transcription when `mlx-bf16` checkpoint and sample audio are present.
