@@ -100,7 +100,7 @@ After writing SPEC.md, run `node .agent/.automaton/scripts/sync-status.mjs --act
 
 - Frameable path: **SPEC.md** written to `.agent/work/<change>/SPEC.md`; `canonical_spec` and frame state recorded through `sync-status.mjs`.
 - Not-frameable path: continue into `auto-office-hours`'s contract and do not report framing complete until an approved intake exists and SPEC.md can be written.
-- Handoff: after SPEC.md, continue inline into `auto-plan` when no review is needed and context is healthy. `auto-ceo-review` is an optional review — recommend it and stop rather than auto-running it on the spec just written. If not frameable, continue inline into `auto-office-hours` with the concrete blocker.
+- Handoff: after SPEC.md, continue inline into `auto-plan` when no review is needed and context is healthy; for the optional `auto-ceo-review`, stop with `Next: auto-ceo-review` rather than auto-running it. If not frameable, continue inline into `auto-office-hours` with the concrete blocker.
 
 ## Rules
 

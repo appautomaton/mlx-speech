@@ -27,24 +27,24 @@ export function buildSessionContext(projectRoot, options = {}) {
   const messages = []
 
   messages.push('<automaton_reminder>')
-  messages.push('This project has the Automaton stage-gated harness installed.')
+  messages.push('Automaton is installed for this project as a stage-gated workflow.')
 
   if (activeChange && stage) {
-    messages.push(`State JSON: ${STATE_PATH} (change=${activeChange}; stage=${stage}).`)
+    messages.push(`Current state: ${STATE_PATH} (change=${activeChange}; stage=${stage}).`)
   } else {
-    messages.push(`State JSON: ${STATE_PATH} (no active state recorded).`)
+    messages.push(`Current state: ${STATE_PATH} (no active change recorded).`)
   }
 
-  messages.push('Work artifacts, when relevant, live under .agent/work/; canonical artifact pointers are in current.json.')
-  messages.push('Read .agent/.automaton/references/FRAMEWORK.md once per session for the operating model.')
-  messages.push("Reminder only: honor the user's latest request; use Automaton files when relevant, not as a mandate.")
-  messages.push('Vocabulary: change, stage, slice, artifact, steering.')
+  messages.push('Work artifacts live under .agent/work/ when they matter. Canonical artifact pointers live in current.json.')
+  messages.push('Read .agent/.automaton/references/FRAMEWORK.md once per session to refresh the operating model.')
+  messages.push("Treat this as orientation, not a mandate. The user's latest request stays in charge; use Automaton files only when they are relevant.")
+  messages.push('Shared vocabulary: change, stage, slice, artifact, steering.')
 
   if (compacted) {
-    messages.push('Context compacted; reload current.json and relevant work artifacts before relying on prior Automaton context.')
+    messages.push('This session was compacted. Reload current.json and the relevant work artifacts before relying on prior Automaton context.')
   }
 
   messages.push('</automaton_reminder>')
 
-  return messages.join(' ')
+  return messages.join('\n')
 }

@@ -112,11 +112,11 @@ Approved path:
 - Deferred scope is named for later work in `INTAKE.md`; it is promoted to `ROADMAP.md` only on a user-approved phased decomposition.
 - `stage: frame` and `active_change` are recorded through `sync-status.mjs`.
 - `.agent/steering/ROADMAP.md` is updated only when the user approves a phased decomposition.
-- Approved, complete intake should flow into `auto-frame` without another user prompt when frame-ready.
+- Approved, complete intake continues inline into `auto-frame` without another user prompt when frame-ready.
 
 The INTAKE.md is a decision record, not a transcript. It is a faithful record of what the user approved, not the agent's editorial rewrite.
 
-If the user does not approve an approach, output a short discussion summary, why no approach was selected, deferred scope worth preserving, a recommended next step, and no file writes.
+If the user does not approve an approach, output a short discussion summary, why no approach was selected, deferred scope worth preserving, a `Next:` line, and no file writes.
 
 ## Rules
 

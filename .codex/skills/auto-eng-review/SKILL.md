@@ -17,7 +17,7 @@ Execution safety review. Architecture, data flow, edge cases, test strategy, not
 
 A good review names the riskiest slice, the most likely failure mode, and whether the test strategy catches it. A bad review lists generic concerns.
 
-Loading discipline: one PLAN.md read, optional DESIGN.md when `canonical_design` exists, one risk matrix, one verdict. Read source files when assessing technical risk — slice boundaries, dependency assumptions, and blast radius claims are only verifiable against the actual code.
+Loading discipline: one PLAN.md read, optional DESIGN.md when `canonical_design` exists, one risk matrix, one verdict. Read source files when assessing technical risk: slice boundaries, dependency assumptions, and blast radius claims are only verifiable against the actual code.
 
 ## Quality Gate
 
@@ -94,7 +94,7 @@ State the next skill based on the verdict.
 
 - `PLAN.md` with appended `## Review: Engineering` section
 - `.agent/.automaton/state/current.json` updated through `sync-status.mjs` with `engineering_review`; `stage` is unchanged by this skill
-- Next handoff, mapped from verdict: `approved` or `approved_with_risks` → stop, recommend `auto-execute`; `needs_correction` → stop, recommend `auto-plan`. Entering `auto-execute` starts code changes, so the user or host invokes it.
+- Handoff (verdict-mapped, always stops): `approved`/`approved_with_risks` → `Next: auto-execute`; `needs_correction` → `Next: auto-plan`.
 
 ## Rules
 

@@ -1,7 +1,8 @@
 {
-  "active_change": "2026-05-29-granite-speech-long-audio-memory",
+  "active_change": "2026-06-09-qwen3-asr-offline-v0",
   "stage": "execute",
-  "canonical_spec": ".agent/work/2026-05-29-granite-speech-long-audio-memory/SPEC.md",
-  "canonical_design": ".agent/work/2026-05-29-granite-speech-long-audio-memory/DESIGN.md",
-  "canonical_plan": ".agent/work/2026-05-29-granite-speech-long-audio-memory/PLAN.md"
+  "canonical_spec": ".agent/work/2026-06-09-qwen3-asr-offline-v0/SPEC.md",
+  "canonical_design": ".agent/work/2026-06-09-qwen3-asr-offline-v0/DESIGN.md",
+  "canonical_plan": ".agent/work/2026-06-09-qwen3-asr-offline-v0/PLAN.md",
+  "engineering_review": "approved_with_risks"
 }

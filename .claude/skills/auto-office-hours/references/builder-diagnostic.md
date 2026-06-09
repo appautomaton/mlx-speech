@@ -21,8 +21,8 @@ Ask one at a time. The goal is to brainstorm and sharpen, not interrogate.
 
 When the shape is not feature, supplement or replace the scope-routed questions above. Shape questions take priority; mode questions fill remaining gaps.
 
-- **Parity** → What is the reference system or benchmark? Which areas have the most gaps? What does "closed" look like — matching output, passing tests, meeting a performance bar? Which gaps are safe to close now vs. blocked?
-- **Audit** → What questions must the audit answer? What evidence would change the next decision? What's the decision gate — what happens with the findings?
+- **Parity** → What is the reference system or benchmark? Which areas have the most gaps? What does "closed" look like: matching output, passing tests, meeting a performance bar? Which gaps are safe to close now vs. blocked?
+- **Audit** → What questions must the audit answer? What evidence would change the next decision? What's the decision gate: what happens with the findings?
 - **Refactor** → What structural problem are you solving? What behavior must remain invariant? What's the blast radius? How do you verify nothing broke?
 - **Migration** → What's the source state and target state? What compatibility constraints exist? What's the rollback plan?
 - **Coverage** → What risk areas are undertested? What's the target improvement? What types of tests are needed?

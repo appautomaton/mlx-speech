@@ -17,7 +17,7 @@ Product bet review. Restates the objective as one crisp bet, identifies differen
 
 A good review names the bet in one sentence, identifies the weakest assumption, and renders a verdict in under 150 words. A bad review restates the spec.
 
-Loading discipline: one SPEC.md read, one review paragraph, one verdict. Read project files when understanding the codebase helps ground the review — verify that spec claims reflect what actually exists before approving or rejecting.
+Loading discipline: one SPEC.md read, one review paragraph, one verdict. Read project files when understanding the codebase helps ground the review. Verify that spec claims reflect what actually exists before approving or rejecting.
 
 ## Quality Gate
 
@@ -47,7 +47,7 @@ In one sentence: "We are betting that [specific user] will [specific action] bec
 
 ### Evaluate
 
-Choose a review posture per `references/review-modes.md`. Assess differentiation, user value, generic or mis-scoped elements, and shippability — ground each in evidence from the spec. Read `references/product-checklist.md` for structured checks and `references/cognitive-patterns.md` for thinking patterns that surface blind spots.
+Choose a review posture per `references/review-modes.md`. Assess differentiation, user value, generic or mis-scoped elements, and shippability. Ground each in evidence from the spec. Read `references/product-checklist.md` for structured checks and `references/cognitive-patterns.md` for thinking patterns that surface blind spots.
 
 ### Render Verdict
 
@@ -74,13 +74,13 @@ Run `node .agent/.automaton/scripts/sync-status.mjs --product-review "<verdict>"
 
 ### Recommend
 
-On a non-blocking verdict (`approved` or `approved_with_risks`), continue inline into `auto-plan`. On `needs_clarification` or `descoped`, stop and recommend the mapped skill.
+Continue inline on a non-blocking verdict; stop and hand off on a blocking one. The verdict→skill map is in Output.
 
 ## Output
 
 - `SPEC.md` with appended `## Review: Product` section
 - `.agent/.automaton/state/current.json` updated through `sync-status.mjs` with `product_review`; `stage` is unchanged by this skill
-- Next handoff, mapped from verdict: `approved` or `approved_with_risks` → continue inline into `auto-plan` (planning produces a markdown artifact, not code changes; no re-authorization needed); `needs_clarification` → stop, recommend `auto-frame` or `auto-office-hours`; `descoped` → stop, recommend `auto-office-hours` or halt.
+- Handoff (verdict-mapped): `approved`/`approved_with_risks` → continue inline into `auto-plan`; `needs_clarification` → `Next: auto-frame` (or `auto-office-hours`); `descoped` → `Next: auto-office-hours`, or halt.
 
 ## Rules
 

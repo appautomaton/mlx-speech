@@ -38,12 +38,12 @@ Allowed active-change layout:
 
 | Stage | Required inputs | Produces | State pointer expectations | Next handoff |
 | --- | --- | --- | --- | --- |
-| `frame` | active change; optional `INTAKE.md` or framing context | `INTAKE.md`, `SPEC.md`, and roadmap update when office-hours approves roadmap scale | office-hours sets `active_change` and `stage: frame`; frame sets `canonical_spec`; `stage` stays `frame` unless plan handoff is approved | **Continue** → `auto-plan` (construction) or `auto-office-hours` (not frameable). **Stop** → recommend `auto-ceo-review` (optional review). |
-| `plan` | `canonical_spec`; optional review sections | `.agent/work/<change>/PLAN.md`; optional `DESIGN.md` | `canonical_plan` points to PLAN.md; `canonical_design` only when DESIGN.md exists; `stage` becomes `plan` | **Stop** → recommend `auto-eng-review` (optional) or `auto-execute`. |
+| `frame` | active change; optional `INTAKE.md` or framing context | `INTAKE.md`, `SPEC.md`, and roadmap update when office-hours approves roadmap scale | office-hours sets `active_change` and `stage: frame`; frame sets `canonical_spec`; `stage` stays `frame` unless plan handoff is approved | **Continue** → `auto-plan` (construction) or `auto-office-hours` (not frameable). **Stop** → `Next: auto-ceo-review` (optional review). |
+| `plan` | `canonical_spec`; optional review sections | `.agent/work/<change>/PLAN.md`; optional `DESIGN.md` | `canonical_plan` points to PLAN.md; `canonical_design` only when DESIGN.md exists; `stage` becomes `plan` | **Stop** → `Next: auto-eng-review` (optional) or `Next: auto-execute`. |
 | `execute` | approved PLAN.md, current slice, acceptance criteria, verification commands | code/docs/tests plus PLAN-required slice evidence | auto-execute sets `stage: execute` after `canonical_plan` resolves and before changes; do not change canonical pointers to missing files; do not add slice cursor state | **Continue** → re-enter for remaining slices, then `auto-verify` when all complete; **stop** at a valid checkpoint, STOP condition, context pressure, or host limit. |
-| `verify` | canonical PLAN.md, executed slices, verification commands | verification report; `VERIFY-GAP` annotations in PLAN.md on failure | auto-verify sets `stage: verify` after `canonical_plan` resolves and before commands; failure returns state to `stage: execute` | **Stop** → `verified` on pass (terminal); recommend `auto-execute` on fail. |
-| `verified` | canonical PLAN.md and verification evidence | completed change summary; roadmap phase marked done when applicable | `stage: verified` set only on full verification pass | None — terminal. `auto-office-hours` only as a new-objective entry point. |
-| `resume` | current state and canonical artifact pointers | concise recovery summary and next recommended skill | does not invent missing pointers; stale pointers are reported, not silently repaired | Orient and stop → recommend the skill matching recovered state. |
+| `verify` | canonical PLAN.md, executed slices, verification commands | verification report; `VERIFY-GAP` annotations in PLAN.md on failure | auto-verify sets `stage: verify` after `canonical_plan` resolves and before commands; failure returns state to `stage: execute` | **Stop** → `verified` on pass (terminal); `Next: auto-execute` on fail. |
+| `verified` | canonical PLAN.md and verification evidence | completed change summary; roadmap phase marked done when applicable | `stage: verified` set only on full verification pass | None. Terminal. `auto-office-hours` only as a new-objective entry point. |
+| `resume` | current state and canonical artifact pointers | concise recovery summary and next recommended skill | does not invent missing pointers; stale pointers are reported, not silently repaired | Orient and stop → `Next: <skill matching recovered state>`. |
 
 ## Handoff Contract
 
@@ -51,28 +51,28 @@ The two-move model (**Continue inline** / **Stop and hand off**) is in `FRAMEWOR
 
 **Stop and hand off at three edges:**
 
-1. **Entry into `execute`** — code and project artifacts start changing there, so a human authorizes it. Covers `plan → execute`, `auto-eng-review → execute`, and a failed `verify → execute`.
-2. **Entry into an optional review** — `auto-ceo-review` and `auto-eng-review` are user-invoked. A producing skill recommends a review and stops; it does not auto-run a review on the artifact it just wrote, which would trap the review in the producer's own context.
-3. **Verify outcomes** — a pass closes the change; a fail returns to execute. Stop either way.
+1. **Entry into `execute`** -> code and project artifacts start changing there, so a human authorizes it. Covers `plan → execute`, `auto-eng-review → execute`, and a failed `verify → execute`.
+2. **Entry into an optional review** -> `auto-ceo-review` and `auto-eng-review` are user-invoked. A producing skill recommends a review and stops. It does not auto-run a review on the artifact it just wrote, which would trap the review in the producer's own context.
+3. **Verify outcomes** -> a pass closes the change, a fail returns to execute. Stop either way.
 
-`auto-verify` is the mandatory gate, not an optional review, so `execute → verify` continues inline — but the audit re-derives from fresh command output, never from execute's reasoning. `auto-onboard` and `auto-resume` are utilities: they report findings and recommend a next skill rather than continuing, so the user keeps the direction. `stage: verified` is terminal; any `auto-office-hours` mention is for a new objective, not a same-change handoff.
+`auto-verify` is the mandatory gate, not an optional review, so `execute → verify` continues inline. The audit re-derives from fresh command output, never from execute's reasoning. `auto-onboard` and `auto-resume` are utilities: they report findings and recommend a next skill rather than continuing, so the user keeps the direction. `stage: verified` is terminal. Any `auto-office-hours` mention is for a new objective, not a same-change handoff.
 
 Each handoff carries five durable elements:
 
-1. **Exit gate** — condition required to advance.
-2. **Artifacts produced or updated** — files written for the active change.
-3. **State mutation** — `current.json` fields changed through `sync-status.mjs`: `stage`, canonical pointers, or review verdicts.
-4. **Diagnostic handling** — `error` diagnostics block advancement; `warning` diagnostics surface to the next stage.
-5. **Next-stage recommendation, blocker, or completion note** — what to invoke next, what blocks progress, or that the active change is complete.
+1. **Exit gate** -> condition required to advance.
+2. **Artifacts produced or updated** -> files written for the active change.
+3. **State mutation** -> `current.json` fields changed through `sync-status.mjs`: `stage`, canonical pointers, or review verdicts.
+4. **Diagnostic handling** -> `error` diagnostics block advancement. `warning` diagnostics surface to the next stage.
+5. **Next-stage recommendation, blocker, or completion note** -> what to invoke next, what blocks progress, or that the active change is complete.
 
 ## Checkpoint Semantics
 
 `Checkpoint after:` marks a slice that must pause for human input before the next slice starts. The label vocabulary is pinned in `contracts-data.json`; each value's meaning is defined here, once, so `auto-plan` (which assigns checkpoints) and `auto-execute` (which honors them) cannot drift.
 
-- **`none`** (default) — no pause. The next slice may start once verification passes.
-- **`human-verify`** — valid only when available commands, tests, host tools, and local inspection cannot verify the result. If any of those can confirm it, it is not a checkpoint.
-- **`decision`** — valid only when a human must choose among named product, architecture, design, scope, or risk options before the next slice can start, and the answer changes that next slice. The checkpoint reason must state the concrete question and the options. Not for reversible engineering judgment, known limitations, verification findings, or "the next slice should be…" notes.
-- **`human-action`** — valid only when progress requires an external action the agent cannot perform, such as 2FA, account approval, or off-machine access.
+- **`none`** (default) -> no pause. The next slice may start once verification passes.
+- **`human-verify`** -> valid only when available commands, tests, host tools, and local inspection cannot verify the result. If any of those can confirm it, it is not a checkpoint.
+- **`decision`** -> valid only when a human must choose among named product, architecture, design, scope, or risk options before the next slice can start, and the answer changes that next slice. The checkpoint reason must state the concrete question and the options. Not for reversible engineering judgment, known limitations, verification findings, or "the next slice should be…" notes.
+- **`human-action`** -> valid only when progress requires an external action the agent cannot perform, such as 2FA, account approval, or off-machine access.
 
 Verification findings, implementation caveats, downstream consequences, and recommendations for an already-approved next slice are not checkpoints. Record them as slice evidence or risks and continue.
 
@@ -80,9 +80,9 @@ Verification findings, implementation caveats, downstream consequences, and reco
 
 Per-slice commits are owned by `auto-execute`. This reference pins the contract so the skill prompts cannot drift.
 
-**Single owner.** `auto-execute` runs every `git commit` Automaton produces. `auto-verify` never invokes any git write command — its read-only-on-code gate extends to git history. Subagents on the implementer route never invoke any git command; the orchestrator owns history.
+**Single owner.** `auto-execute` runs every `git commit` Automaton produces. `auto-verify` never invokes any git write command. Its read-only-on-code gate extends to git history. Subagents on the implementer route never invoke any git command. The orchestrator owns history.
 
-**Trigger.** The rhythm is active when, at execute-stage entry, the working directory is a git repo, the run has no "skip git" instruction, and the repo is not in an interrupted state (mid-rebase, mid-merge, mid-cherry-pick, mid-bisect, or detached HEAD). When active, a commit fires after each slice's verification passes — the verification gate is the authorization, no separate prompt.
+**Trigger.** The rhythm is active when, at execute-stage entry, the working directory is a git repo, the run has no "skip git" instruction, and the repo is not in an interrupted state (mid-rebase, mid-merge, mid-cherry-pick, mid-bisect, or detached HEAD). When active, a commit fires after each slice's verification passes. The verification gate is the authorization, no separate prompt.
 
 **Commit shape.** `git add -A` followed by `git commit -m "slice N: <objective>"` for fresh slices, or `slice N gap-fix: <fix objective>` for gap-fix slices re-entered after `auto-verify` FAIL. Add scope defers to the user's `.gitignore`; the harness does not curate paths.
 
@@ -138,10 +138,10 @@ Runtime stays portable across Claude, Codex, and OpenCode by holding only L1 che
 
 Automaton artifacts are read by future skills and humans. Every section must change a downstream decision.
 
-1. **No mirror sections** — One concept per section. If two sections answer the same question, delete one or reframe them.
-2. **Index over transcript** — Aggregate tables (traceability, verification rollups, slice summaries) earn their place only at ≥ 3 entries. For 1–2 entries, inline the information where it is used.
-3. **Core versus conditional sections** — Lifecycle SKILL.md required-section lists distinguish core (always present) from conditional (include only when the named trigger applies). Each conditional section names its trigger.
-4. **Append-replace, not stack** — Review sections on artifacts are replaced on re-run for the same change, not stacked. Do not accumulate multiple `## Review: Product` or `## Review: Engineering` blocks.
-5. **Inline default for transient reports** — Verification reports, status summaries, and intermediate audit output live in the conversation only. Write to disk only when a future skill or human will read it again.
+1. **No mirror sections** -> One concept per section. If two sections answer the same question, delete one or reframe them.
+2. **Index over transcript** -> Aggregate tables (traceability, verification rollups, slice summaries) earn their place only at ≥ 3 entries. For 1–2 entries, inline the information where it is used.
+3. **Core versus conditional sections** -> Lifecycle SKILL.md required-section lists distinguish core (always present) from conditional (include only when the named trigger applies). Each conditional section names its trigger.
+4. **Append-replace, not stack** -> Review sections on artifacts are replaced on re-run for the same change, not stacked. Do not accumulate multiple `## Review: Product` or `## Review: Engineering` blocks.
+5. **Inline default for transient reports** -> Verification reports, status summaries, and intermediate audit output live in the conversation only. Write to disk only when a future skill or human will read it again.
 
 **Deletion test for any section:** if this section were removed, what downstream skill or human loses information? If nothing, drop it.

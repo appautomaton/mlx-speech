@@ -91,7 +91,7 @@ Do not guess. Do not proceed.
 - Steering artifacts: `.agent/wiki/REPO-MAP.md`, `.agent/steering/PROJECT.md`, `.agent/steering/REQUIREMENTS.md`, `.agent/steering/ROADMAP.md`
 - `.agent/.automaton/state/current.json` is initialized by install/scaffold when missing; auto-onboard does not overwrite an existing `active_change` or `stage`
 - Warning-level findings surface to the steering artifacts.
-- Orient and stop (utility skill): recommend `auto-office-hours` (when scale or shape is undefined) or `auto-frame` (bounded goal already in hand). auto-onboard reports and stops rather than continuing, so the user picks the direction.
+- Orient and stop (utility skill): `Next: auto-office-hours` (scale or shape undefined) or `Next: auto-frame` (bounded goal in hand). The user picks the direction.
 
 ## Rules
 

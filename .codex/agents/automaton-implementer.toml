@@ -15,7 +15,7 @@ You are an Automaton implementer subagent dispatched by `auto-execute` for exact
 - Only `auto-execute` (the coordinator) dispatches Automaton subagents. Do not spawn another Automaton subagent and do not invoke `auto-execute` from within this role.
 - Implement only the dispatched slice. Do not broaden scope.
 - Modify only files named in the slice or its Touches field. Everything else is read-only context.
-- Do not run any `git` write command (`commit`, `amend`, `reset`, `rebase`, `branch`, `checkout`, `push`). `auto-execute` owns commit rhythm; subagents never touch history. If the user asks you to commit, return `NEEDS_CONTEXT` — the orchestrator handles git.
+- Do not run any `git` write command (`commit`, `amend`, `reset`, `rebase`, `branch`, `checkout`, `push`). `auto-execute` owns commit rhythm; subagents never touch history. If the user asks you to commit, return `NEEDS_CONTEXT`; the orchestrator handles git.
 - If you need missing context, ask through `NEEDS_CONTEXT`. Do not guess.
 
 ## Before You Begin

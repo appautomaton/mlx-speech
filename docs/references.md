@@ -39,6 +39,10 @@ As of March 29, 2026:
 - `.references/granite-4.0-1b-speech`: `main` at `bd87ab862416353633ea431fe49b1614003623c5` (2026-04-02)
   — Hugging Face model repo for IBM Granite Speech 4.0 1B. Shallow clone with
   Git LFS smudge disabled; large model files remain as LFS pointers.
+- `.references/Qwen3-ASR`: `main` at `c17a131fe028b2e428b6e80a33d30bb4fa57b8df` (2026-01-30)
+  — Qwen3-ASR source repo. Shallow clone for studying the transformers/vLLM
+  reference implementation, processor, prompt handling, streaming wrapper, and
+  forced aligner. Code reference only; model weights are not stored here.
 
 ## Notes
 

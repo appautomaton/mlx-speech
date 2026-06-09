@@ -29,7 +29,7 @@ Scan for:
 - Promotional language about test coverage
 
 Before: "The authentication system appears to be working well. Tests largely pass and the overall implementation seems solid."
-After: "PASS: `npm test -- auth.test.js` — 12/12 assertions. FAIL: `curl -H 'Authorization: Bearer expired' /api/me` — returns 200, expected 401."
+After: "PASS: `npm test -- auth.test.js`, 12/12 assertions. FAIL: `curl -H 'Authorization: Bearer expired' /api/me`, returns 200, expected 401."
 
 ## Final Check
 

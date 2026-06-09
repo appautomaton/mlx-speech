@@ -39,7 +39,7 @@
 **Touches:** `src/middleware/auth.js`, `src/routes/api/users.js`, `src/routes/api/settings.js`, `src/utils/jwt.js`, `tests/auth.test.js`
 ```
 
-Why subagent recommended: touches 5 files across middleware, routes, and utilities — crosses subsystem boundaries with shared interface changes.
+Why subagent recommended: touches 5 files across middleware, routes, and utilities; crosses subsystem boundaries with shared interface changes.
 
 ## Topology Section
 

@@ -15,24 +15,24 @@ Work scale: {bug / feature / capability / roadmap}
 Work shape: {feature / refactor / parity / audit / migration / coverage / content / mixed}
 
 ## Objective
-{the user's final refined objective — not the initial framing, not the agent's rewrite}
+{the user's final refined objective; not the initial framing, not the agent's rewrite}
 
 ## Broader Intent
 {larger goal this spec serves; omit if identical to Objective}
 
 ## Mode Context
 {include only the mode section that matters:}
-{- Startup: "Evidence" — demand, status quo/workaround, target user or wedge}
-{- Builder: "What Makes This Cool" — core delight, novelty, or "whoa" factor}
-{- Content: "Audience & Thesis" — reader, thesis, voice direction, content anti-goals}
+{Startup: "Evidence". Cover demand, status quo/workaround, target user or wedge.}
+{Builder: "What Makes This Cool". Cover core delight, novelty, or "whoa" factor.}
+{Content: "Audience & Thesis". Cover reader, thesis, voice direction, content anti-goals.}
 
 ## Shape Context
 {include only the section that changes framing or verification; omit for plain feature shape when Mode Context is sufficient:}
-{- Parity: "Closure Target" — reference system, gap landscape, what "closed" means}
-{- Audit: "Key Questions" — what the audit must answer, what decision depends on findings}
-{- Refactor: "Structural Goal" — what invariant holds, what structural problem is solved}
-{- Migration: "Target State" — source state, target state, compatibility constraints}
-{- Coverage: "Risk Areas" — what is undertested, what types of tests are needed}
+{Parity: "Closure Target". Cover reference system, gap landscape, what "closed" means.}
+{Audit: "Key Questions". Cover what the audit must answer, what decision depends on findings.}
+{Refactor: "Structural Goal". Cover what invariant holds, what structural problem is solved.}
+{Migration: "Target State". Cover source state, target state, compatibility constraints.}
+{Coverage: "Risk Areas". Cover what is undertested, what types of tests are needed.}
 {- Mixed: combine the relevant sections above}
 
 ## Constraints

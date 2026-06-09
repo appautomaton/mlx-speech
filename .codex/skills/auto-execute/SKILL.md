@@ -52,7 +52,7 @@ After the canonical `PLAN.md` resolves and before changing code or project artif
 
 Commit per verified slice when the working directory is a git repo. The verification gate is the authorization; do not pause to ask.
 
-**Detect once at entry.** After `Mark Execute Stage` resolves, run `git rev-parse --git-dir` and `git status --porcelain`. The rhythm is inactive — silently, for the rest of the run — when:
+**Detect once at entry.** After `Mark Execute Stage` resolves, run `git rev-parse --git-dir` and `git status --porcelain`. The rhythm is silently inactive for the rest of the run when:
 
 - the directory is not a git repo;
 - the user has told this run not to use git;
@@ -65,7 +65,7 @@ Commit per verified slice when the working directory is a git repo. The verifica
 - `git commit -m "slice N: <objective>"` for a fresh slice (objective from `PLAN.md`).
 - `git commit -m "slice N gap-fix: <fix objective>"` for a slice re-entered after `auto-verify` FAIL (fix objective from the `VERIFY-GAP` block).
 
-**Strictly additive.** `git commit` only. Never `amend`, `reset`, `rebase`, `branch`, `checkout`, or `push`. Subagents on the implementer route never run any git command — the implementer prompt enforces this; the orchestrator owns history.
+**Strictly additive.** `git commit` only. Never `amend`, `reset`, `rebase`, `branch`, `checkout`, or `push`. Subagents on the implementer route never run any git command. The implementer prompt enforces this; the orchestrator owns history.
 
 If the commit operation itself fails (pre-commit hook rejection, signing failure, repo entering an interrupted state mid-run), STOP and surface the failure verbatim. Do not retry with workarounds; do not silently skip the rhythm to keep going.
 
@@ -103,9 +103,9 @@ Use this route only when route selection permits direct execution. Change code a
 
 ### Subagent Route
 
-Use this route when `Execution` is `subagent required`, when `subagent recommended` is justified, or when the user requested multi-agent execution. Before dispatching, read `.agent/.automaton/references/SUBAGENT-PROTOCOL.md` and `references/HOST-TOOLS.md`. Dispatch only the named host-native agents listed in `HOST-TOOLS.md` — `automaton-implementer`, `automaton-spec-reviewer`, and `automaton-quality-reviewer` — and fill the per-call slots from `references/implementer-prompt.md`, `references/spec-reviewer-prompt.md`, and `references/quality-reviewer-prompt.md`. The static role bodies live in the host-native agent definitions; do not paste a role body into a generic worker or explorer agent.
+Use this route when `Execution` is `subagent required`, when `subagent recommended` is justified, or when the user requested multi-agent execution. Before dispatching, read `.agent/.automaton/references/SUBAGENT-PROTOCOL.md` and `references/HOST-TOOLS.md`. Dispatch only the named host-native agents listed in `HOST-TOOLS.md` (`automaton-implementer`, `automaton-spec-reviewer`, `automaton-quality-reviewer`) and fill the per-call slots from `references/implementer-prompt.md`, `references/spec-reviewer-prompt.md`, and `references/quality-reviewer-prompt.md`. The static role bodies live in the host-native agent definitions; do not paste a role body into a generic worker or explorer agent.
 
-If `HOST-TOOLS.md` says subagents are unavailable, fall back from `subagent recommended` to direct execution only when the slice remains safe. For `subagent required`, stop and recommend `auto-plan` or a host/configuration change. If a named agent is configured out of the host (Codex `[features].multi_agent` disabled, OpenCode `permission.task` denied for `automaton-*`, Claude agent file missing), treat the host as not exposing subagent support and stop — do not fall back to runtime-curated prompt injection into a generic agent.
+If `HOST-TOOLS.md` says subagents are unavailable, fall back from `subagent recommended` to direct execution only when the slice remains safe. For `subagent required`, stop and recommend `auto-plan` or a host/configuration change. If a named agent is configured out of the host (Codex `[features].multi_agent` disabled, OpenCode `permission.task` denied for `automaton-*`, Claude agent file missing), treat the host as not exposing subagent support and stop. Do not fall back to runtime-curated prompt injection into a generic agent.
 
 Run the per-slice protocol:
 1. Build a dispatch packet from the current slice only.
@@ -113,7 +113,7 @@ Run the per-slice protocol:
 3. Provide at most one targeted context correction for `NEEDS_CONTEXT`.
 4. Verify expected file changes before spec review.
 5. Run spec review before code-quality review.
-6. Send concrete reviewer issues to an implementer once, then re-review.
+6. Pass the concrete reviewer issues to the implementer once in the `<requested-changes>` slot, then re-review.
 7. Record a compact orchestration summary under `.agent/work/<change>/orchestration/` only when subagent/review details are needed later. The slice status still updates in place.
 
 Do not mark the slice complete unless implementation status is acceptable, spec review is `APPROVED`, quality review is `APPROVED`, and slice verification evidence exists.
@@ -181,7 +181,8 @@ Read `references/stop-examples.md` when uncertain whether a situation qualifies 
 - Per-slice commits when the Git Rhythm is active: `slice N: <objective>` for fresh slices, `slice N gap-fix: <fix objective>` for re-entries after a verify FAIL.
 - Execute stage recorded through `sync-status.mjs` when execution begins; no slice cursor field is added to current.json.
 - Execution window checkpoint or stop reason when continuation pauses; if approved slices remain, name the valid blocker that prevents continuing.
-- Verification report when all slices complete and continuation is safe; otherwise recommended next skill: `auto-execute` (slices remain), `auto-verify` (execution complete but continuation blocked), or `auto-plan` (structural failure).
+- Verification report when all slices complete and continuation is safe.
+- Handoff when continuation is blocked: `Next: auto-execute` (slices remain), `Next: auto-verify` (execution complete, continuation blocked), or `Next: auto-plan` (structural failure).
 
 ## Rules
 
