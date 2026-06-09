@@ -10,6 +10,8 @@ BANNED_RUNTIME_IMPORTS = {
     "mlx_lm",
     "transformers",
     "vllm",
+    "librosa",
+    "qwen_asr",
     "mlx_audio",
 }
 

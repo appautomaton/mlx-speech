@@ -232,6 +232,10 @@ Checkpoints: none.
 
 **Verification:** `.venv/bin/python -m pytest tests/test_runtime_purity.py tests/unit/test_granite_speech_dependency_guard.py`
 
+**Status:** complete
+**Evidence:** expanded runtime purity guards to ban torch, torchaudio, transformers, vLLM, librosa, qwen_asr, qwen-asr, mlx_lm, and mlx_audio under `src/`; added Qwen3-ASR dependency/package-surface guard tests; `.venv/bin/python -m pytest tests/test_runtime_purity.py tests/unit/test_granite_speech_dependency_guard.py tests/unit/test_qwen3_asr_dependency_guard.py` passed with 5 tests; `.venv/bin/python -m pytest tests/unit/` passed with 438 tests.
+**Risks / next:** none.
+
 ### Slice 10: Documentation And Reference Notes
 
 **Objective:** Document Qwen3-ASR v0 behavior, local model layout, BF16 checkpoint policy, language semantics, and deferred scope.
