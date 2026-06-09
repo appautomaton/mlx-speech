@@ -120,6 +120,10 @@ Checkpoints: none.
 
 **Verification:** `.venv/bin/python -m pytest tests/unit/test_qwen3_asr_audio_encoder.py tests/test_runtime_purity.py`
 
+**Status:** complete
+**Evidence:** added MLX Qwen3-ASR audio encoder with three stride-2 Conv2D stages, sinusoidal positions, configured transformer layers, post norm/projections, single-audio shape forward, and output-length tests; `.venv/bin/python -m pytest tests/unit/test_qwen3_asr_audio_encoder.py tests/test_runtime_purity.py` passed with 8 tests; `.venv/bin/python -m pytest tests/unit/` passed with 409 tests.
+**Risks / next:** full checkpoint numeric parity remains deferred to checkpoint/runtime slices.
+
 ### Slice 5: Qwen3 Text Decoder
 
 **Objective:** Implement the Qwen3 decoder components needed for ASR greedy generation.
