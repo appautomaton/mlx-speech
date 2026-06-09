@@ -101,6 +101,10 @@ Checkpoints: none.
 
 **Verification:** `.venv/bin/python -m pytest tests/unit/test_qwen3_asr_processor.py tests/test_runtime_purity.py`
 
+**Status:** complete
+**Evidence:** added Qwen3-ASR processor prompt construction, feature-length placeholder expansion, batch preparation, and parser tests; `.venv/bin/python -m pytest tests/unit/test_qwen3_asr_processor.py tests/test_runtime_purity.py` passed with 15 tests; `.venv/bin/python -m pytest tests/unit/` passed with 402 tests.
+**Risks / next:** none.
+
 ### Slice 4: Audio Encoder Structure
 
 **Objective:** Implement the MLX Qwen3-ASR audio encoder structure and shape-only forward path.
