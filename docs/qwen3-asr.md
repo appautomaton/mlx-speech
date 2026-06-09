@@ -46,8 +46,26 @@ mlx-speech asr \
 ## Language Behavior
 
 The CLI default omits `--language`, which lets Qwen3-ASR infer the language from
-the audio. This is the preferred mode for English, Chinese, and mixed
-Chinese/English speech.
+the audio. This remains the default mode and is the right first option for
+single-language English or Chinese speech.
+
+For Chinese/English mixed speech where preserving Chinese characters matters,
+prefer the Chinese prompt path for now:
+
+```python
+asr.generate("mixed-speech.wav", language="Chinese")
+```
+
+```bash
+mlx-speech asr \
+  --model models/qwen3_asr_1_7b/mlx-bf16 \
+  --audio mixed-speech.wav \
+  --language Chinese
+```
+
+Local smoke tests found that auto mode can treat English-dominant mixed speech
+as English and translate Chinese segments into English. The Chinese prompt path
+preserved mixed Chinese/English text best in those checks.
 
 Explicit language forcing is available when desired:
 
@@ -79,6 +97,8 @@ when language is omitted.
   prefill.
 - Generation uses greedy decoding with a local KV cache and parses
   `language ...<asr_text>...` outputs into `(language, text)`.
+- Post-processing trims known generated tail markers such as repeated assistant
+  labels from the transcript returned by the public API.
 
 ## Current Limits
 

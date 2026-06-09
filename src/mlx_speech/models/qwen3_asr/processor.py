@@ -17,6 +17,10 @@ from .tokenizer import Qwen3ASRTokenizer
 
 ASR_TEXT_TAG = "<asr_text>"
 LANG_PREFIX = "language "
+GENERATED_TAIL_PATTERN = re.compile(
+    r"(?im)^\s*(?:Original Answer|Human:?|\(bot|javascript|Copyтекст|Copy).*\Z",
+    re.DOTALL,
+)
 SUPPORTED_LANGUAGES = (
     "Chinese",
     "English",
@@ -236,16 +240,16 @@ def parse_asr_output(
 
     forced_language = resolve_language(user_language) if user_language else None
     if forced_language is not None:
-        return forced_language, text
+        return forced_language, _clean_transcript_text(text)
 
     if ASR_TEXT_TAG not in text:
         parsed = _parse_language_prefixed_text(text)
         if parsed is not None:
             return parsed
-        return "", text
+        return "", _clean_transcript_text(text)
 
     meta_part, text_part = text.split(ASR_TEXT_TAG, 1)
-    transcript = text_part.strip()
+    transcript = _clean_transcript_text(text_part)
     if "language none" in meta_part.lower():
         return "", transcript
 
@@ -272,8 +276,16 @@ def _parse_language_prefixed_text(text: str) -> tuple[str, str] | None:
     language = normalize_language_name(matches[0].group(1))
     start = matches[0].end()
     end = matches[1].start() if len(matches) > 1 else len(text)
-    transcript = text[start:end].strip()
+    transcript = _clean_transcript_text(text[start:end])
     return language, transcript
+
+
+def _clean_transcript_text(text: str) -> str:
+    cleaned = str(text).strip()
+    if not cleaned:
+        return ""
+    cleaned = GENERATED_TAIL_PATTERN.sub("", cleaned).strip()
+    return cleaned
 
 
 def _broadcast(

@@ -156,6 +156,12 @@ def test_qwen3_asr_parse_forced_language_output():
     )
 
 
+def test_qwen3_asr_parse_forced_language_cleans_generated_tail():
+    raw = "hello world\n(bothello world again"
+
+    assert parse_asr_output(raw, user_language="english") == ("English", "hello world")
+
+
 def test_qwen3_asr_parse_empty_language_output():
     assert parse_asr_output("language None<asr_text>") == ("", "")
     assert parse_asr_output(None) == ("", "")
@@ -164,6 +170,12 @@ def test_qwen3_asr_parse_empty_language_output():
 
 def test_qwen3_asr_parse_no_language_tag_output():
     assert parse_asr_output("plain transcription") == ("", "plain transcription")
+
+
+def test_qwen3_asr_parse_no_language_tag_cleans_generated_tail():
+    raw = "plain transcription\nCopyтекстplain transcription again"
+
+    assert parse_asr_output(raw) == ("", "plain transcription")
 
 
 def test_qwen3_asr_parse_language_prefixed_output_without_asr_tag():
@@ -175,7 +187,22 @@ def test_qwen3_asr_parse_language_prefixed_output_without_asr_tag():
     assert parse_asr_output(raw) == ("English", "Hello from Qwen.")
 
 
+def test_qwen3_asr_parse_language_prefixed_output_cleans_generated_tail():
+    raw = "language Chinese今天我们测试。\njavascript今天我们测试。"
+
+    assert parse_asr_output(raw) == ("Chinese", "今天我们测试。")
+
+
 def test_qwen3_asr_parse_mixed_english_chinese_text_output():
     raw = "language Chinese<asr_text>今天 test 一下 Qwen ASR"
 
     assert parse_asr_output(raw) == ("Chinese", "今天 test 一下 Qwen ASR")
+
+
+def test_qwen3_asr_parse_asr_text_tag_cleans_generated_tail():
+    raw = (
+        "language Chinese<asr_text>今天我们测试语音识别。\n"
+        "Original Answer今天我们测试语音识别。"
+    )
+
+    assert parse_asr_output(raw) == ("Chinese", "今天我们测试语音识别。")
