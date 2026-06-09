@@ -141,6 +141,10 @@ Checkpoints: none.
 
 **Verification:** `.venv/bin/python -m pytest tests/unit/test_qwen3_asr_text_decoder.py tests/test_runtime_purity.py`
 
+**Status:** complete
+**Evidence:** added MLX Qwen3-ASR text decoder with Q/K RMSNorm, grouped-query attention, RoPE, SwiGLU MLP, RMSNorm, tied/untied LM head support, KV cache prefill/decode interfaces, and logits tests; `.venv/bin/python -m pytest tests/unit/test_qwen3_asr_text_decoder.py tests/test_runtime_purity.py` passed with 9 tests; `.venv/bin/python -m pytest tests/unit/` passed with 417 tests.
+**Risks / next:** direct route used because host subagent tooling requires explicit user delegation for spawning; Slice 6 must verify multimodal embedding replacement and generation mechanics.
+
 ### Slice 6: Multimodal Runtime And Greedy Decode
 
 **Objective:** Join audio frontend, audio encoder, Qwen3 decoder, placeholder masking, context preflight, and greedy generation into an offline single-pass runtime.
