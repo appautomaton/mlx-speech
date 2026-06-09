@@ -187,6 +187,10 @@ Checkpoints: none.
 
 **Verification:** `.venv/bin/python -m pytest tests/unit/test_qwen3_asr_checkpoint_unit.py tests/checkpoint/test_qwen3_asr_checkpoint.py`
 
+**Status:** complete
+**Evidence:** added Qwen3-ASR checkpoint sanitizer/loader, alignment reporting, BF16 packaging helper, conversion script, tiny safetensors conversion tests, and header-level local checkpoint tests; `.venv/bin/python -m pytest tests/unit/test_qwen3_asr_checkpoint_unit.py tests/checkpoint/test_qwen3_asr_checkpoint.py` passed with 9 tests; `.venv/bin/python -m pytest tests/unit/` passed with 431 tests.
+**Risks / next:** real full-model conversion command was not run; Slice 8 can wire public ASR adapter against the `mlx-bf16/` convention.
+
 ### Slice 8: ASR Adapter, Registry, And CLI Language Semantics
 
 **Objective:** Wire Qwen3-ASR into the public ASR interface and make auto language reachable from Python API and CLI.
