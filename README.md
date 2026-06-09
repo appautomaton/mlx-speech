@@ -66,7 +66,7 @@ granite = mlx_speech.asr.load("models/ibm/granite_4_0_1b_speech/original")
 print(granite.generate("audio.wav").text)
 
 # Local Qwen3-ASR BF16 checkpoint
-qwen = mlx_speech.asr.load("models/qwen3_asr_1_7b/mlx-bf16")
+qwen = mlx_speech.asr.load("models/Qwen3-ASR-1.7B-MLX-BF16")
 print(qwen.generate("audio.wav").text)
 
 # List available models
@@ -103,8 +103,8 @@ mlx-speech tts --model moss-sound-effect \
 # Transcribe audio
 mlx-speech asr --model cohere-asr --audio speech.wav
 mlx-speech asr --model models/ibm/granite_4_0_1b_speech/original --audio speech.wav
-mlx-speech asr --model models/qwen3_asr_1_7b/mlx-bf16 --audio speech.wav
-mlx-speech asr --model models/qwen3_asr_1_7b/mlx-bf16 --audio speech.wav --language Chinese
+mlx-speech asr --model models/Qwen3-ASR-1.7B-MLX-BF16 --audio speech.wav
+mlx-speech asr --model models/Qwen3-ASR-1.7B-MLX-BF16 --audio speech.wav --language Chinese
 
 # Discover models
 mlx-speech tts --list-models

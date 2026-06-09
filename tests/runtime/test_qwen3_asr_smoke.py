@@ -7,11 +7,11 @@ import pytest
 import mlx_speech.asr as asr
 
 
-MODEL_DIR = Path("models/qwen3_asr_1_7b/mlx-bf16")
+MODEL_DIR = Path("models/Qwen3-ASR-1.7B-MLX-BF16")
 SAMPLES = {
-    "English": Path("models/qwen3_asr_1_7b/samples/english.wav"),
-    "Chinese": Path("models/qwen3_asr_1_7b/samples/chinese.wav"),
-    "Mixed": Path("models/qwen3_asr_1_7b/samples/mixed.wav"),
+    "English": Path("models/Qwen3-ASR-1.7B-MLX-BF16/samples/english.wav"),
+    "Chinese": Path("models/Qwen3-ASR-1.7B-MLX-BF16/samples/chinese.wav"),
+    "Mixed": Path("models/Qwen3-ASR-1.7B-MLX-BF16/samples/mixed.wav"),
 }
 
 

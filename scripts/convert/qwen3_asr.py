@@ -17,7 +17,7 @@ from mlx_speech.models.qwen3_asr.checkpoint import (
 
 
 DEFAULT_INPUT = Path("models/qwen3_asr_1_7b/original")
-DEFAULT_OUTPUT = Path("models/qwen3_asr_1_7b/mlx-bf16")
+DEFAULT_OUTPUT = Path("models/Qwen3-ASR-1.7B-MLX-BF16")
 
 
 def parse_args() -> argparse.Namespace:

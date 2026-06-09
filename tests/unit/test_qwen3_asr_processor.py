@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -9,17 +8,7 @@ import pytest
 from mlx_speech.models.qwen3_asr import (
     Qwen3ASRFeatureExtractor,
     Qwen3ASRProcessor,
-    Qwen3ASRTokenizer,
     parse_asr_output,
-)
-
-
-QWEN_DIR = Path("models/qwen3_asr_1_7b/original")
-TOKENIZER_FILES = (
-    QWEN_DIR / "config.json",
-    QWEN_DIR / "tokenizer_config.json",
-    QWEN_DIR / "vocab.json",
-    QWEN_DIR / "merges.txt",
 )
 
 
@@ -27,13 +16,13 @@ class FakeQwen3ASRTokenizer:
     audio_token = "<|audio_pad|>"
     audio_bos_token = "<|audio_start|>"
     audio_eos_token = "<|audio_end|>"
-    audio_token_id = 10
-    audio_bos_token_id = 11
-    audio_eos_token_id = 12
+    audio_token_id = 151676
+    audio_bos_token_id = 151669
+    audio_eos_token_id = 151670
 
     _specials = {
-        "<|im_start|>": 1,
-        "<|im_end|>": 2,
+        "<|im_start|>": 151644,
+        "<|im_end|>": 151645,
         audio_token: audio_token_id,
         audio_bos_token: audio_bos_token_id,
         audio_eos_token: audio_eos_token_id,
@@ -124,24 +113,6 @@ def test_qwen3_asr_batch_prompt_rejects_mismatched_lengths():
 
     with pytest.raises(ValueError, match="contexts length"):
         processor.build_batch_prompts(audio_lengths=[1, 2], contexts=["only one"])
-
-
-def test_qwen3_asr_processor_uses_real_tokenizer_special_tokens_when_present():
-    if not all(path.exists() for path in TOKENIZER_FILES):
-        pytest.skip("Qwen3-ASR tokenizer assets not present")
-
-    tokenizer = Qwen3ASRTokenizer.from_dir(QWEN_DIR)
-    processor = Qwen3ASRProcessor(
-        config=SimpleNamespace(support_languages=("Chinese", "English")),
-        tokenizer=tokenizer,
-        feature_extractor=Qwen3ASRFeatureExtractor(),
-    )
-
-    prompt = processor.build_prompt(audio_length=3, language=None)
-
-    assert prompt.input_ids.count(151676) == 3
-    assert prompt.input_ids.count(151669) == 1
-    assert prompt.input_ids.count(151670) == 1
 
 
 def test_qwen3_asr_parse_detected_language_output():

@@ -1,24 +1,57 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
 from mlx_speech.models.qwen3_asr import Qwen3ASRConfig
 
 
-QWEN_DIR = Path("models/qwen3_asr_1_7b/original")
+def _write_qwen3_asr_config(model_dir):
+    payload = {
+        "model_type": "qwen3_asr",
+        "architectures": ["Qwen3ASRForConditionalGeneration"],
+        "support_languages": ["Chinese", "English"],
+        "thinker_config": {
+            "model_type": "qwen3_asr",
+            "audio_token_id": 151676,
+            "audio_start_token_id": 151669,
+            "audio_end_token_id": 151670,
+            "audio_config": {
+                "model_type": "qwen3_asr_audio_encoder",
+                "num_mel_bins": 128,
+                "encoder_layers": 24,
+                "encoder_attention_heads": 16,
+                "encoder_ffn_dim": 4096,
+                "d_model": 1024,
+                "downsample_hidden_size": 480,
+                "output_dim": 2048,
+                "max_source_positions": 1500,
+                "n_window": 100,
+                "n_window_infer": 3000,
+                "conv_chunksize": 8,
+            },
+            "text_config": {
+                "model_type": "qwen3",
+                "hidden_size": 2048,
+                "intermediate_size": 11008,
+                "num_hidden_layers": 28,
+                "num_attention_heads": 16,
+                "num_key_value_heads": 8,
+                "head_dim": 128,
+                "vocab_size": 151936,
+                "max_position_embeddings": 40960,
+                "rms_norm_eps": 1e-6,
+                "rope_theta": 1000000.0,
+            },
+        },
+    }
+    (model_dir / "config.json").write_text(json.dumps(payload), encoding="utf-8")
 
 
-pytestmark = pytest.mark.skipif(
-    not (QWEN_DIR / "config.json").exists(),
-    reason="Qwen3-ASR config assets not present",
-)
-
-
-def test_qwen3_asr_config_reads_real_1_7b_dimensions():
-    config = Qwen3ASRConfig.from_dir(QWEN_DIR)
+def test_qwen3_asr_config_reads_1_7b_dimensions_from_fixture(tmp_path):
+    _write_qwen3_asr_config(tmp_path)
+    config = Qwen3ASRConfig.from_dir(tmp_path)
 
     assert config.model_type == "qwen3_asr"
     assert config.architectures == ("Qwen3ASRForConditionalGeneration",)

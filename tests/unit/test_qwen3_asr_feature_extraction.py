@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -13,19 +12,26 @@ from mlx_speech.models.qwen3_asr.feature_extraction import (
 )
 
 
-QWEN_DIR = Path("models/qwen3_asr_1_7b/original")
-
-
 def _deterministic_waveform(samples: int = 1600) -> np.ndarray:
     t = np.arange(samples, dtype=np.float32) / 16000.0
     return (0.1 * np.sin(2.0 * np.pi * 440.0 * t)).astype(np.float32)
 
 
-def test_qwen3_asr_feature_extractor_reads_preprocessor_config():
-    if not (QWEN_DIR / "preprocessor_config.json").exists():
-        pytest.skip("Qwen3-ASR preprocessor assets not present")
+def test_qwen3_asr_feature_extractor_reads_preprocessor_config(tmp_path):
+    (tmp_path / "preprocessor_config.json").write_text(
+        """{
+            "sampling_rate": 16000,
+            "n_fft": 400,
+            "hop_length": 160,
+            "feature_size": 128,
+            "chunk_length": 30,
+            "padding_value": 0.0,
+            "dither": 0.0
+        }""",
+        encoding="utf-8",
+    )
 
-    extractor = Qwen3ASRFeatureExtractor.from_dir(QWEN_DIR)
+    extractor = Qwen3ASRFeatureExtractor.from_dir(tmp_path)
 
     assert extractor.sample_rate == 16000
     assert extractor.n_fft == 400

@@ -11,20 +11,19 @@ upstream Qwen runtime.
 ## Local Layout
 
 ```text
-models/qwen3_asr_1_7b/
-  original/   # downloaded upstream BF16 safetensors and tokenizer assets
-  mlx-bf16/   # local MLX runtime package produced by the converter
+models/Qwen3-ASR-1.7B-MLX-BF16/   # local MLX runtime package
 ```
 
-The upstream files in `original/` are already BF16 `.safetensors`. The converter
-renames checkpoint keys from `thinker.*` into this repo's MLX module tree and
-transposes the audio Conv2D weights from PyTorch layout into MLX layout. It does
-not quantize.
+The upstream Qwen files are already BF16 `.safetensors`. The converter renames
+checkpoint keys from `thinker.*` into this repo's MLX module tree and transposes
+the audio Conv2D weights from PyTorch layout into MLX layout. It does not
+quantize. The project `models/` entry may be a symlink to a shared local model
+store.
 
 ```bash
 python scripts/convert/qwen3_asr.py \
-  --input-dir models/qwen3_asr_1_7b/original \
-  --output-dir models/qwen3_asr_1_7b/mlx-bf16
+  --input-dir /path/to/Qwen3-ASR-1.7B-original \
+  --output-dir models/Qwen3-ASR-1.7B-MLX-BF16
 ```
 
 ## Quick Start
@@ -32,14 +31,14 @@ python scripts/convert/qwen3_asr.py \
 ```python
 import mlx_speech
 
-asr = mlx_speech.asr.load("models/qwen3_asr_1_7b/mlx-bf16")
+asr = mlx_speech.asr.load("models/Qwen3-ASR-1.7B-MLX-BF16")
 result = asr.generate("speech.wav", max_new_tokens=256)
 print(result.language, result.text)
 ```
 
 ```bash
 mlx-speech asr \
-  --model models/qwen3_asr_1_7b/mlx-bf16 \
+  --model models/Qwen3-ASR-1.7B-MLX-BF16 \
   --audio speech.wav
 ```
 
@@ -58,7 +57,7 @@ asr.generate("mixed-speech.wav", language="Chinese")
 
 ```bash
 mlx-speech asr \
-  --model models/qwen3_asr_1_7b/mlx-bf16 \
+  --model models/Qwen3-ASR-1.7B-MLX-BF16 \
   --audio mixed-speech.wav \
   --language Chinese
 ```
@@ -76,7 +75,7 @@ asr.generate("speech.wav", language="English")
 
 ```bash
 mlx-speech asr \
-  --model models/qwen3_asr_1_7b/mlx-bf16 \
+  --model models/Qwen3-ASR-1.7B-MLX-BF16 \
   --audio speech.wav \
   --language Chinese
 ```
@@ -109,7 +108,8 @@ when language is omitted.
 - Automatic model download is deferred; use local paths.
 - Broader multilingual validation beyond English, Chinese, and mixed
   Chinese/English is deferred.
-- Low-bit quantization is deferred; `mlx-bf16/` is the supported package layout.
+- Low-bit quantization is deferred; `Qwen3-ASR-1.7B-MLX-BF16/` is the supported
+  package layout.
 
 ## Reference Source
 
