@@ -24,7 +24,7 @@ class GraniteSpeechASRAdapter:
         audio: np.ndarray | mx.array | str | Path,
         *,
         sample_rate: int = 16000,
-        language: str = "en",
+        language: str | None = None,
         **kwargs,
     ) -> ASROutput:
         if isinstance(audio, (str, Path)):
@@ -40,7 +40,7 @@ class GraniteSpeechASRAdapter:
         result = self._runtime.transcribe(
             audio_np,
             sample_rate=sample_rate,
-            language=language,
+            language="en" if language is None else language,
             **kwargs,
         )
         return ASROutput(text=result.text, language=result.language)

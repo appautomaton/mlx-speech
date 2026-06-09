@@ -26,6 +26,6 @@ class ASRModel(Protocol):
         audio: np.ndarray | mx.array | str | Path,
         *,
         sample_rate: int = 16000,
-        language: str = "en",
+        language: str | None = None,
         **kwargs,
     ) -> ASROutput: ...

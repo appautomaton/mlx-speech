@@ -30,8 +30,8 @@ def add_asr_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--language",
-        default="en",
-        help="Language code (default: en).",
+        default=None,
+        help="Language name/code. Omit for model default; Qwen3-ASR accepts auto.",
     )
 
 

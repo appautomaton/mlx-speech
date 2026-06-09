@@ -211,6 +211,10 @@ Checkpoints: none.
 
 **Verification:** `.venv/bin/python -m pytest tests/unit/test_asr_registry.py tests/unit/test_qwen3_asr_adapter.py tests/unit/test_granite_speech_adapter.py tests/test_cohere_asr_generation.py`
 
+**Status:** complete
+**Evidence:** added Qwen3-ASR public adapter, registry/load routing, transcriber `from_dir`, CLI omitted-language default, and adapter tests for Qwen auto language plus Cohere/Granite English defaults; `.venv/bin/python -m pytest tests/unit/test_asr_registry.py tests/unit/test_qwen3_asr_adapter.py tests/unit/test_granite_speech_adapter.py tests/unit/test_cohere_asr_adapter.py tests/test_cohere_asr_generation.py` passed with 13 tests; `.venv/bin/python -m pytest tests/unit/` passed with 436 tests.
+**Risks / next:** none.
+
 ### Slice 9: Dependency Guard And Packaging Surface
 
 **Objective:** Lock the dependency boundary and exported package surface for Qwen3-ASR.

@@ -24,7 +24,7 @@ class CohereASRAdapter:
         audio: np.ndarray | mx.array | str | Path,
         *,
         sample_rate: int = 16000,
-        language: str = "en",
+        language: str | None = None,
         **kwargs,
     ) -> ASROutput:
         if isinstance(audio, (str, Path)):
@@ -40,6 +40,9 @@ class CohereASRAdapter:
             audio_np = np.asarray(audio, dtype=np.float32)
 
         result = self._runtime.transcribe(
-            audio_np, sample_rate=sample_rate, language=language, **kwargs
+            audio_np,
+            sample_rate=sample_rate,
+            language="en" if language is None else language,
+            **kwargs,
         )
         return ASROutput(text=result.text, language=result.language)

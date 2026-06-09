@@ -52,6 +52,30 @@ class Qwen3ASRTranscriber:
     processor: Qwen3ASRProcessor
     config: Qwen3ASRConfig
 
+    @classmethod
+    def from_dir(
+        cls,
+        model_dir: str | Path,
+        *,
+        dtype: mx.Dtype = mx.bfloat16,
+    ) -> "Qwen3ASRTranscriber":
+        from ..models.qwen3_asr.checkpoint import (
+            load_checkpoint_into_model,
+            load_qwen3_asr_checkpoint,
+        )
+
+        checkpoint = load_qwen3_asr_checkpoint(model_dir)
+        model = Qwen3ASRModel(checkpoint.config)
+        load_checkpoint_into_model(model, checkpoint, strict=True)
+        model.set_dtype(dtype)
+        model.eval()
+        mx.eval(model.parameters())
+        return cls(
+            model=model,
+            processor=Qwen3ASRProcessor.from_dir(model_dir),
+            config=checkpoint.config,
+        )
+
     def transcribe(
         self,
         audio: np.ndarray | mx.array | str | Path,

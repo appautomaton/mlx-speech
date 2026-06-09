@@ -31,7 +31,7 @@ def test_granite_adapter_accepts_numpy_and_mx_audio():
     runtime = _FakeRuntime()
     adapter = GraniteSpeechASRAdapter(runtime)
 
-    out_np = adapter.generate(np.zeros((4,), dtype=np.float32), language="en")
+    out_np = adapter.generate(np.zeros((4,), dtype=np.float32))
     out_mx = adapter.generate(mx.zeros((4,), dtype=mx.float32), language="fr")
 
     assert out_np == ASROutput(text="granite text", language="en")

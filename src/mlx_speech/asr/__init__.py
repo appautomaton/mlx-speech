@@ -52,5 +52,9 @@ def load(
         from ._adapters.granite_speech import GraniteSpeechASRAdapter
 
         return GraniteSpeechASRAdapter.from_dir(model_dir)
+    if family == "qwen3":
+        from ._adapters.qwen3 import Qwen3ASRAdapter
+
+        return Qwen3ASRAdapter.from_dir(model_dir)
 
     raise ValueError(f"Unsupported ASR family: {family!r}")

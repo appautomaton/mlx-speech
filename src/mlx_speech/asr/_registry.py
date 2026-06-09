@@ -24,8 +24,10 @@ def _resolve_asr_family(model_dir: Path) -> str:
         return "cohere"
     if model_type == "granite_speech":
         return "granite"
+    if model_type == "qwen3_asr":
+        return "qwen3"
 
     raise ValueError(
         f"Unknown ASR model_type {model_type!r} in {model_dir}. "
-        "Supported: cohere_asr, granite_speech."
+        "Supported: cohere_asr, granite_speech, qwen3_asr."
     )
