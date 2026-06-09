@@ -165,6 +165,10 @@ Checkpoints: none.
 
 **Verification:** `.venv/bin/python -m pytest tests/unit/test_qwen3_asr_model.py tests/unit/test_qwen3_asr_generation.py tests/test_runtime_purity.py`
 
+**Status:** complete
+**Evidence:** added Qwen3-ASR multimodal model assembly, audio feature encoding, audio-token masking/replacement, context-window validation, KV-cache prefill/decode greedy transcription wrapper, and synthetic generation tests; `.venv/bin/python -m pytest tests/unit/test_qwen3_asr_model.py tests/unit/test_qwen3_asr_generation.py tests/test_runtime_purity.py` passed with 8 tests; `.venv/bin/python -m pytest tests/unit/` passed with 424 tests.
+**Risks / next:** real checkpoint loading remains deferred to Slice 7.
+
 ### Slice 7: BF16 Checkpoint Mapping And Packaging
 
 **Objective:** Add checkpoint loading, alignment reporting, and BF16 packaging from `original/` to `mlx-bf16/`.
