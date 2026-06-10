@@ -41,7 +41,11 @@ models/
       mlx-int8/
     step_audio_tokenizer/
       original/
+  Qwen3-ASR-1.7B-MLX-BF16/   # may be a symlink to a shared local model store
 ```
+
+Entries may be symlinks into a shared model store outside the repository; the
+loaders follow them transparently.
 
 This file is kept in git so the directory exists in the repository. Weight
 files inside `models/` are ignored by default.

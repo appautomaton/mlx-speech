@@ -19,9 +19,11 @@ Each model family gets its own Hugging Face repo.
 | `models/openmoss/moss_sound_effect/` | `appautomaton/openmoss-sound-effect-mlx` | `mlx-4bit` |
 | `models/vibevoice/` | `appautomaton/vibevoice-mlx` | `mlx-int8` |
 | `models/cohere/cohere_transcribe/` | `appautomaton/cohere-asr-mlx` | `mlx-int8` |
+| `models/Qwen3-ASR-1.7B-MLX-BF16/` | `appautomaton/qwen3-asr-1.7b-bf16-mlx` | bf16, repo root |
 
 Quantization variants live as subfolders inside the model repo rather than as
-separate repos.
+separate repos. Unquantized single-variant repos (Qwen3-ASR BF16) publish the
+runtime package flat at the repo root instead.
 
 ## Release Boundaries
 
@@ -53,6 +55,25 @@ appautomaton/openmoss-sound-effect-mlx/
     model.safetensors
     ...
 ```
+
+Qwen3-ASR is unquantized BF16 with a single variant, so the package lives at
+the repo root:
+
+```text
+appautomaton/qwen3-asr-1.7b-bf16-mlx/
+  README.md
+  config.json
+  model.safetensors
+  generation_config.json
+  preprocessor_config.json
+  chat_template.json
+  tokenizer_config.json
+  vocab.json
+  merges.txt
+```
+
+When the local converted directory contains an upstream model card, exclude it
+from the upload and publish this repo's own card instead.
 
 The published subfolder should contain every runtime file required for loading
 the artifact from a local clone of the Hugging Face repo.

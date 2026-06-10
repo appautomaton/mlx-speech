@@ -22,7 +22,7 @@ pure MLX. No cloud, no PyTorch.
 | `dramabox` | TTS | DramaBox — Resemble flow-matching diffusion TTS (48 kHz stereo, LTX-2 derived) |
 | `cohere-asr` | ASR | Cohere Transcribe — multilingual ASR |
 | local Granite Speech path | ASR | IBM Granite Speech 4.0 1B — local-path ASR |
-| local Qwen3-ASR path | ASR | Qwen3-ASR-1.7B — English, Chinese, and mixed Chinese/English local-path ASR |
+| `qwen3-asr-1.7b` | ASR | Qwen3-ASR-1.7B — English, Chinese, and mixed Chinese/English ASR |
 
 ## Requirements
 
@@ -65,8 +65,8 @@ print(result.text)
 granite = mlx_speech.asr.load("models/ibm/granite_4_0_1b_speech/original")
 print(granite.generate("audio.wav").text)
 
-# Local Qwen3-ASR BF16 checkpoint
-qwen = mlx_speech.asr.load("models/Qwen3-ASR-1.7B-MLX-BF16")
+# Qwen3-ASR (downloads from HF on first use; a local path works too)
+qwen = mlx_speech.asr.load("qwen3-asr-1.7b")
 print(qwen.generate("audio.wav").text)
 
 # List available models
@@ -103,8 +103,8 @@ mlx-speech tts --model moss-sound-effect \
 # Transcribe audio
 mlx-speech asr --model cohere-asr --audio speech.wav
 mlx-speech asr --model models/ibm/granite_4_0_1b_speech/original --audio speech.wav
-mlx-speech asr --model models/Qwen3-ASR-1.7B-MLX-BF16 --audio speech.wav
-mlx-speech asr --model models/Qwen3-ASR-1.7B-MLX-BF16 --audio speech.wav --language Chinese
+mlx-speech asr --model qwen3-asr-1.7b --audio speech.wav
+mlx-speech asr --model qwen3-asr-1.7b --audio speech.wav --language Chinese
 
 # Discover models
 mlx-speech tts --list-models
@@ -139,6 +139,7 @@ Use `mlx_speech.tts.load("alias")` or `mlx_speech.tts.load("appautomaton/repo-na
 | `moss-sound-effect` | [openmoss-sound-effect-mlx](https://huggingface.co/appautomaton/openmoss-sound-effect-mlx) | 4-bit |
 | `step-audio` | [step-audio-editx-8bit-mlx](https://huggingface.co/appautomaton/step-audio-editx-8bit-mlx) | int8 |
 | `cohere-asr` | [cohere-asr-mlx](https://huggingface.co/appautomaton/cohere-asr-mlx) | int8 |
+| `qwen3-asr-1.7b` | [qwen3-asr-1.7b-bf16-mlx](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx) | bf16 |
 
 ## Conversion
 

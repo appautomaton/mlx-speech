@@ -4,9 +4,41 @@ Qwen3-ASR is the local MLX runtime path for Qwen3-ASR-1.7B. The v0 target is
 offline, single-pass transcription for English, Chinese, and mixed
 Chinese/English speech through the shared `mlx_speech.asr` API.
 
-The runtime is local-path first. It does not download weights automatically and
-does not route inference through PyTorch, Transformers, vLLM, `qwen_asr`, or the
-upstream Qwen runtime.
+The runtime does not route inference through PyTorch, Transformers, vLLM,
+`qwen_asr`, or the upstream Qwen runtime.
+
+## Getting the Model
+
+Pre-converted BF16 MLX weights are published at
+[appautomaton/qwen3-asr-1.7b-bf16-mlx](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx).
+There are three ways to get them, in order of preference:
+
+**1. Load by alias (downloads automatically on first use):**
+
+```python
+import mlx_speech
+
+asr = mlx_speech.asr.load("qwen3-asr-1.7b")
+```
+
+```bash
+mlx-speech asr \
+  --model qwen3-asr-1.7b \
+  --audio speech.wav
+```
+
+The full repo ID `appautomaton/qwen3-asr-1.7b-bf16-mlx` works in place of the
+alias.
+
+**2. Download once into `models/` and load by local path:**
+
+```bash
+hf download appautomaton/qwen3-asr-1.7b-bf16-mlx \
+  --local-dir models/Qwen3-ASR-1.7B-MLX-BF16
+```
+
+**3. Convert from the upstream checkpoint yourself** — see
+[Conversion](#conversion) below.
 
 ## Local Layout
 
@@ -14,11 +46,15 @@ upstream Qwen runtime.
 models/Qwen3-ASR-1.7B-MLX-BF16/   # local MLX runtime package
 ```
 
+The project `models/` entry may be a symlink to a shared local model store —
+the loader follows it transparently.
+
+## Conversion
+
 The upstream Qwen files are already BF16 `.safetensors`. The converter renames
 checkpoint keys from `thinker.*` into this repo's MLX module tree and transposes
 the audio Conv2D weights from PyTorch layout into MLX layout. It does not
-quantize. The project `models/` entry may be a symlink to a shared local model
-store.
+quantize.
 
 ```bash
 python scripts/convert/qwen3_asr.py \
@@ -31,16 +67,19 @@ python scripts/convert/qwen3_asr.py \
 ```python
 import mlx_speech
 
-asr = mlx_speech.asr.load("models/Qwen3-ASR-1.7B-MLX-BF16")
+asr = mlx_speech.asr.load("qwen3-asr-1.7b")
 result = asr.generate("speech.wav", max_new_tokens=256)
 print(result.language, result.text)
 ```
 
 ```bash
 mlx-speech asr \
-  --model models/Qwen3-ASR-1.7B-MLX-BF16 \
+  --model qwen3-asr-1.7b \
   --audio speech.wav
 ```
+
+A local path such as `models/Qwen3-ASR-1.7B-MLX-BF16` works in place of the
+alias everywhere below.
 
 ## Language Behavior
 
@@ -105,7 +144,6 @@ when language is omitted.
 - Streaming is deferred.
 - Timestamps and forced alignment are deferred.
 - Long-audio chunking and language merge logic are deferred.
-- Automatic model download is deferred; use local paths.
 - Broader multilingual validation beyond English, Chinese, and mixed
   Chinese/English is deferred.
 - Low-bit quantization is deferred; `Qwen3-ASR-1.7B-MLX-BF16/` is the supported
