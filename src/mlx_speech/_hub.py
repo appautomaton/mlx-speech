@@ -50,6 +50,11 @@ _ASR_MODELS: dict[str, tuple[str, str, str]] = {
         "Cohere Transcribe — multilingual ASR",
         "cohere",
     ),
+    "qwen3-asr-1.7b": (
+        "appautomaton/qwen3-asr-1.7b-bf16-mlx",
+        "Qwen3-ASR-1.7B — English, Chinese, and mixed Chinese/English ASR",
+        "qwen3",
+    ),
 }
 
 _ALIASES: dict[str, str] = {
