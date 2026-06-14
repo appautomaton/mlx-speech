@@ -18,8 +18,8 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-DRAMABOX_DIR = Path("models/dramabox")
-GEMMA_DIR = Path("models/gemma_3_12b_it_4bit")
+DRAMABOX_DIR = Path("models/dramabox/mlx-bf16")
+GEMMA_DIR = Path("models/gemma_3_12b_it_backbone/mlx-4bit")
 
 pytestmark = pytest.mark.skipif(
     not DRAMABOX_DIR.is_dir() or not GEMMA_DIR.is_dir(),

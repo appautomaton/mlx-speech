@@ -1,7 +1,7 @@
 """Checkpoint-loading + end-to-end shape test for the DramaBox prompt pipeline.
 
-Tier-2 test: requires `models/dramabox/dramabox-audio-components.safetensors`
-and `models/gemma_3_12b_it_4bit/` to be present. Skipped automatically if
+Tier-2 test: requires `models/dramabox/mlx-bf16/dramabox-audio-components.safetensors`
+and `models/gemma_3_12b_it_backbone/mlx-4bit/` to be present. Skipped automatically if
 either is absent.
 """
 
@@ -23,8 +23,8 @@ from mlx_speech.models.dramabox.prompt import (
 )
 from mlx_speech.models.gemma3_text import LTXVGemmaTokenizer, load_gemma3_text_model
 
-AUDIO_COMPONENTS = Path("models/dramabox/dramabox-audio-components.safetensors")
-GEMMA_DIR = Path("models/gemma_3_12b_it_4bit")
+AUDIO_COMPONENTS = Path("models/dramabox/mlx-bf16/dramabox-audio-components.safetensors")
+GEMMA_DIR = Path("models/gemma_3_12b_it_backbone/mlx-4bit")
 
 pytestmark = pytest.mark.skipif(
     not AUDIO_COMPONENTS.is_file() or not GEMMA_DIR.is_dir(),

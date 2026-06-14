@@ -36,7 +36,7 @@ model name links to a guide covering behavior, flags, and known limitations.
 | `moss-ttsd` | [MOSS-TTSD](https://github.com/appautomaton/mlx-speech/blob/main/docs/moss-ttsd.md) — delay-pattern dialogue TTS | [int8](https://huggingface.co/appautomaton/openmoss-ttsd-mlx) |
 | `moss-sound-effect` | [OpenMOSS Sound Effect](https://github.com/appautomaton/mlx-speech/blob/main/docs/moss-sound-effect.md) — text-to-sound-effect generation | [4-bit](https://huggingface.co/appautomaton/openmoss-sound-effect-mlx) |
 | `step-audio` | [Step-Audio-EditX](https://github.com/appautomaton/mlx-speech/blob/main/docs/step-audio-editx.md) — voice cloning, audio editing | [int8](https://huggingface.co/appautomaton/step-audio-editx-8bit-mlx) |
-| — | [DramaBox](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md) — Resemble flow-matching diffusion TTS, 48 kHz stereo | local checkpoint¹ |
+| — | [DramaBox](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md) — Resemble flow-matching diffusion TTS, 48 kHz stereo | [bf16](https://huggingface.co/appautomaton/dramabox-tts-3.3b-bf16-mlx)¹ |
 
 **Speech-to-text**
 
@@ -46,8 +46,9 @@ model name links to a guide covering behavior, flags, and known limitations.
 | `qwen3-asr-1.7b` | [Qwen3-ASR-1.7B](https://github.com/appautomaton/mlx-speech/blob/main/docs/qwen3-asr.md) — English, Chinese, and mixed Chinese/English ASR | [bf16](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx) |
 | — | [IBM Granite Speech 4.0 1B](https://github.com/appautomaton/mlx-speech/blob/main/docs/granite-speech-asr.md) — runs the original sharded checkpoint from a local path | local checkpoint |
 
-¹ DramaBox MLX weights are not published yet — run it from a local checkpoint
-via `scripts/generate_dramabox.py` (see [docs/dramabox.md](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md)).
+¹ DramaBox runs via `scripts/generate_dramabox.py` (it is not a `tts.load`
+alias) and also requires the [Gemma 3 12B backbone](https://huggingface.co/appautomaton/gemma-3-12b-it-backbone-4bit-mlx)
+text encoder. See [docs/dramabox.md](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md).
 
 ## Installation
 

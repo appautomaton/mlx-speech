@@ -3,8 +3,8 @@
 Example:
 
     .venv/bin/python scripts/generate_dramabox.py \
-        --dramabox-dir models/dramabox \
-        --gemma-dir models/gemma_3_12b_it_4bit \
+        --dramabox-dir models/dramabox/mlx-bf16 \
+        --gemma-dir models/gemma_3_12b_it_backbone/mlx-4bit \
         --prompt 'A woman speaks clearly.' \
         --voice-ref outputs/source/hank_hill_ref.wav \
         --duration 5.0 \

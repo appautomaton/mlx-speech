@@ -9,7 +9,7 @@ import pytest
 
 from mlx_speech.models.dramabox.dit import DiTConfig, LTXModel, load_dit_weights
 
-DIT_PATH = Path("models/dramabox/dramabox-dit-v1.safetensors")
+DIT_PATH = Path("models/dramabox/mlx-bf16/dramabox-dit-v1.safetensors")
 
 pytestmark = pytest.mark.skipif(
     not DIT_PATH.is_file(),

@@ -17,7 +17,7 @@ from mlx_speech.models.dramabox.vocoder import (
 )
 from mlx_speech.models.dramabox.vocoder.vocoder import VocoderArgs
 
-AUDIO_COMPONENTS = Path("models/dramabox/dramabox-audio-components.safetensors")
+AUDIO_COMPONENTS = Path("models/dramabox/mlx-bf16/dramabox-audio-components.safetensors")
 
 pytestmark = pytest.mark.skipif(
     not AUDIO_COMPONENTS.is_file(),

@@ -17,8 +17,8 @@ how we demonstrate man vs. woman voices in one episode.
 
 Run:
     .venv/bin/python scripts/generate_dramabox_podcast.py \
-        --dramabox-dir models/dramabox \
-        --gemma-dir models/gemma_3_12b_it_4bit \
+        --dramabox-dir models/dramabox/mlx-bf16 \
+        --gemma-dir models/gemma_3_12b_it_backbone/mlx-4bit \
         --episode ep03_diffusion_dit \
         --out-dir outputs/dramabox
 """
