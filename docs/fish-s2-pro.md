@@ -77,6 +77,28 @@ mlx-speech tts --model fish-s2-pro \
 
 Both `reference_audio` and `reference_text` must be provided together. The transcript should closely match what is spoken in the reference audio.
 
+### Reusing a reference across many clips
+
+Each `generate` call with a `reference_audio` path re-loads and re-encodes the
+reference through the codec. When cloning the same voice across many short
+clips, preprocess once with `prepare_reference` and pass the returned handle
+back as `reference_audio` — the codec encoding runs a single time:
+
+```python
+voice = model.prepare_reference(
+    "reference.wav",
+    reference_text="Transcript of the reference audio goes here.",
+)
+
+for line in lines:
+    result = model.generate(line, reference_audio=voice)
+    # ... save result.waveform
+```
+
+The handle carries its own transcript, so leave `reference_text` unset when
+passing one. The original path-based form still works unchanged for one-off
+generations.
+
 ## Generation Parameters
 
 | Parameter | Default | Notes |

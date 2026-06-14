@@ -90,6 +90,21 @@ class FishS2ProOutput:
     generated_tokens: int
 
 
+@dataclass(frozen=True)
+class PreparedReference:
+    """Preprocessed voice reference for Fish S2 Pro cloning.
+
+    Bundles the codec-encoded reference codes with the reference transcript so
+    the expensive ``codec.encode`` runs once and can be reused across many
+    ``synthesize`` calls with the same voice. Produced by
+    :meth:`FishS2ProRuntime.encode_reference`; pass it back as
+    ``reference_audio`` (leave ``reference_text`` unset) to skip re-encoding.
+    """
+
+    reference_codes: mx.array
+    reference_text: str
+
+
 @dataclass
 class FishS2ProRuntime:
     model: DualARTransformer
@@ -188,30 +203,59 @@ class FishS2ProRuntime:
             config=checkpoint.config,
         )
 
+    def encode_reference(
+        self,
+        reference_audio: str | Path,
+        reference_text: str,
+    ) -> PreparedReference:
+        """Encode a voice reference once for reuse across ``synthesize`` calls.
+
+        Runs audio loading and codec encoding a single time. Pass the returned
+        handle back as ``reference_audio`` (with ``reference_text`` unset) to
+        skip this work on subsequent calls with the same voice.
+        """
+        waveform, _sr = load_audio(
+            reference_audio, sample_rate=self.codec.sample_rate, mono=True
+        )
+        reference_codes = self.codec.encode(waveform)
+        return PreparedReference(
+            reference_codes=reference_codes, reference_text=reference_text
+        )
+
+    def _resolve_reference(
+        self,
+        reference_audio: str | Path | PreparedReference | None,
+        reference_text: str | None,
+    ) -> PreparedReference | None:
+        if isinstance(reference_audio, PreparedReference):
+            if reference_text is not None:
+                raise ValueError(
+                    "Pass reference_text only when encoding. A prepared reference "
+                    "already carries its transcript."
+                )
+            return reference_audio
+        if (reference_audio is None) != (reference_text is None):
+            raise ValueError(
+                "reference_audio and reference_text must both be provided for voice cloning"
+            )
+        if reference_audio is None:
+            return None
+        return self.encode_reference(reference_audio, reference_text)
+
     def synthesize(
         self,
         text: str,
         *,
         max_new_tokens: int = 256,
-        reference_audio: str | Path | None = None,
+        reference_audio: str | Path | PreparedReference | None = None,
         reference_text: str | None = None,
     ) -> FishS2ProOutput:
-        if (reference_audio is None) != (reference_text is None):
-            raise ValueError(
-                "reference_audio and reference_text must both be provided for voice cloning"
-            )
-
-        reference_codes = None
-        if reference_audio is not None:
-            waveform, _sr = load_audio(
-                reference_audio, sample_rate=self.codec.sample_rate, mono=True
-            )
-            reference_codes = self.codec.encode(waveform)
+        reference = self._resolve_reference(reference_audio, reference_text)
 
         prompt = self._build_generation_prompt(
             text,
-            reference_text=reference_text,
-            reference_codes=reference_codes,
+            reference_text=reference.reference_text if reference is not None else None,
+            reference_codes=reference.reference_codes if reference is not None else None,
         )
         codes = self._generate_codes(prompt, max_new_tokens=max_new_tokens)
         if int(codes.shape[1]) == 0:
