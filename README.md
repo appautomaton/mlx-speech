@@ -1,7 +1,10 @@
 # mlx-speech
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/appautomaton/mlx-speech/blob/main/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/mlx-speech)](https://pypi.org/project/mlx-speech/)
+[![Downloads](https://img.shields.io/pypi/dm/mlx-speech)](https://pypi.org/project/mlx-speech/)
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20weights-appautomaton-orange)](https://huggingface.co/appautomaton)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/appautomaton/mlx-speech/blob/main/LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Apple%20Silicon-black?logo=apple)](https://developer.apple.com/documentation/apple-silicon)
 
 > [!NOTE]
