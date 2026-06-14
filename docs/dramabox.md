@@ -47,8 +47,8 @@ runtime. Inputs a text prompt; outputs a 48 kHz stereo waveform.
 from mlx_speech.generation.dramabox import DramaBoxModel
 
 model = DramaBoxModel.from_dir(
-    "models/dramabox",
-    gemma_dir="models/gemma_3_12b_it_4bit",
+    "models/dramabox/mlx-bf16",
+    gemma_dir="models/gemma_3_12b_it_backbone/mlx-4bit",
 )
 result = model.generate(
     'A woman speaks clearly, "The weather today will be sunny."',
@@ -63,8 +63,8 @@ result = model.generate(
 
 ```bash
 .venv/bin/python scripts/generate_dramabox.py \
-    --dramabox-dir models/dramabox \
-    --gemma-dir models/gemma_3_12b_it_4bit \
+    --dramabox-dir models/dramabox/mlx-bf16 \
+    --gemma-dir models/gemma_3_12b_it_backbone/mlx-4bit \
     --prompt 'A woman speaks clearly.' \
     --duration 5.0 \
     --out outputs/dramabox_smoke.wav
@@ -132,14 +132,14 @@ clamp [-1, 1] → output.wav (48 kHz, stereo)
 
 ## Weights
 
-DramaBox loads from three local directories:
+DramaBox loads from two local directories:
 
 | Directory | Contents | Size |
 | --- | --- | --- |
-| `models/dramabox/` | `dramabox-dit-v1.safetensors` (DiT, 1457 keys, ~6.6 GB bf16) | 6.6 GB |
+| `models/dramabox/mlx-bf16/` | `dramabox-dit-v1.safetensors` (DiT, 1457 keys, ~6.6 GB bf16) | 6.6 GB |
 |  | `dramabox-audio-components.safetensors` (VAE + vocoder + connector + aggregate, 1462 keys, ~1.9 GB bf16) | 1.9 GB |
 |  | `config.json`, `assets/silence_latent_frame.pt` (training metadata; not used) | small |
-| `models/gemma_3_12b_it_4bit/` | MLX 4-bit affine Gemma 3 12B IT (1300 keys, group_size=64, ~6.2 GB) | 6.2 GB |
+| `models/gemma_3_12b_it_backbone/mlx-4bit/` | MLX 4-bit affine Gemma 3 12B IT backbone (1300 keys, group_size=64, ~6.2 GB) | 6.2 GB |
 
 Weights are NOT in git. Download separately.
 

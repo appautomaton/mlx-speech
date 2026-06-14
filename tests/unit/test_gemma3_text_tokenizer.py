@@ -1,6 +1,6 @@
 """Tokenizer behavior tests for the plain-text Gemma wrapper used by DramaBox.
 
-Tests run against the real `models/gemma_3_12b_it_4bit/tokenizer.json`; they
+Tests run against the real `models/gemma_3_12b_it_backbone/mlx-4bit/tokenizer.json`; they
 skip if the model directory is not present locally.
 """
 
@@ -13,7 +13,7 @@ import pytest
 
 from mlx_speech.models.gemma3_text import LTXVGemmaTokenizer
 
-GEMMA_DIR = Path("models/gemma_3_12b_it_4bit")
+GEMMA_DIR = Path("models/gemma_3_12b_it_backbone/mlx-4bit")
 
 pytestmark = pytest.mark.skipif(
     not (GEMMA_DIR / "tokenizer.json").is_file(),

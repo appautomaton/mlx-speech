@@ -1,6 +1,6 @@
 """Checkpoint-loading test for the Gemma 3 text backbone.
 
-Tier-2 test: requires the local `models/gemma_3_12b_it_4bit/` directory.
+Tier-2 test: requires the local `models/gemma_3_12b_it_backbone/mlx-4bit/` directory.
 Skipped automatically if absent.
 """
 
@@ -13,7 +13,7 @@ import pytest
 
 from mlx_speech.models.gemma3_text import load_gemma3_text_model
 
-GEMMA_DIR = Path("models/gemma_3_12b_it_4bit")
+GEMMA_DIR = Path("models/gemma_3_12b_it_backbone/mlx-4bit")
 
 pytestmark = pytest.mark.skipif(
     not GEMMA_DIR.is_dir(),

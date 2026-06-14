@@ -1,6 +1,6 @@
 """Checkpoint loading + forward test for the DramaBox AudioVAE.
 
-Tier-2 test: requires `models/dramabox/dramabox-audio-components.safetensors`.
+Tier-2 test: requires `models/dramabox/mlx-bf16/dramabox-audio-components.safetensors`.
 Skipped automatically if absent.
 """
 
@@ -18,7 +18,7 @@ from mlx_speech.models.dramabox.audio_vae import (
     load_audio_vae_weights,
 )
 
-AUDIO_COMPONENTS = Path("models/dramabox/dramabox-audio-components.safetensors")
+AUDIO_COMPONENTS = Path("models/dramabox/mlx-bf16/dramabox-audio-components.safetensors")
 ENCODE_FIXTURE = Path("tests/fixtures/dramabox/audio_vae_encode_fixture.npz")
 
 pytestmark = pytest.mark.skipif(

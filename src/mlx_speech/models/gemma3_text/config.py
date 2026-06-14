@@ -1,7 +1,7 @@
 """Configuration helpers for the pure-MLX Gemma 3 text-only backbone.
 
 Mirrors the subset of `transformers.Gemma3TextConfig` we actually use. The
-goal is to be load-compatible with the converted `gemma_3_12b_it_4bit`
+goal is to be load-compatible with the converted `gemma_3_12b_it_backbone/mlx-4bit`
 checkpoint directory under `models/`, where the saved `config.json` keeps
 the original Gemma 3 text-config payload under the ``text_config`` key plus
 a sibling ``quantization`` block.

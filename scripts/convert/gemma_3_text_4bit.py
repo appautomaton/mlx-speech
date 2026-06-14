@@ -15,8 +15,8 @@ without saving meaningful memory.
 Usage::
 
     python scripts/convert/gemma_3_text_4bit.py \
-        --hf-path models/gemma_3_12b_it_qat_q4_0 \
-        --out-dir models/gemma_3_12b_it_4bit \
+        --hf-path models/gemma_3_12b_it_backbone/original \
+        --out-dir models/gemma_3_12b_it_backbone/mlx-4bit \
         --bits 4 --group-size 64
 """
 from __future__ import annotations
