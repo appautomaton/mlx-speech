@@ -8,6 +8,7 @@ import pytest
 import mlx_speech.generation.fish_s2_pro as fish_generation
 from mlx_speech.generation.fish_s2_pro import (
     FishS2ProRuntime,
+    PreparedReference,
     generate_fish_s2_pro,
 )
 from mlx_speech.models.fish_s2_pro import Conversation, Message, TextPart
@@ -564,3 +565,143 @@ def test_synthesize_rejects_partial_clone_args():
 
     with pytest.raises(ValueError, match="must both be provided"):
         runtime.synthesize("hello", reference_audio="/fake/path.wav")
+
+
+class _CountingCodec:
+    """Codec fake that counts encode calls and emits clone-valid codes."""
+
+    def __init__(self):
+        self.sample_rate = 44100
+        self.encode_calls = 0
+        self.decoded_codes = None
+
+    def encode(self, waveform):
+        del waveform
+        self.encode_calls += 1
+        # Row 0 values map to semantic ids in _FakeTokenizer; rows 1-2 residual.
+        return mx.array([[7, 3], [0, 0], [0, 0]], dtype=mx.int32)
+
+    def decode(self, codes):
+        self.decoded_codes = codes
+        return mx.ones((1, 8), dtype=mx.float32)
+
+
+def _patch_load_audio(monkeypatch):
+    monkeypatch.setattr(
+        fish_generation,
+        "load_audio",
+        lambda *args, **kwargs: (mx.zeros((128,), dtype=mx.float32), 44100),
+    )
+
+
+def test_encode_reference_runs_codec_once_and_returns_handle(monkeypatch):
+    _patch_load_audio(monkeypatch)
+    codec = _CountingCodec()
+    runtime = FishS2ProRuntime(
+        model=_FakeModel([], []),
+        tokenizer=_FakeTokenizer(),
+        codec=codec,
+        config=_config(),
+    )
+
+    handle = runtime.encode_reference("ref.wav", "reference transcript")
+
+    assert isinstance(handle, PreparedReference)
+    assert handle.reference_text == "reference transcript"
+    assert handle.reference_codes.tolist() == [[7, 3], [0, 0], [0, 0]]
+    assert codec.encode_calls == 1
+
+
+def test_synthesize_with_prepared_reference_skips_reencode(monkeypatch):
+    _patch_load_audio(monkeypatch)
+    codec = _CountingCodec()
+    runtime = FishS2ProRuntime(
+        model=_FakeModel([1001, 9999, 1001, 9999], [5, 1, 5, 1]),
+        tokenizer=_FakeTokenizer(),
+        codec=codec,
+        config=_config(),
+    )
+
+    handle = runtime.encode_reference("ref.wav", "reference transcript")
+    assert codec.encode_calls == 1
+
+    runtime.synthesize("first line", reference_audio=handle, max_new_tokens=2)
+    runtime.synthesize("second line", reference_audio=handle, max_new_tokens=2)
+
+    # Encode ran only during prepare, never inside the two synthesize calls.
+    assert codec.encode_calls == 1
+
+
+def test_prepared_reference_matches_inline_path_prompt(monkeypatch):
+    _patch_load_audio(monkeypatch)
+
+    def make_runtime():
+        return FishS2ProRuntime(
+            model=_FakeModel([1001, 9999], [5, 1]),
+            tokenizer=_FakeTokenizer(),
+            codec=_CountingCodec(),
+            config=_config(),
+        )
+
+    # Route A: inline path + text — encodes during synthesize.
+    rt_path = make_runtime()
+    rt_path.synthesize(
+        "hello",
+        reference_audio="ref.wav",
+        reference_text="reference transcript",
+        max_new_tokens=2,
+    )
+
+    # Route B: prepared handle — encodes once, up front.
+    rt_handle = make_runtime()
+    handle = rt_handle.encode_reference("ref.wav", "reference transcript")
+    rt_handle.synthesize("hello", reference_audio=handle, max_new_tokens=2)
+
+    # Both routes must feed the model an identical prompt.
+    assert rt_path.model.calls[0].tolist() == rt_handle.model.calls[0].tolist()
+
+
+def test_synthesize_rejects_reference_text_with_prepared_handle(monkeypatch):
+    _patch_load_audio(monkeypatch)
+    runtime = FishS2ProRuntime(
+        model=_FakeModel([], []),
+        tokenizer=_FakeTokenizer(),
+        codec=_CountingCodec(),
+        config=_config(),
+    )
+    handle = runtime.encode_reference("ref.wav", "reference transcript")
+
+    with pytest.raises(ValueError, match="already carries"):
+        runtime.synthesize("hello", reference_audio=handle, reference_text="dup")
+
+
+def test_adapter_prepare_reference_reuses_handle(monkeypatch):
+    from mlx_speech.tts._adapters.fish_s2_pro import FishS2ProAdapter
+
+    _patch_load_audio(monkeypatch)
+    codec = _CountingCodec()
+    runtime = FishS2ProRuntime(
+        model=_FakeModel([1001, 9999, 1001, 9999], [5, 1, 5, 1]),
+        tokenizer=_FakeTokenizer(),
+        codec=codec,
+        config=_config(),
+    )
+    adapter = FishS2ProAdapter(runtime)
+
+    voice = adapter.prepare_reference("ref.wav", reference_text="reference transcript")
+    assert isinstance(voice, PreparedReference)
+    assert codec.encode_calls == 1
+
+    adapter.generate("line one", reference_audio=voice, max_new_tokens=2)
+    adapter.generate("line two", reference_audio=voice, max_new_tokens=2)
+
+    assert codec.encode_calls == 1
+
+
+def test_adapter_prepare_reference_rejects_array():
+    from mlx_speech.tts._adapters.fish_s2_pro import FishS2ProAdapter
+
+    adapter = FishS2ProAdapter(runtime=object())
+
+    with pytest.raises(TypeError, match="file path, not mx.array"):
+        adapter.prepare_reference(mx.zeros((4,)), reference_text="x")
