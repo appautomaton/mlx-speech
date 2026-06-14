@@ -28,6 +28,8 @@ def _resolve_tts_family(model_dir: Path) -> str:
         return "longcat"
     if model_type == "step1":
         return "step_audio"
+    if model_type == "dramabox-tts":
+        return "dramabox"
     if model_type == "moss_tts_delay":
         dir_lower = str(model_dir).lower()
         if "sound_effect" in dir_lower or "sound-effect" in dir_lower:
@@ -37,5 +39,6 @@ def _resolve_tts_family(model_dir: Path) -> str:
 
     raise ValueError(
         f"Unknown TTS model_type {model_type!r} in {model_dir}. "
-        "Supported: fish_qwen3_omni, vibevoice, audiodit, step1, moss_tts_delay."
+        "Supported: fish_qwen3_omni, vibevoice, audiodit, step1, dramabox-tts, "
+        "moss_tts_delay."
     )

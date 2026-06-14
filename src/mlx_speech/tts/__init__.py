@@ -13,6 +13,7 @@ from .._hub import _TTS_MODELS
 from .._hub import get_model_path as _get_model_path
 from .._hub import list_models as _list_all
 from .._hub import resolve_codec_path as _resolve_codec_path
+from .._hub import resolve_gemma_backbone_path as _resolve_gemma_backbone_path
 from ._adapter import TTSModel, TTSOutput
 from ._registry import _resolve_tts_family
 
@@ -32,6 +33,7 @@ def load(
     path_or_hf_repo: str,
     *,
     codec_path_or_repo: str | None = None,
+    gemma_path_or_repo: str | None = None,
     revision: str | None = None,
 ) -> TTSModel:
     """Load a TTS model by local path, short alias, or HuggingFace repo ID.
@@ -41,6 +43,8 @@ def load(
             or HF repo ID (e.g. ``"appautomaton/vibevoice-mlx"``).
         codec_path_or_repo: For MOSS models that need a separate codec.
             Defaults to ``appautomaton/openmoss-audio-tokenizer-mlx``.
+        gemma_path_or_repo: For DramaBox, the Gemma 3 12B text-encoder backbone.
+            Defaults to ``appautomaton/gemma-3-12b-it-backbone-4bit-mlx``.
         revision: Optional HF revision (branch, tag, or commit hash).
 
     Returns:
@@ -76,6 +80,12 @@ def load(
         from ._adapters.step_audio import StepAudioAdapter
 
         return StepAudioAdapter.from_dir(model_dir)
+
+    if family == "dramabox":
+        from ._adapters.dramabox import DramaBoxAdapter
+
+        gemma_dir = _resolve_gemma_backbone_path(gemma_path_or_repo, revision=revision)
+        return DramaBoxAdapter.from_dir(model_dir, gemma_dir=gemma_dir)
 
     if family in ("moss_local", "moss_delay", "moss_sound_effect"):
         codec_dir = _resolve_codec_path(codec_path_or_repo, revision=revision)

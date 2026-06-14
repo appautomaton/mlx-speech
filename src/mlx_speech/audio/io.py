@@ -159,19 +159,37 @@ def normalize_peak(
 
 
 def write_wav(path: str | Path, samples: mx.array, *, sample_rate: int) -> Path:
-    """Write a mono float waveform to 16-bit PCM WAV."""
+    """Write a float waveform to 16-bit PCM WAV.
+
+    Accepts mono ``[samples]`` or multi-channel ``[channels, samples]``
+    (e.g. DramaBox stereo ``[2, samples]``).
+    """
 
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     waveform = np.asarray(samples, dtype=np.float32)
-    if waveform.ndim != 1:
-        raise ValueError(f"Expected mono waveform with shape (samples,), got {waveform.shape}.")
-    waveform = np.clip(waveform, -1.0, 1.0)
-    pcm16 = (waveform * 32767.0).astype(np.int16)
+    if waveform.ndim == 1:
+        channels = 1
+        interleaved = waveform
+    elif waveform.ndim == 2:
+        channels = int(waveform.shape[0])
+        if channels > 8:
+            raise ValueError(
+                f"Expected [channels, samples] with channels <= 8, got {waveform.shape}."
+            )
+        # WAV frames are channel-interleaved: [s0c0, s0c1, s1c0, s1c1, ...].
+        interleaved = waveform.T.reshape(-1)
+    else:
+        raise ValueError(
+            f"Expected [samples] or [channels, samples], got {waveform.shape}."
+        )
+
+    clipped = np.clip(interleaved, -1.0, 1.0)
+    pcm16 = (clipped * 32767.0).astype(np.int16)
 
     with wave.open(str(output_path), "wb") as wav_file:
-        wav_file.setnchannels(1)
+        wav_file.setnchannels(channels)
         wav_file.setsampwidth(2)
         wav_file.setframerate(sample_rate)
         wav_file.writeframes(pcm16.tobytes())

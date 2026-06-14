@@ -43,6 +43,20 @@ runtime. Inputs a text prompt; outputs a 48 kHz stereo waveform.
 
 ### Python
 
+The simplest path is the unified loader. `tts.load("dramabox")` downloads both
+the DramaBox weights and the Gemma 3 12B backbone, and returns 48 kHz stereo:
+
+```python
+import mlx_speech
+
+model = mlx_speech.tts.load("dramabox")
+result = model.generate("The weather today will be sunny.", duration_seconds=5.0)
+# result.waveform : mx.array [2, T_samples], result.sample_rate : 48000
+```
+
+For direct control over both checkpoints (and the diffusion parameters), use the
+lower-level model:
+
 ```python
 from mlx_speech.generation.dramabox import DramaBoxModel
 

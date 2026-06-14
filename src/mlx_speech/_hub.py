@@ -42,6 +42,11 @@ _TTS_MODELS: dict[str, tuple[str, str, str]] = {
         "Step-Audio-EditX — voice cloning + audio editing (emotion, style, speed)",
         "step_audio",
     ),
+    "dramabox": (
+        "appautomaton/dramabox-tts-3.3b-bf16-mlx",
+        "DramaBox: Resemble flow-matching diffusion TTS, 48 kHz stereo",
+        "dramabox",
+    ),
 }
 
 _ASR_MODELS: dict[str, tuple[str, str, str]] = {
@@ -83,6 +88,7 @@ def list_models(category: str | None = None) -> dict[str, tuple[str, str]]:
     return {**_strip(_TTS_MODELS), **_strip(_ASR_MODELS)}
 
 MOSS_CODEC_REPO = "appautomaton/openmoss-audio-tokenizer-mlx"
+DRAMABOX_GEMMA_REPO = "appautomaton/gemma-3-12b-it-backbone-4bit-mlx"
 
 _DEFAULT_ALLOW_PATTERNS = [
     "*.json",
@@ -178,4 +184,24 @@ def resolve_codec_path(
         )
     return get_model_path(
         MOSS_CODEC_REPO, revision=revision, force_download=force_download
+    )
+
+
+def resolve_gemma_backbone_path(
+    gemma_path_or_repo: str | None = None,
+    *,
+    revision: str | None = None,
+    force_download: bool = False,
+) -> Path:
+    """Resolve the Gemma 3 12B text-encoder backbone DramaBox conditions on.
+
+    Defaults to the published ``appautomaton`` backbone repo and auto-downloads
+    it, mirroring how MOSS resolves its separate audio codec.
+    """
+    if gemma_path_or_repo is not None:
+        return get_model_path(
+            gemma_path_or_repo, revision=revision, force_download=force_download
+        )
+    return get_model_path(
+        DRAMABOX_GEMMA_REPO, revision=revision, force_download=force_download
     )
