@@ -60,6 +60,16 @@ MODELS: dict[str, tuple[str, str, bool]] = {
         "models/vibevoice/mlx-int8",
         True,
     ),
+    "dramabox": (
+        "appautomaton/dramabox-tts-3.3b-bf16-mlx",
+        "models/dramabox/mlx-bf16",
+        True,
+    ),
+    "gemma-3-backbone": (
+        "appautomaton/gemma-3-12b-it-backbone-4bit-mlx",
+        "models/gemma_3_12b_it_backbone/mlx-4bit",
+        True,
+    ),
 }
 
 
