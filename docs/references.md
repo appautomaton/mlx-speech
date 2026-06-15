@@ -44,6 +44,16 @@ As of March 29, 2026:
   reference implementation, processor, prompt handling, streaming wrapper, and
   forced aligner. Code reference only; model weights are not stored here, and
   this checkout is never imported by the MLX runtime.
+- `.references/RE-USE`: `nvidia/RE-USE` (HF) at `761905064ea1ea882e015e20a64e2e9d28458890` (2026-06-15)
+  — NVIDIA RE-USE / SEMamba universal speech enhancement (9.61M params,
+  1416 keys). Source-truth for the v6 RE-USE MLX port (DramaBox `denoise_ref`).
+  Code subset only (no weights, no sample audio); weights live gitignored at
+  `models/reuse/original/`. License NSCLv1 (non-commercial). Read-only.
+- `.references/mamba_ssm`: `state-spaces/mamba` tag `v2.2.2` at `8ffd905c91d207f5c0cc84fc2a2fb748655094f0`
+  — Two files only: `ops/selective_scan_interface.py` (`selective_scan_ref`,
+  `mamba_inner_ref`) and `modules/mamba_simple.py` (`class Mamba`). The exact
+  reference math the MLX selective-scan port mirrors, since `mamba_ssm` has no
+  macOS wheels. Read-only.
 
 ## Notes
 

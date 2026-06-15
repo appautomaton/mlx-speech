@@ -1,8 +1,8 @@
 {
-  "active_change": "2026-06-09-qwen3-asr-offline-v0",
+  "active_change": "2026-06-14-reuse-voice-ref-mlx",
   "stage": "execute",
-  "canonical_spec": ".agent/work/2026-06-09-qwen3-asr-offline-v0/SPEC.md",
-  "canonical_design": ".agent/work/2026-06-09-qwen3-asr-offline-v0/DESIGN.md",
-  "canonical_plan": ".agent/work/2026-06-09-qwen3-asr-offline-v0/PLAN.md",
+  "canonical_spec": ".agent/work/2026-06-14-reuse-voice-ref-mlx/SPEC.md",
+  "canonical_design": ".agent/work/2026-06-14-reuse-voice-ref-mlx/DESIGN.md",
+  "canonical_plan": ".agent/work/2026-06-14-reuse-voice-ref-mlx/PLAN.md",
   "engineering_review": "approved_with_risks"
 }
