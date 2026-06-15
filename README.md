@@ -48,7 +48,10 @@ model name links to a guide covering behavior, flags, and known limitations.
 
 ¹ `tts.load("dramabox")` also pulls the [Gemma 3 12B backbone](https://huggingface.co/appautomaton/gemma-3-12b-it-backbone-4bit-mlx)
 text encoder automatically. Output is 48 kHz stereo. For advanced controls (cfg,
-steps, voice reference) use `scripts/generate_dramabox.py`. See
+steps, voice reference) use `scripts/generate_dramabox.py`. Optional
+`denoise_ref=True` cleans a noisy voice reference with the pure-MLX
+[RE-USE / SEMamba enhancer](https://huggingface.co/appautomaton/reuse-semamba-mlx)
+(off by default; NSCLv1 non-commercial weights). See
 [docs/dramabox.md](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md).
 
 ## Installation

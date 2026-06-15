@@ -32,20 +32,20 @@ non-zero RMS).
   (`inference_server.py:307`). Verified by `tests/unit/test_dramabox_stg.py`
   and a runtime STG-vs-CFG-only A/B (`tests/runtime/test_dramabox_stg_runtime.py`).
 
-## Known deferred items (follow-ups)
+## Done (follow-ups since baseline)
 
-These do not block end-to-end audio output:
-
-1. **Refined voice-reference conditioning (IC-LoRA, `denoise_ref=True`)** —
-   The raw voice-reference path (`denoise_ref=False`) works:
-   `AudioProcessor.waveform_to_mel` is implemented (STFT + mel filter bank)
-   and the reference latent is appended with a per-token denoise mask. The
-   denoised path raises `NotImplementedError`. To enable: wire
-   `AudioConditionByReferenceLatent` (asymmetric attention mask) for the
-   denoise-ref case.
-2. **Per-token sigma for IC-LoRA** — Broadcast-per-batch sigma is correct on
-   the no-ref path; the raw-ref path already uses per-token timesteps. Only
-   the IC-LoRA denoise path above needs further per-token sigma work.
+- **Voice-reference denoising (`denoise_ref=True`)** — Done in change
+  `2026-06-14-reuse-voice-ref-mlx`. The earlier "IC-LoRA / NotImplementedError"
+  framing was a mischaracterization: `denoise_ref` is an input-side step, not a
+  diffusion change. The in-context reference conditioning
+  (`AudioProcessor.waveform_to_mel` + the appended reference latent with its
+  per-token denoise mask) was already complete and working; `denoise_ref` adds
+  an optional pure-MLX port of NVIDIA RE-USE (SEMamba) that cleans the input
+  reference before VAE conditioning. Opt-in (default `False`); weights are
+  NSCLv1 non-commercial (`appautomaton/reuse-semamba-mlx`). Validated against
+  the torch reference at 0.9997 waveform correlation.
+- **Per-token sigma** — No outstanding work. Broadcast-per-batch sigma is
+  correct on the no-ref path; the raw-ref path already uses per-token timesteps.
 
 ## Summary
 

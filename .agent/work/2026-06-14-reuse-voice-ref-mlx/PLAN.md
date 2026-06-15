@@ -179,6 +179,10 @@ NSCLv1 license + NVIDIA attribution + model card; update docs and plan.
 **Checkpoint reason:** the HF publish is outward-facing; confirm before pushing.
 **Touches:** `scripts/hugging_face/upload.py`, model card, `docs/dramabox.md`, `README.md`, `plans/v5-dramabox.md`
 
+**Status:** prep complete; HF publish held (human-action checkpoint)
+**Evidence:** Model card `scripts/hugging_face/model_cards/appautomaton/reuse-semamba-mlx.md` (NSCLv1 non-commercial + NVIDIA attribution + ours-only badges + 0.9997 parity). `docs/dramabox.md` `denoise_ref` section corrected (was stale "deferred/IC-LoRA"); Settings table + README footnote document the opt-in + non-commercial weights. `scripts/hugging_face/upload.py` registry has `reuse -> appautomaton/reuse-semamba-mlx` (`models/reuse/mlx`, large-folder). `resolve_reuse_path`/`REUSE_REPO` default to the published repo (Slice 7). v5 plan deferred-items corrected (denoise_ref done; the IC-LoRA framing was a mischaracterization). 507 unit passed; ruff clean; card YAML valid.
+**Risks / next:** the `hf upload` of `models/reuse/mlx` to `appautomaton/reuse-semamba-mlx` is outward-facing and held for explicit user confirmation (the designed Slice 8 checkpoint).
+
 ## Aggregate verification
 
 | Slice | Command |
