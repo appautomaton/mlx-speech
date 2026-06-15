@@ -13,10 +13,7 @@ import numpy as np
 
 import mlx.core as mx
 
-from mlx_speech.models.reuse.mamba.scan import (
-    selective_scan,
-    selective_scan_reverse,
-)
+from mlx_speech.models.reuse.mamba.scan import selective_scan
 
 # SEMamba per-direction dims (see slice-001 notes): d_inner=256, d_state=16.
 # Tests use smaller dims for speed; the math is identical.
@@ -183,37 +180,6 @@ def test_full_path_all_terms():
     )
     assert got.shape == (B_DIM, D_INNER, L)
     assert _max_abs_diff(got, ref) < 1e-4
-
-
-def test_reverse_scan_matches_flipped_reference():
-    # The reverse helper must equal: flip inputs on L, scan, flip output back.
-    u, delta, A, B, C, D, z, delta_bias = _make_inputs(7)
-
-    def flip(a):
-        return a[:, :, ::-1] if a.ndim == 3 else a
-
-    ref_fwd_on_flipped = selective_scan_np(
-        flip(u), flip(delta), A, flip(B), flip(C),
-        D=D, z=flip(z), delta_bias=delta_bias, delta_softplus=True,
-    )
-    ref_reverse = ref_fwd_on_flipped[:, :, ::-1]
-
-    mu, md, mA, mB, mC, mD, mz, mbias = _to_mx(
-        u, delta, A, B, C, D, z, delta_bias
-    )
-    got = selective_scan_reverse(
-        mu, md, mA, mB, mC, D=mD, z=mz,
-        delta_bias=mbias, delta_softplus=True,
-    )
-    assert got.shape == (B_DIM, D_INNER, L)
-    assert _max_abs_diff(got, ref_reverse) < 1e-4
-
-    # Reverse must differ from forward for a non-symmetric sequence.
-    fwd = selective_scan(
-        mu, md, mA, mB, mC, D=mD, z=mz,
-        delta_bias=mbias, delta_softplus=True,
-    )
-    assert _max_abs_diff(got, np.asarray(fwd, dtype=np.float64)) > 1e-3
 
 
 def test_no_softplus_path():

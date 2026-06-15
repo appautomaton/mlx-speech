@@ -55,7 +55,7 @@ def selective_scan(
     Returns:
         y: `[B, d_inner, L]`.
     """
-    # Force contiguous float32. The reverse helper passes reversed-stride views
+    # Force contiguous float32. Callers may pass reversed-stride views
     # (`t[:, :, ::-1]`); some MLX 0.31 elementwise ops (e.g. silu) give wrong
     # results on such views, so materialize before any math.
     def f32(t: mx.array) -> mx.array:
@@ -99,38 +99,3 @@ def selective_scan(
     if z is not None:
         y = y * nn.silu(f32(z))
     return y
-
-
-def selective_scan_reverse(
-    u: mx.array,
-    delta: mx.array,
-    A: mx.array,
-    B: mx.array,
-    C: mx.array,
-    D: mx.array | None = None,
-    z: mx.array | None = None,
-    delta_bias: mx.array | None = None,
-    delta_softplus: bool = True,
-) -> mx.array:
-    """Run `selective_scan` on the time-reversed sequence.
-
-    Flips every L-axis input, scans forward, then flips the output back so the
-    result is aligned to the original time order. Slice 4 uses this for the
-    backward direction of the bidirectional SEMamba block.
-    """
-    def flip_l(t: mx.array | None) -> mx.array | None:
-        # Reverse the L axis (axis 2). MLX 0.31 has no mx.flip, so slice.
-        return None if t is None else t[:, :, ::-1]
-
-    y = selective_scan(
-        flip_l(u),
-        flip_l(delta),
-        A,
-        flip_l(B),
-        C=flip_l(C),
-        D=D,
-        z=flip_l(z),
-        delta_bias=delta_bias,
-        delta_softplus=delta_softplus,
-    )
-    return y[:, :, ::-1]

@@ -101,7 +101,11 @@ heads) and `scripts/convert/reuse.py` mapping `nvidia/RE-USE` weights to MLX
 **Verification:** `uv run pytest tests/checkpoint/test_reuse_load.py -q` (skips if weights absent)
 **Execution:** subagent recommended
 **Depends on:** Slice 2, Slice 3
-**Touches:** `src/mlx_speech/models/reuse/{semamba.py,block.py,loader.py}`, `scripts/convert/reuse.py`, `tests/checkpoint/test_reuse_load.py`
+**Touches:** `src/mlx_speech/models/reuse/{semamba.py,block.py,loader.py}`, `scripts/convert/reuse.py`, `tests/checkpoint/test_reuse_load.py`, `tests/unit/test_reuse_semamba.py`
+
+**Status:** complete
+**Evidence:** Pure-MLX SEMamba (`semamba.py`, `mamba/block.py`) + conversion (`loader.py`, `scripts/convert/reuse.py`); all 1416 keys map exactly (strict `assert_keys_match`); forward returns correct shapes; no torch; ruff clean. Spec review APPROVED (line-by-line fidelity vs generator/mamba_block/codec references). Quality review caught a real backward-branch bug (scan-only reversal, conv not reversed) — FIXED so the whole backward module runs on flipped input (`flip(bwd(flip(x)) + flip(x))`), pinned by a unit test asserting it differs from the naive version (>1e-3). Quality follow-ups applied: assembly unit tests (`test_reuse_semamba.py`), removed dead `selective_scan_reverse`, deduped key-match. Verified: 506 unit + checkpoint passed.
+**Risks / next:** Slice 6 parity must confirm InstanceNorm eps (config `norm_epsilon=1e-5` matches MLX default), conv causal-trim, and the atan2 phase branch.
 
 ### Slice 5: REUSEEnhancer wrapper + Mac self-consistency check
 
