@@ -141,7 +141,7 @@ def test_euler_loop_passes_state_attention_mask_to_x0_model():
             self.denoise_masks = []
 
         def __call__(self, latent, *, a_ctx, sigma, positions=None, rope_cos_sin=None,
-                     attention_mask=None, denoise_mask=None):
+                     attention_mask=None, denoise_mask=None, stg_blocks=None):
             self.attention_masks.append(attention_mask)
             self.denoise_masks.append(denoise_mask)
             return latent
@@ -177,7 +177,7 @@ def test_euler_loop_forwards_denoise_mask_to_x0_model():
             self.denoise_masks = []
 
         def __call__(self, latent, *, a_ctx, sigma, positions=None, rope_cos_sin=None,
-                     attention_mask=None, denoise_mask=None):
+                     attention_mask=None, denoise_mask=None, stg_blocks=None):
             self.denoise_masks.append(denoise_mask)
             return latent
 
@@ -215,7 +215,7 @@ def test_x0_model_per_token_freezes_ref_tokens():
     target tokens (mask 1) denoise at sigma; ref tokens (mask 0) stay == latent."""
     class ConstVelocity:
         def __call__(self, latent, *, a_ctx, sigma, positions=None, rope_cos_sin=None,
-                     attention_mask=None, denoise_mask=None):
+                     attention_mask=None, denoise_mask=None, stg_blocks=None):
             return mx.ones_like(latent)  # velocity == 1 everywhere
 
     x0 = X0Model(ConstVelocity())
@@ -235,7 +235,7 @@ def test_x0_model_scalar_path_unchanged_without_denoise_mask():
     """No denoise_mask → scalar to_denoised on every token (baseline path)."""
     class ConstVelocity:
         def __call__(self, latent, *, a_ctx, sigma, positions=None, rope_cos_sin=None,
-                     attention_mask=None, denoise_mask=None):
+                     attention_mask=None, denoise_mask=None, stg_blocks=None):
             return mx.ones_like(latent)
 
     x0 = X0Model(ConstVelocity())

@@ -12,28 +12,33 @@ runtime. Inputs a text prompt; outputs a 48 kHz stereo waveform.
 - **Pure MLX runtime**: no torch, no `mlx_lm`, no `transformers`. The dev
   parity venv (`.venv-torch/`) is used only for capture scripts.
 
+### Supported guidance
+
+- **STG (Spatio-Temporal Guidance)** is wired through the DiT block code. A
+  perturbed forward pass replaces the audio self-attention on
+  ``stg_blocks`` (block 29 by default) with a value passthrough, and the
+  guider adds ``stg_scale * (cond - ptb)``. The default ``stg_scale`` is
+  ``1.5``, matching the warm-server reference. Set ``stg_scale=0`` for the
+  faster CFG-only path (skips the third forward pass per step).
+
 ### Known caveats (follow-ups)
 
-- **STG (Spatio-Temporal Guidance)** is not yet wired through the DiT block
-  code. Setting ``stg_scale != 0`` silently falls back to CFG-only. This is
-  the only deviation from the warm-server defaults — implementing it
-  requires threading a per-block ``skip_self_attn`` flag through
-  `LTXBlock → LTXAttention` (the perturbation that replaces the QK softmax
-  with a value passthrough).
-- **Voice-reference conditioning (IC-LoRA)** is out of scope for the v5
-  smoke. The `AudioProcessor` (waveform→mel front-end) ships as a stub
-  that raises ``NotImplementedError`` until Stage 7+.
-- **Per-token sigma**: the DiT forward uses broadcast-per-batch sigma. For
-  the no-voice-ref path this is correct (the denoise mask is uniform); for
-  IC-LoRA conditioning the upstream code uses per-token sigma which is a
-  follow-up alongside voice ref.
+- **Refined voice-reference conditioning (IC-LoRA, ``denoise_ref=True``)** is
+  deferred. The raw voice-reference path (``denoise_ref=False``, the default)
+  works: the `AudioProcessor` waveform→mel front-end is implemented, and the
+  reference latent is appended with a per-token denoise mask. The denoised
+  reference path raises ``NotImplementedError``.
+- **Per-token sigma**: the DiT forward uses broadcast-per-batch sigma on the
+  no-voice-ref path (correct, since the denoise mask is uniform) and the
+  per-token timestep on the raw-ref path. The IC-LoRA denoise path above is
+  the only place that needs additional per-token sigma work.
 
 ## Settings
 
 | Parameter | Default | Warm-server reference |
 | --- | --- | --- |
 | `cfg_scale` | 2.5 | 2.5 |
-| `stg_scale` | 0.0 (CFG-only) | 1.5 |
+| `stg_scale` | 1.5 | 1.5 |
 | `rescale_scale` | "auto" → 0.3 (at cfg=2.5) | "auto" |
 | `modality_scale` | 1.0 | 1.0 |
 | `steps` | 30 | 30 |

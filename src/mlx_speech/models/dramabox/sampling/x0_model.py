@@ -37,6 +37,7 @@ class X0Model:
         rope_cos_sin: tuple[mx.array, mx.array] | None = None,
         attention_mask: mx.array | None = None,
         denoise_mask: mx.array | None = None,
+        stg_blocks: tuple[int, ...] | None = None,
     ) -> mx.array:
         """Return denoised ``x0 [B, T, 128]`` for the given inputs.
 
@@ -52,6 +53,8 @@ class X0Model:
                 the DiT AdaLN and this x0 conversion use per-token
                 ``timesteps = denoise_mask * sigma`` (matches upstream `X0Model`),
                 so frozen reference tokens (mask 0) are returned unchanged.
+            stg_blocks: optional block indices to perturb with the STG self-attn
+                passthrough; forwarded to the velocity model. ``None`` = no STG.
         """
         velocity = self.velocity_model(
             latent,
@@ -61,6 +64,7 @@ class X0Model:
             rope_cos_sin=rope_cos_sin,
             attention_mask=attention_mask,
             denoise_mask=denoise_mask,
+            stg_blocks=stg_blocks,
         )
         if denoise_mask is None:
             # Broadcast-sigma baseline (no voice ref): timesteps == sigma scalar.

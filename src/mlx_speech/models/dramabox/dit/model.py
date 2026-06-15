@@ -95,6 +95,7 @@ class LTXModel(nn.Module):
         rope_cos_sin: tuple[mx.array, mx.array] | None = None,
         attention_mask: mx.array | None = None,
         denoise_mask: mx.array | None = None,
+        stg_blocks: tuple[int, ...] | None = None,
     ) -> mx.array:
         """Forward returning velocity ``[B, T_audio, audio_out_channels=128]``.
 
@@ -119,6 +120,9 @@ class LTXModel(nn.Module):
                 are modulated as clean (timestep 0) instead of at the noisy sigma.
                 When ``None`` the timestep is the per-batch scalar (no-ref path,
                 bit-identical to the pre-conditioning baseline).
+            stg_blocks: optional block indices whose audio self-attention is
+                replaced with an STG value passthrough. ``None``/empty runs every
+                block with full attention (bit-identical to the no-STG baseline).
 
         Returns:
             velocity ``[B, T_audio, 128]``.
@@ -163,8 +167,10 @@ class LTXModel(nn.Module):
         else:
             prompt_ada = None
 
-        # Block stack
-        for block in self.transformer_blocks:
+        # Block stack. `stg_blocks` selects which blocks run the STG self-attn
+        # passthrough; an empty/None set leaves every block on full attention.
+        stg_set = frozenset(stg_blocks) if stg_blocks else frozenset()
+        for idx, block in enumerate(self.transformer_blocks):
             x = block(
                 x,
                 ada_emb=ada_emb,
@@ -172,6 +178,7 @@ class LTXModel(nn.Module):
                 context=a_ctx,
                 rope_cos_sin=rope_cos_sin,
                 self_attention_mask=attention_mask,
+                skip_self_attn=idx in stg_set,
             )
 
         # Final AdaLN + output projection.

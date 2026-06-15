@@ -96,32 +96,45 @@ class LTXAttention(nn.Module):
         context: mx.array | None = None,
         mask: mx.array | None = None,
         rope_cos_sin: tuple[mx.array, mx.array] | None = None,
+        skip_self_attn: bool = False,
     ) -> mx.array:
         """Forward. ``mask`` is the *additive* attention bias matching MLX's
         ``mx.fast.scaled_dot_product_attention`` convention (broadcastable to
-        ``(B, H, T_q, T_k)``)."""
+        ``(B, H, T_q, T_k)``).
+
+        ``skip_self_attn`` is the STG (Spatio-Temporal Guidance) perturbation:
+        the attention output becomes the raw value projection (each token attends
+        only to itself, no QK softmax), while the per-head gate and ``to_out``
+        still apply. Reference:
+        ``.references/DramaBox/ltx2/ltx_core/model/transformer/attention.py:218-238``.
+        """
         ctx = x if context is None else context
 
-        q = self.to_q(x)  # (B, T, inner_dim)
-        k = self.to_k(ctx)
-        v = self.to_v(ctx)
+        if skip_self_attn:
+            # STG passthrough: out = to_v(ctx); skip to_q/to_k/q_norm/k_norm/RoPE/SDPA.
+            out = self.to_v(ctx)  # (B, T, inner_dim)
+            B, T_q = out.shape[0], out.shape[1]
+        else:
+            q = self.to_q(x)  # (B, T, inner_dim)
+            k = self.to_k(ctx)
+            v = self.to_v(ctx)
 
-        q = self.q_norm(q)
-        k = self.k_norm(k)
+            q = self.q_norm(q)
+            k = self.k_norm(k)
 
-        if rope_cos_sin is not None and self.rope_type == "split":
-            cos, sin = rope_cos_sin
-            q = apply_split_rope(q, cos, sin)
-            k = apply_split_rope(k, cos, sin)
+            if rope_cos_sin is not None and self.rope_type == "split":
+                cos, sin = rope_cos_sin
+                q = apply_split_rope(q, cos, sin)
+                k = apply_split_rope(k, cos, sin)
 
-        B, T_q, _ = q.shape
-        T_k = k.shape[1]
-        q = q.reshape(B, T_q, self.heads, self.dim_head).transpose(0, 2, 1, 3)
-        k = k.reshape(B, T_k, self.heads, self.dim_head).transpose(0, 2, 1, 3)
-        v = v.reshape(B, T_k, self.heads, self.dim_head).transpose(0, 2, 1, 3)
+            B, T_q, _ = q.shape
+            T_k = k.shape[1]
+            q = q.reshape(B, T_q, self.heads, self.dim_head).transpose(0, 2, 1, 3)
+            k = k.reshape(B, T_k, self.heads, self.dim_head).transpose(0, 2, 1, 3)
+            v = v.reshape(B, T_k, self.heads, self.dim_head).transpose(0, 2, 1, 3)
 
-        out = mx.fast.scaled_dot_product_attention(q, k, v, scale=self.scale, mask=mask)
-        out = out.transpose(0, 2, 1, 3).reshape(B, T_q, self.heads * self.dim_head)
+            out = mx.fast.scaled_dot_product_attention(q, k, v, scale=self.scale, mask=mask)
+            out = out.transpose(0, 2, 1, 3).reshape(B, T_q, self.heads * self.dim_head)
 
         if self.to_gate_logits is not None:
             gate_logits = self.to_gate_logits(x)  # (B, T, H)

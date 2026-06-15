@@ -13,7 +13,7 @@
 | 4 — AudioVAE | ✅ Done (encoder + decoder + per-channel-stats; 102 keys load; 15 tests) |
 | 5 — Vocoder stack | ✅ Done (main BigVGAN + BWE + mel-STFT; 1227 keys load; 9 tests) |
 | 6 — LTX DiT | ✅ Done (48 layers, 1457 keys load; 8 tests) |
-| 7 — Guidance + denoising loop | ✅ Baseline done (CFG + rescale; STG and IC-LoRA deferred; 13 tests) |
+| 7 — Guidance + denoising loop | ✅ Done (CFG + rescale + STG; IC-LoRA denoise-ref deferred) |
 | 8 — Wrapper + CLI + smoke test | ✅ Done (`DramaBoxModel.generate` runs end-to-end) |
 | 9 — Docs + release readiness | ✅ Done (`docs/dramabox.md`, README, references) |
 
@@ -22,23 +22,30 @@ prompt pipeline, AudioVAE, vocoder, DiT); 1 runtime smoke test passes
 (end-to-end generation produces a finite 48 kHz stereo waveform with
 non-zero RMS).
 
+## Landed since baseline
+
+- **STG (Spatio-Temporal Guidance)** — Done. A `skip_self_attn` flag threads
+  through `LTXAttention → LTXBlock → LTXModel → X0Model`, and the loop runs a
+  third perturbed pass (positive context, value passthrough on `stg_blocks`,
+  default block 29) that the guider folds in as `stg_scale * (cond - ptb)`.
+  Default `stg_scale` flipped `0.0 → 1.5` to match the warm-server reference
+  (`inference_server.py:307`). Verified by `tests/unit/test_dramabox_stg.py`
+  and a runtime STG-vs-CFG-only A/B (`tests/runtime/test_dramabox_stg_runtime.py`).
+
 ## Known deferred items (follow-ups)
 
-These do not block end-to-end audio output but are required for parity
-with the warm-server defaults:
+These do not block end-to-end audio output:
 
-1. **STG (Spatio-Temporal Guidance)** — Setting `stg_scale != 0` currently
-   falls back to CFG-only. To enable: thread a per-block `skip_self_attn`
-   flag through `LTXBlock` and `LTXAttention` (replaces QK softmax with a
-   value passthrough at the configured block).
-2. **Voice-reference conditioning (IC-LoRA)** — Out of scope for the v5
-   smoke. `AudioProcessor.waveform_to_mel` ships as a stub. To enable:
-   implement causal STFT + mel filter bank in MLX, then wire
-   `AudioConditionByReferenceLatent` (asymmetric attention mask, token
-   appending, denoise-mask 0 over ref).
-3. **Per-token sigma** — DiT forward uses broadcast-per-batch sigma. For
-   the no-voice-ref path this is correct (uniform denoise mask). IC-LoRA
-   needs per-token sigma per `audio.timesteps = sigma * denoise_mask`.
+1. **Refined voice-reference conditioning (IC-LoRA, `denoise_ref=True`)** —
+   The raw voice-reference path (`denoise_ref=False`) works:
+   `AudioProcessor.waveform_to_mel` is implemented (STFT + mel filter bank)
+   and the reference latent is appended with a per-token denoise mask. The
+   denoised path raises `NotImplementedError`. To enable: wire
+   `AudioConditionByReferenceLatent` (asymmetric attention mask) for the
+   denoise-ref case.
+2. **Per-token sigma for IC-LoRA** — Broadcast-per-batch sigma is correct on
+   the no-ref path; the raw-ref path already uses per-token timesteps. Only
+   the IC-LoRA denoise path above needs further per-token sigma work.
 
 ## Summary
 

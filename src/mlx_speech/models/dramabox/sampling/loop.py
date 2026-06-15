@@ -2,12 +2,16 @@
 
 For DramaBox the loop runs 30 steps with the warm-server defaults
 ``(cfg=2.5, stg=1.5, rescale='auto', modality=1.0)``. Each step requires up
-to 3 DiT forward passes (cond, uncond, ptb). STG perturbations are not yet
-threaded through the DiT block code in this v5 baseline — they will land in
-a follow-up when we wire `skip_self_attn` into `LTXBlock`. For now the loop
-falls back to ``stg=0`` (CFG-only) if STG is requested, with a logged note.
+to 3 DiT forward passes:
 
-Reference: `.references/DramaBox/ltx2/ltx_pipelines/utils/samplers.py:20-31`
+- ``cond``: positive prompt context.
+- ``uncond``: negative prompt context (run iff ``cfg_scale != 1``).
+- ``ptb``: positive prompt context with the STG self-attn passthrough on
+  ``params.stg_blocks`` (run iff ``stg_scale != 0``). The perturbed pass
+  mirrors ``cond`` exactly (same sigma, positions, denoise_mask) except for
+  the perturbed blocks, matching upstream `denoisers._guided_denoise`.
+
+Reference: `.references/DramaBox/ltx2/ltx_pipelines/utils/denoisers.py:92-174`
 """
 
 from __future__ import annotations
@@ -76,8 +80,21 @@ def euler_denoising_loop(
             if params.needs_uncond and a_ctx_neg is not None
             else None
         )
-        # STG is gated off in the baseline (see module docstring).
-        ptb = None
+        # STG perturbed pass: same positive `a_ctx`, sigma, and denoise_mask as
+        # `cond`, but with the self-attn passthrough on `params.stg_blocks`.
+        ptb = (
+            x0_model(
+                state.latent, a_ctx=a_ctx, sigma=sigma_batched,
+                positions=positions, rope_cos_sin=rope_cos_sin,
+                attention_mask=state.attention_mask,
+                denoise_mask=denoise_mask,
+                stg_blocks=params.stg_blocks,
+            )
+            if params.needs_ptb
+            else None
+        )
+        # Modality guidance is disabled by default for DramaBox (modality=1.0);
+        # the guider raises if a non-unit modality_scale is requested without it.
         modality = None
 
         pred = guider(cond, uncond=uncond, ptb=ptb, modality=modality)

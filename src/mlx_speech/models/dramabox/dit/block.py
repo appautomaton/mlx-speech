@@ -93,6 +93,7 @@ class LTXBlock(nn.Module):
         rope_cos_sin: tuple[mx.array, mx.array] | None,
         self_attention_mask: mx.array | None = None,
         context_mask: mx.array | None = None,
+        skip_self_attn: bool = False,
     ) -> mx.array:
         """Forward.
 
@@ -106,6 +107,8 @@ class LTXBlock(nn.Module):
             rope_cos_sin: pre-computed RoPE (cos, sin) for the audio sequence.
             self_attention_mask: optional additive mask for audio self-attn.
             context_mask: optional additive mask for cross-attn (None means no mask).
+            skip_self_attn: STG perturbation — replace this block's audio self-attn
+                with a value passthrough (cross-attn, FFN, gates, residuals intact).
         Returns:
             ``[B, T_audio, dim]``.
         """
@@ -126,7 +129,10 @@ class LTXBlock(nn.Module):
         scale_msa = ada[:, :, 1, :]
         gate_msa = ada[:, :, 2, :]
         h = functional_rms_norm(x, eps=self.norm_eps) * (1 + scale_msa) + shift_msa
-        x = x + self.audio_attn1(h, rope_cos_sin=rope_cos_sin, mask=self_attention_mask) * gate_msa
+        x = x + self.audio_attn1(
+            h, rope_cos_sin=rope_cos_sin, mask=self_attention_mask,
+            skip_self_attn=skip_self_attn,
+        ) * gate_msa
 
         # Cross-attention sub-block (factors 6..8 for q, prompt-AdaLN for kv)
         shift_q = ada[:, :, 6, :]

@@ -16,10 +16,10 @@ Wires together every Stage 2-7 component into a single end-to-end generator:
       → unpatchify → silence_prior_fix → AudioVAE.decode → mel
       → VocoderWithBWE (fp32) → 48 kHz stereo waveform
 
-Stage 7 caveats this v5 baseline ships with:
-- ``stg_scale=0`` by default (STG perturbation not yet threaded through
-  the DiT block). Setting `stg_scale > 0` will log a note and fall back to
-  CFG-only. Configurable per-call.
+Guidance this build ships with:
+- ``stg_scale=1.5`` by default (STG self-attn passthrough on block 29),
+  matching the DramaBox warm-server reference. Set ``stg_scale=0`` for the
+  faster CFG-only path. Configurable per-call.
 - ``modality_scale=1.0`` (modality guidance disabled — DramaBox warm-server
   default is also 1.0).
 - Voice-reference path uses raw references only (`denoise_ref=False`).
@@ -229,7 +229,7 @@ class DramaBoxModel:
         *,
         duration_s: float = 5.0,
         cfg_scale: float = 2.5,
-        stg_scale: float = 0.0,  # baseline default — STG is a follow-up
+        stg_scale: float = 1.5,  # warm-server default (STG on, block 29)
         rescale_scale: float | str = "auto",
         modality_scale: float = 1.0,
         steps: int = 30,
@@ -250,15 +250,6 @@ class DramaBoxModel:
             rescale_scale=rescale_val,
             modality_scale=modality_scale,
         )
-        if stg_scale != 0.0:
-            # STG not yet threaded through DiT block code in this v5 baseline.
-            # Fall back to CFG-only.
-            params = GuiderParams(
-                cfg_scale=cfg_scale,
-                stg_scale=0.0,
-                rescale_scale=rescale_val,
-                modality_scale=modality_scale,
-            )
 
         # ----- Prompt encoding -----
         a_ctx = self.prompt_encoder.encode(prompt, max_length=1024).a_ctx
