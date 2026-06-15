@@ -89,6 +89,9 @@ def list_models(category: str | None = None) -> dict[str, tuple[str, str]]:
 
 MOSS_CODEC_REPO = "appautomaton/openmoss-audio-tokenizer-mlx"
 DRAMABOX_GEMMA_REPO = "appautomaton/gemma-3-12b-it-backbone-4bit-mlx"
+# RE-USE / SEMamba speech enhancer DramaBox uses for `denoise_ref=True`.
+# Published in Slice 8; the exact id may be finalized there.
+REUSE_REPO = "appautomaton/reuse-semamba-mlx"
 
 _DEFAULT_ALLOW_PATTERNS = [
     "*.json",
@@ -204,4 +207,25 @@ def resolve_gemma_backbone_path(
         )
     return get_model_path(
         DRAMABOX_GEMMA_REPO, revision=revision, force_download=force_download
+    )
+
+
+def resolve_reuse_path(
+    reuse_path_or_repo: str | None = None,
+    *,
+    revision: str | None = None,
+    force_download: bool = False,
+) -> Path:
+    """Resolve the RE-USE / SEMamba enhancer weights DramaBox uses for
+    ``denoise_ref=True``.
+
+    Defaults to the published ``appautomaton`` RE-USE repo and auto-downloads
+    it, mirroring how the Gemma backbone resolves its separate weights.
+    """
+    if reuse_path_or_repo is not None:
+        return get_model_path(
+            reuse_path_or_repo, revision=revision, force_download=force_download
+        )
+    return get_model_path(
+        REUSE_REPO, revision=revision, force_download=force_download
     )

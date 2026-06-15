@@ -159,7 +159,11 @@ change to transforming `ref_audio.waveform` before `dramabox.py:279`; leave
 **Verification:** `uv run pytest tests/unit/ tests/runtime/test_dramabox_reuse.py tests/runtime/test_reuse_purity.py -q` (purity test asserts `torch` is absent from `sys.modules` after the `denoise_ref=True` path runs).
 **Execution:** subagent recommended
 **Depends on:** Slice 6
-**Touches:** `src/mlx_speech/generation/dramabox.py`, `src/mlx_speech/_hub.py`, `src/mlx_speech/tts/_adapters/dramabox.py`, `tests/unit/test_dramabox_reuse.py`, `tests/runtime/test_dramabox_reuse.py`, `tests/runtime/test_reuse_purity.py`
+**Touches:** `src/mlx_speech/generation/dramabox.py`, `src/mlx_speech/_hub.py`, `src/mlx_speech/tts/_adapters/dramabox.py`, `tests/unit/test_dramabox_reuse.py`, `tests/runtime/test_dramabox_reuse_runtime.py`, `tests/runtime/test_reuse_purity.py`
+
+**Status:** complete
+**Evidence:** `denoise_ref=True` wired into `generate()` — cleans the reference (mono collapse -> `REUSEEnhancer.enhance` at 16 kHz -> re-expand) between `prepare_reference_audio` and `waveform_to_mel`; diffusion path untouched. Default `False` byte-identical (spec-verified at line level). Lazy enhancer + per-`(path,sr)` cache; clear `RuntimeError` naming RE-USE + the opt-out when weights unavailable (no silent skip). `_hub.resolve_reuse_path` + `REUSE_REPO` mirror the Gemma resolver; adapter passes `denoise_ref` through. Spec review APPROVED (regression guard, insertion point, mono handling, error path, no-torch all verified). Tests: unit + runtime A/B (denoise True vs False differ, finite 48 kHz stereo, cached) + purity (no torch); 9 reuse + 507 unit green; ruff clean. Coordinator corrected the runtime test to the repo `_runtime` convention and removed spurious tier `__init__.py`.
+**Risks / next:** `REUSE_REPO` name (`appautomaton/reuse-semamba-mlx`) is finalized in Slice 8 (publish).
 
 ### Slice 8: Publish weights + docs
 

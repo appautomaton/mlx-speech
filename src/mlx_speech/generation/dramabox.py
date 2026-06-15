@@ -22,7 +22,9 @@ Guidance this build ships with:
   faster CFG-only path. Configurable per-call.
 - ``modality_scale=1.0`` (modality guidance disabled — DramaBox warm-server
   default is also 1.0).
-- Voice-reference path uses raw references only (`denoise_ref=False`).
+- Voice-reference path defaults to raw references (`denoise_ref=False`). Set
+  ``denoise_ref=True`` to clean the reference with the RE-USE / SEMamba
+  enhancer before VAE conditioning (pure-MLX; weights resolved lazily).
 """
 
 from __future__ import annotations
@@ -31,6 +33,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import mlx.core as mx
+
+from .._hub import resolve_reuse_path
+from .reuse import REUSEEnhancer
 
 from ..models.dramabox.audio_vae import (
     AudioProcessor,
@@ -130,6 +135,33 @@ def _build_bwe_vocoder_args() -> VocoderArgs:
 
 
 # --------------------------------------------------------------------------- #
+# Voice-reference denoising (RE-USE)
+# --------------------------------------------------------------------------- #
+
+def _denoise_reference_waveform(
+    enhancer: REUSEEnhancer, waveform: mx.array, sample_rate: int
+) -> mx.array:
+    """Clean a ``[1, C, samples]`` reference waveform with RE-USE.
+
+    Mirrors the warm-server ``_denoise_voice_ref`` shape handling
+    (`.references/DramaBox/src/inference_server.py:283-300`): collapse to mono
+    before the enhancer (voice cloning treats the speaker as a mono source),
+    run RE-USE at the input rate (denoise-only, no resample), then re-expand to
+    the original ``[1, C, samples]`` shape ``waveform_to_mel`` consumes.
+    """
+    if waveform.ndim != 3:
+        raise ValueError(
+            f"reference waveform must be [1, C, samples]; got {waveform.shape}"
+        )
+    batch, channels, _ = waveform.shape
+    mono = waveform[0].mean(axis=0)  # [C, samples] -> [samples]
+    cleaned = enhancer.enhance(mono, sample_rate)  # [samples]
+    # Re-broadcast the cleaned mono signal back across the original channels.
+    expanded = mx.broadcast_to(cleaned[None, None, :], (batch, channels, cleaned.shape[-1]))
+    return expanded.astype(waveform.dtype)
+
+
+# --------------------------------------------------------------------------- #
 # DramaBoxModel
 # --------------------------------------------------------------------------- #
 
@@ -144,6 +176,7 @@ class DramaBoxModel:
         audio_vae: AudioVAE,
         vocoder: VocoderWithBWE,
         negative_a_ctx: mx.array | None = None,
+        reuse_path_or_repo: str | Path | None = None,
     ):
         self.prompt_encoder = prompt_encoder
         self.dit = dit
@@ -152,6 +185,42 @@ class DramaBoxModel:
         # Cached "empty prompt" a_ctx for CFG's uncond pass. Computed lazily
         # the first time we need it (or supplied at construction).
         self._negative_a_ctx = negative_a_ctx
+        # RE-USE enhancer for `denoise_ref=True`. Weights location (None ->
+        # resolve_reuse_path default) and enhancer instance are both resolved
+        # lazily on the first denoise_ref=True call, then cached here.
+        self._reuse_path_or_repo = reuse_path_or_repo
+        self._reuse_enhancer: REUSEEnhancer | None = None
+        # Cleaned references cached per (path, sample_rate) so repeated calls
+        # with the same voice_ref don't re-denoise. Mirrors the warm-server
+        # `_ref_denoise_cache`.
+        self._ref_denoise_cache: dict[tuple[str, int], mx.array] = {}
+
+    # ----- RE-USE enhancer (lazy) ------------------------------------------
+
+    def _get_reuse_enhancer(self) -> REUSEEnhancer:
+        """Lazily load and cache the RE-USE enhancer.
+
+        Raises a clear, actionable error if the weights or module cannot be
+        loaded, naming RE-USE and the ``denoise_ref=False`` opt-out. We never
+        silently skip: a caller asking for ``denoise_ref=True`` must get either
+        a cleaned reference or an explicit failure.
+        """
+        if self._reuse_enhancer is not None:
+            return self._reuse_enhancer
+        try:
+            weights_dir = resolve_reuse_path(
+                str(self._reuse_path_or_repo) if self._reuse_path_or_repo is not None else None
+            )
+            self._reuse_enhancer = REUSEEnhancer.from_dir(weights_dir)
+        except Exception as exc:  # noqa: BLE001 — surface any load failure clearly
+            raise RuntimeError(
+                "denoise_ref=True requires the RE-USE / SEMamba enhancer, but it "
+                f"could not be loaded ({type(exc).__name__}: {exc}). Provide the "
+                "converted MLX weights via `reuse_path_or_repo` (or let it resolve "
+                "the published repo), or set `denoise_ref=False` to use the raw "
+                "voice reference."
+            ) from exc
+        return self._reuse_enhancer
 
     # ----- construction ----------------------------------------------------
 
@@ -161,6 +230,7 @@ class DramaBoxModel:
         dramabox_dir: str | Path,
         *,
         gemma_dir: str | Path,
+        reuse_path_or_repo: str | Path | None = None,
     ) -> "DramaBoxModel":
         """Load DramaBox from the expected directory layout.
 
@@ -168,6 +238,10 @@ class DramaBoxModel:
             dramabox_dir: path containing `dramabox-dit-v1.safetensors` and
                 `dramabox-audio-components.safetensors`.
             gemma_dir: path to the pure-MLX 4-bit Gemma 3 12B IT directory.
+            reuse_path_or_repo: optional location (local dir or HF repo id) of
+                the converted RE-USE / SEMamba MLX weights used when
+                ``denoise_ref=True``. ``None`` resolves the published repo on
+                first use. Loaded lazily; ignored unless ``denoise_ref=True``.
         """
         dramabox_dir = Path(dramabox_dir)
         gemma_dir = Path(gemma_dir)
@@ -219,6 +293,7 @@ class DramaBoxModel:
             dit=dit,
             audio_vae=vae,
             vocoder=vocoder,
+            reuse_path_or_repo=reuse_path_or_repo,
         )
 
     # ----- generation ------------------------------------------------------
@@ -237,10 +312,14 @@ class DramaBoxModel:
         voice_ref: str | Path | None = None,
         denoise_ref: bool = False,
     ) -> DramaBoxResult:
-        """Generate one stereo waveform clip from a text prompt."""
-        if denoise_ref:
-            raise NotImplementedError("DramaBox denoise_ref=True is deferred; use denoise_ref=False.")
+        """Generate one stereo waveform clip from a text prompt.
 
+        When ``denoise_ref=True`` and ``voice_ref`` is set, the reference is
+        collapsed to mono, cleaned with the RE-USE / SEMamba enhancer, and
+        re-expanded before VAE conditioning. The diffusion path (reference
+        latent application, per-token sigma) is unchanged. Default is
+        ``denoise_ref=False`` (raw reference).
+        """
         # Resolve rescale_scale
         rescale_val = auto_rescale_for_cfg(cfg_scale) if rescale_scale == "auto" else float(rescale_scale)
 
@@ -276,7 +355,22 @@ class DramaBoxModel:
 
         if voice_ref is not None:
             ref_audio = prepare_reference_audio(voice_ref)
-            ref_mel = AudioProcessor().waveform_to_mel(ref_audio.waveform, sample_rate=ref_audio.sample_rate)
+            ref_waveform = ref_audio.waveform
+            if denoise_ref:
+                # Clean the reference between prep and the mel front end. The
+                # diffusion path below is untouched. Cache per (path, sr) so a
+                # repeated voice_ref does not re-denoise.
+                cache_key = (str(voice_ref), int(ref_audio.sample_rate))
+                cleaned = self._ref_denoise_cache.get(cache_key)
+                if cleaned is None:
+                    enhancer = self._get_reuse_enhancer()
+                    cleaned = _denoise_reference_waveform(
+                        enhancer, ref_waveform, ref_audio.sample_rate
+                    )
+                    mx.eval(cleaned)
+                    self._ref_denoise_cache[cache_key] = cleaned
+                ref_waveform = cleaned
+            ref_mel = AudioProcessor().waveform_to_mel(ref_waveform, sample_rate=ref_audio.sample_rate)
             ref_latent = self.audio_vae.encode(ref_mel)
             state = apply_reference_latent(state, ref_latent, patchifier=patchifier)
             # Per-token timesteps (denoise_mask * sigma) keep the appended reference
