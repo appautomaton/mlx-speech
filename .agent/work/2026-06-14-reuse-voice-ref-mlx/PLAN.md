@@ -70,6 +70,10 @@ Slice 1), not an independently invented recurrence.
 **Depends on:** Slice 1
 **Touches:** `src/mlx_speech/models/reuse/mamba/scan.py`, `tests/unit/test_reuse_scan.py`
 
+**Status:** complete
+**Evidence:** `scan.py` (`selective_scan` + `selective_scan_reverse`) mirrors `selective_scan_ref` (variable B/C, D skip, silu(z) gate, softplus + delta_bias); 9 tests vs a numpy float64 port of the reference, max abs diff < 1e-4; reuse unit tests 22 passed; no torch in source. Spec + quality review APPROVED (line-by-line parity confirmed against the vendored reference, with anti-no-op controls).
+**Risks / next:** MLX 0.31.1 mishandles elementwise ops on reversed-stride views and lacks `mx.flip` — neutralized here by an `mx.contiguous` guard + negative-step slicing. Carry this caveat into Slice 4 if it flips around elementwise ops.
+
 ### Slice 3: STFT front end (mag/phase + iSTFT + sweep filter)
 
 **Objective:** Port `mag_phase_stft` / `mag_phase_istft` with `compress_factor`,
@@ -81,6 +85,10 @@ the sweep-artifact filter, and chunked Hann overlap-add to MLX.
 **Verification:** `uv run pytest tests/unit/test_reuse_stft.py -q`
 **Depends on:** Slice 1
 **Touches:** `src/mlx_speech/models/reuse/stft.py`, `tests/unit/test_reuse_stft.py`
+
+**Status:** complete
+**Evidence:** `stft.py` (`mag_phase_stft`/`mag_phase_istft` on `mx.fft`, `relu_log1p` compress/expand, `sweep_artifact_filter`, `chunked_hann_ola`, `stft_params_for`) mirrors `.references/RE-USE/models/stfts.py` + `super_resolution.py:224-265`; 13 tests, round-trip interior ~5e-6 at op_sr 8k/16k. Spec + quality review APPROVED.
+**Risks / next:** non-blocking quality follow-ups recorded — dedupe the window-pad block into a `_padded_hann` helper, and add a compress-param-overload docstring note. Apply during a later cleanup pass.
 
 ### Slice 4: SEMamba assembly + weight conversion
 
