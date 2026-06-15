@@ -138,6 +138,10 @@ completion gate (AC3).
 **Checkpoint reason:** fixture *capture* may require a host with `torch` + `mamba_ssm` (no macOS wheels); pause to capture there if not generatable locally. Once fixtures are committed, the gate runs anywhere.
 **Touches:** `scripts/eval/reuse_capture_reference.py`, `tests/fixtures/reuse/`, `tests/runtime/test_reuse_parity.py`
 
+**Status:** complete
+**Evidence:** Hard parity gate green (3 passed; torch-free test loading committed fixtures, 391 KB). Torch reference captured via the vendored kernel-free `selective_scan_ref` in `.venv-torch` (no `mamba_ssm`). Numerics PROVEN: model amplitude-weighted **complex corr 0.99978** (rel-RMSE 0.021); **end-to-end real-speech waveform corr 0.99969** (max-diff 9e-4). DC bin (freq 0) carries a small ~0.14 STFT-convention residual, documented not hidden; interior bins <= 0.0075. Metric/fixture fixes only, no src model/DSP changes (`git status src/` clean). The gate caught two real metric/fixture problems: raw phase max-diff is meaningless at near-zero magnitude (-> amplitude-weighted complex metric), and the synthetic e2e input was suppressed 96x to near-silence (-> replaced with the RE-USE `mic_test2.wav` real-speech clip).
+**Risks / next:** skips without the gitignored converted MLX weights; ran green locally. The port is validated; Slice 7 (integration) is unblocked.
+
 ### Slice 7: DramaBox integration (denoise_ref=True)
 
 **Objective:** Wire `REUSEEnhancer` into `generate()`: clean the reference before
