@@ -118,6 +118,10 @@ sweep filter → iSTFT → OLA) as a pure-MLX `REUSEEnhancer.from_dir(...).enhan
 **Depends on:** Slice 4
 **Touches:** `src/mlx_speech/generation/reuse.py`, `tests/runtime/test_reuse_enhance.py`
 
+**Status:** complete
+**Evidence:** `generation/reuse.py` `REUSEEnhancer.from_dir(...).enhance(wav, in_sr)` — denoise-only chunked STFT -> SEMamba -> sweep -> iSTFT -> Hann OLA, reusing Slice 3/4 pieces; mono-in/out, length-matched, no torch. Spec review APPROVED (per-chunk order, resample-skip, sweep-on-output, mono contract, scope confirmed vs `super_resolution.py:213-266`). Runtime self-consistency test green locally against converted weights (skips without). 503 unit + 2 runtime passed; ruff clean. Quality pass skipped for this thin composition of already-reviewed components.
+**Risks / next:** numeric correctness unproven until Slice 6 (the serial spine gates integration on it).
+
 ### Slice 6: Torch parity gate (fixtures)
 
 **Objective:** Add `scripts/eval/reuse_capture_reference.py` (torch RE-USE,
