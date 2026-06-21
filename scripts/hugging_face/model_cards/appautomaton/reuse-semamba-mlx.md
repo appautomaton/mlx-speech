@@ -92,8 +92,7 @@ TTS model's paralinguistic events (breaths, laughs) are preserved.
 
 - Source code: [`appautomaton/mlx-speech`](https://github.com/appautomaton/mlx-speech)
 - Paired model: [`appautomaton/dramabox-tts-3.3b-bf16-mlx`](https://huggingface.co/appautomaton/dramabox-tts-3.3b-bf16-mlx)
-- Upstream model: [`nvidia/RE-USE`](https://huggingface.co/nvidia/RE-USE)
-- More MLX speech models: [App Automaton on Hugging Face](https://huggingface.co/appautomaton)
+- More from App Automaton: [GitHub](https://github.com/appautomaton) · [Hugging Face](https://huggingface.co/appautomaton)
 
 ## License
 

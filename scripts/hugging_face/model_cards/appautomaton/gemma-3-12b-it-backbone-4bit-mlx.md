@@ -72,8 +72,7 @@ Text conditioning for LTX-2-derived audio diffusion models, specifically DramaBo
 
 - Source code: [`appautomaton/mlx-speech`](https://github.com/appautomaton/mlx-speech)
 - Paired model: [`appautomaton/dramabox-tts-3.3b-bf16-mlx`](https://huggingface.co/appautomaton/dramabox-tts-3.3b-bf16-mlx)
-- Upstream model: [`google/gemma-3-12b-it`](https://huggingface.co/google/gemma-3-12b-it)
-- More MLX speech models: [App Automaton on Hugging Face](https://huggingface.co/appautomaton)
+- More from App Automaton: [GitHub](https://github.com/appautomaton) · [Hugging Face](https://huggingface.co/appautomaton)
 
 ## License
 
