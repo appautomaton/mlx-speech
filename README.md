@@ -50,7 +50,7 @@ model name links to a guide covering behavior, flags, and known limitations.
 text encoder automatically. Output is 48 kHz stereo. For advanced controls (cfg,
 steps, voice reference) use `scripts/generate_dramabox.py`. Optional
 `denoise_ref=True` cleans a noisy voice reference with the pure-MLX
-[RE-USE / SEMamba enhancer](https://huggingface.co/appautomaton/reuse-semamba-mlx)
+[RE-USE / SEMamba enhancer](https://huggingface.co/appautomaton/re-use-semamba-mlx)
 (off by default; NSCLv1 non-commercial weights). See
 [docs/dramabox.md](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md).
 

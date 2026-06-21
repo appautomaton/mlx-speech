@@ -70,7 +70,7 @@ result = tts.generate(
 directly:
 
 ```bash
-hf download appautomaton/reuse-semamba-mlx --local-dir models/reuse/mlx
+hf download appautomaton/re-use-semamba-mlx --local-dir models/reuse/mlx
 ```
 
 ```python

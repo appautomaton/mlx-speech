@@ -71,7 +71,7 @@ MODELS: dict[str, tuple[str, str, bool]] = {
         True,
     ),
     "reuse": (
-        "appautomaton/reuse-semamba-mlx",
+        "appautomaton/re-use-semamba-mlx",
         "models/reuse/mlx",
         True,
     ),
