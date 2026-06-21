@@ -89,17 +89,17 @@ python scripts/generate_dramabox.py \
 ## Status and Limitations
 
 - **Works today:** English text to 48 kHz stereo waveform, end to end, pure MLX.
-- **Not yet wired:** voice-reference cloning (IC-LoRA). The mel front-end is stubbed in this port.
-- **Deferred:** Spatio-Temporal Guidance (`stg_scale`) falls back to CFG-only.
+- **Voice-reference cloning:** wired. Pass `voice_ref=` to condition on a speaker; the waveform→mel front-end and the appended reference latent are fully implemented.
+- **Spatio-Temporal Guidance:** on by default (`stg_scale=1.5`, block 29), matching the warm-server reference. Set `stg_scale=0` for CFG-only.
+- **Optional reference denoising:** set `denoise_ref=True` to clean the voice reference with the [RE-USE / SEMamba enhancer](https://huggingface.co/appautomaton/reuse-semamba-mlx) before conditioning (non-commercial weights; default off).
 - **Memory:** the DiT, audio components, and Gemma backbone target a 32 GB Apple Silicon machine.
 
 ## Links
 
 - Source code: [`appautomaton/mlx-speech`](https://github.com/appautomaton/mlx-speech)
 - Paired text encoder: [`appautomaton/gemma-3-12b-it-backbone-4bit-mlx`](https://huggingface.co/appautomaton/gemma-3-12b-it-backbone-4bit-mlx)
-- Upstream model: [`ResembleAI/Dramabox`](https://huggingface.co/ResembleAI/Dramabox)
-- Foundation model: [`Lightricks/LTX-2.3`](https://huggingface.co/Lightricks/LTX-2.3)
-- More MLX speech models: [App Automaton on Hugging Face](https://huggingface.co/appautomaton)
+- Optional voice-ref denoiser: [`appautomaton/reuse-semamba-mlx`](https://huggingface.co/appautomaton/reuse-semamba-mlx)
+- More from App Automaton: [GitHub](https://github.com/appautomaton) · [Hugging Face](https://huggingface.co/appautomaton)
 
 ## License
 
