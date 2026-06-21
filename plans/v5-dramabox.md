@@ -42,7 +42,7 @@ non-zero RMS).
   per-token denoise mask) was already complete and working; `denoise_ref` adds
   an optional pure-MLX port of NVIDIA RE-USE (SEMamba) that cleans the input
   reference before VAE conditioning. Opt-in (default `False`); weights are
-  NSCLv1 non-commercial (`appautomaton/reuse-semamba-mlx`). Validated against
+  NSCLv1 non-commercial (`appautomaton/re-use-semamba-mlx`). Validated against
   the torch reference at 0.9997 waveform correlation.
 - **Per-token sigma** — No outstanding work. Broadcast-per-batch sigma is
   correct on the no-ref path; the raw-ref path already uses per-token timesteps.

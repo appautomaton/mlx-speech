@@ -24,7 +24,7 @@ runtime. Inputs a text prompt; outputs a 48 kHz stereo waveform.
   reference with the RE-USE / SEMamba enhancer before VAE conditioning, giving
   the cloning model a clean speaker anchor. It is **opt-in** (default
   ``False``) and pure-MLX. The enhancer weights
-  ([`appautomaton/reuse-semamba-mlx`](https://huggingface.co/appautomaton/reuse-semamba-mlx))
+  ([`appautomaton/re-use-semamba-mlx`](https://huggingface.co/appautomaton/re-use-semamba-mlx))
   derive from `nvidia/RE-USE` and are **NSCLv1 non-commercial**, resolved
   lazily on first use; `denoise_ref=True` raises a clear error if they cannot
   load. The MLX port matches the torch reference at 0.9997 waveform

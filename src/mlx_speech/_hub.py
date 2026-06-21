@@ -90,8 +90,7 @@ def list_models(category: str | None = None) -> dict[str, tuple[str, str]]:
 MOSS_CODEC_REPO = "appautomaton/openmoss-audio-tokenizer-mlx"
 DRAMABOX_GEMMA_REPO = "appautomaton/gemma-3-12b-it-backbone-4bit-mlx"
 # RE-USE / SEMamba speech enhancer DramaBox uses for `denoise_ref=True`.
-# Published in Slice 8; the exact id may be finalized there.
-REUSE_REPO = "appautomaton/reuse-semamba-mlx"
+REUSE_REPO = "appautomaton/re-use-semamba-mlx"
 
 _DEFAULT_ALLOW_PATTERNS = [
     "*.json",
