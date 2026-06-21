@@ -20,18 +20,23 @@ runtime. Inputs a text prompt; outputs a 48 kHz stereo waveform.
   guider adds ``stg_scale * (cond - ptb)``. The default ``stg_scale`` is
   ``1.5``, matching the warm-server reference. Set ``stg_scale=0`` for the
   faster CFG-only path (skips the third forward pass per step).
+- **Voice-reference denoising (``denoise_ref=True``)** cleans the input
+  reference with the RE-USE / SEMamba enhancer before VAE conditioning, giving
+  the cloning model a clean speaker anchor. It is **opt-in** (default
+  ``False``) and pure-MLX. The enhancer weights
+  ([`appautomaton/reuse-semamba-mlx`](https://huggingface.co/appautomaton/reuse-semamba-mlx))
+  derive from `nvidia/RE-USE` and are **NSCLv1 non-commercial**, resolved
+  lazily on first use; `denoise_ref=True` raises a clear error if they cannot
+  load. The MLX port matches the torch reference at 0.9997 waveform
+  correlation. The raw voice-reference path (``denoise_ref=False``) needs none
+  of this: the `AudioProcessor` waveform→mel front-end and the appended
+  reference latent (per-token denoise mask) are fully implemented.
 
 ### Known caveats (follow-ups)
 
-- **Refined voice-reference conditioning (IC-LoRA, ``denoise_ref=True``)** is
-  deferred. The raw voice-reference path (``denoise_ref=False``, the default)
-  works: the `AudioProcessor` waveform→mel front-end is implemented, and the
-  reference latent is appended with a per-token denoise mask. The denoised
-  reference path raises ``NotImplementedError``.
 - **Per-token sigma**: the DiT forward uses broadcast-per-batch sigma on the
   no-voice-ref path (correct, since the denoise mask is uniform) and the
-  per-token timestep on the raw-ref path. The IC-LoRA denoise path above is
-  the only place that needs additional per-token sigma work.
+  per-token timestep on the raw-ref path. No outstanding work here.
 
 ## Settings
 
@@ -43,6 +48,7 @@ runtime. Inputs a text prompt; outputs a 48 kHz stereo waveform.
 | `modality_scale` | 1.0 | 1.0 |
 | `steps` | 30 | 30 |
 | `seed` | 42 | 42 |
+| `denoise_ref` | False (opt-in; RE-USE non-commercial) | True |
 
 ## Usage
 

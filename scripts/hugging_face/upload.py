@@ -70,6 +70,11 @@ MODELS: dict[str, tuple[str, str, bool]] = {
         "models/gemma_3_12b_it_backbone/mlx-4bit",
         True,
     ),
+    "reuse": (
+        "appautomaton/reuse-semamba-mlx",
+        "models/reuse/mlx",
+        True,
+    ),
 }
 
 
