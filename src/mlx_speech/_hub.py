@@ -72,11 +72,10 @@ _ASR_MODELS: dict[str, tuple[str, str, str]] = {
         "Qwen3-ASR-1.7B (int8, affine) — English, Chinese, and mixed Chinese/English ASR",
         "qwen3",
     ),
-    "qwen3-asr-1.7b-mxfp8": (
-        "appautomaton/qwen3-asr-1.7b-mxfp8-mlx",
-        "Qwen3-ASR-1.7B (mxfp8) — English, Chinese, and mixed Chinese/English ASR",
-        "qwen3",
-    ),
+    # mxfp8 is a supported conversion mode (scripts/convert/qwen3_asr.py --quant
+    # mxfp8) but is not published as a downloadable repo — at 8-bit it offers no
+    # advantage over int8. Load a locally-built mxfp8 package by path; the
+    # mlx-mxfp8 subdir below lets the path resolver auto-descend into it.
 }
 
 _ALIASES: dict[str, str] = {
