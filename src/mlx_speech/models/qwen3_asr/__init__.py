@@ -1,4 +1,8 @@
-"""Qwen3-ASR model components."""
+"""Qwen3-ASR model components.
+
+The barrel intentionally stays lightweight: heavy submodules are imported
+directly by their callers, never re-exported here. See the dependency-guard test.
+"""
 
 from .config import (
     Qwen3ASRAudioConfig,

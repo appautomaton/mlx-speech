@@ -35,6 +35,13 @@ MODELS: dict[str, tuple[str, str, bool]] = {
         "models/cohere/cohere_transcribe/mlx-int8",
         False,
     ),
+    # bf16 weights are already published; re-publish only to refresh the card
+    # (push the card as README.md — see scripts/hugging_face/model_cards/).
+    "qwen3-asr-1.7b-int8": (
+        "appautomaton/qwen3-asr-1.7b-int8-mlx",
+        "models/qwen3_asr_1_7b/mlx-int8",
+        True,
+    ),
     "openmoss-audio-tokenizer": (
         "appautomaton/openmoss-audio-tokenizer-mlx",
         "models/openmoss/moss_audio_tokenizer/mlx-int8",
