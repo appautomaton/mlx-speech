@@ -9,20 +9,22 @@ The runtime does not route inference through PyTorch, Transformers, vLLM,
 
 ## Getting the Model
 
-Pre-converted BF16 MLX weights are published at
+Pre-converted MLX weights are published as an affine **int8** build (the default)
+at [appautomaton/qwen3-asr-1.7b-int8-mlx](https://huggingface.co/appautomaton/qwen3-asr-1.7b-int8-mlx)
+and an unquantized **bf16** build at
 [appautomaton/qwen3-asr-1.7b-bf16-mlx](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx).
-Quantized builds (`-int8`, `-mxfp8`) are produced via [Conversion](#conversion)
-and published under matching repos; see [Quantization](#quantization) for the
-alias map. There are three ways to get the weights, in order of preference:
+An **mxfp8** build is supported as a local [Conversion](#conversion) but is not
+published — at 8-bit it offers no advantage over int8. There are three ways to get
+the weights, in order of preference:
 
 **1. Load by alias (downloads automatically on first use):**
 
 ```python
 import mlx_speech
 
-asr = mlx_speech.asr.load("qwen3-asr-1.7b")        # bf16 today (int8 after rollout)
+asr = mlx_speech.asr.load("qwen3-asr-1.7b")        # int8 (default)
 asr = mlx_speech.asr.load("qwen3-asr-1.7b-int8")   # affine int8
-asr = mlx_speech.asr.load("qwen3-asr-1.7b-mxfp8")  # microscaling FP8
+asr = mlx_speech.asr.load("qwen3-asr-1.7b-bf16")   # unquantized
 ```
 
 ```bash
@@ -78,19 +80,19 @@ Output lands in `models/qwen3_asr_1_7b/mlx-<quant>/` by default; pass
 
 Two 8-bit builds are supported in addition to bf16:
 
-| Build | Mode | group_size | Bias | Alias |
+| Build | Mode | group_size | Bias | How to get |
 | --- | --- | --- | --- | --- |
-| bf16 | — | — | — | `qwen3-asr-1.7b-bf16` |
-| int8 | affine | 64 | yes | `qwen3-asr-1.7b-int8` |
-| mxfp8 | microscaling FP8 (E4M3 / E8M0 scale) | 32 | no | `qwen3-asr-1.7b-mxfp8` |
+| bf16 | — | — | — | alias `qwen3-asr-1.7b-bf16` |
+| int8 | affine | 64 | yes | alias `qwen3-asr-1.7b-int8` (default) |
+| mxfp8 | microscaling FP8 (E4M3 / E8M0 scale) | 32 | no | local build only (`--quant mxfp8`) — not published |
 
 The quantization mode is stored in each package's `config.json` (`quantization`
 block) and re-applied automatically on load, so it can never desync from the
-weights. Selection is alias-based or by explicit path — both work:
+weights. Published builds load by alias; a locally-built mxfp8 package loads by path:
 
 ```python
-asr = mlx_speech.asr.load("qwen3-asr-1.7b-mxfp8")
-asr = mlx_speech.asr.load("models/qwen3_asr_1_7b/mlx-mxfp8")
+asr = mlx_speech.asr.load("qwen3-asr-1.7b-int8")              # published alias
+asr = mlx_speech.asr.load("models/qwen3_asr_1_7b/mlx-mxfp8")  # locally-built mxfp8
 ```
 
 mxfp8 requires `group_size=32` and has no bias term (MLX 0.31.1+). Quantization
