@@ -2,7 +2,7 @@
 
 __all__ = ["__version__", "tts", "asr"]
 
-__version__ = "0.4.2"
+__version__ = "0.4.3"
 
 
 def __getattr__(name: str):

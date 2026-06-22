@@ -11,14 +11,18 @@ The runtime does not route inference through PyTorch, Transformers, vLLM,
 
 Pre-converted BF16 MLX weights are published at
 [appautomaton/qwen3-asr-1.7b-bf16-mlx](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx).
-There are three ways to get them, in order of preference:
+Quantized builds (`-int8`, `-mxfp8`) are produced via [Conversion](#conversion)
+and published under matching repos; see [Quantization](#quantization) for the
+alias map. There are three ways to get the weights, in order of preference:
 
 **1. Load by alias (downloads automatically on first use):**
 
 ```python
 import mlx_speech
 
-asr = mlx_speech.asr.load("qwen3-asr-1.7b")
+asr = mlx_speech.asr.load("qwen3-asr-1.7b")        # bf16 today (int8 after rollout)
+asr = mlx_speech.asr.load("qwen3-asr-1.7b-int8")   # affine int8
+asr = mlx_speech.asr.load("qwen3-asr-1.7b-mxfp8")  # microscaling FP8
 ```
 
 ```bash
@@ -34,7 +38,7 @@ alias.
 
 ```bash
 hf download appautomaton/qwen3-asr-1.7b-bf16-mlx \
-  --local-dir models/Qwen3-ASR-1.7B-MLX-BF16
+  --local-dir models/qwen3_asr_1_7b/mlx-bf16
 ```
 
 **3. Convert from the upstream checkpoint yourself** — see
@@ -43,7 +47,11 @@ hf download appautomaton/qwen3-asr-1.7b-bf16-mlx \
 ## Local Layout
 
 ```text
-models/Qwen3-ASR-1.7B-MLX-BF16/   # local MLX runtime package
+models/qwen3_asr_1_7b/
+  original/    # upstream BF16 .safetensors (conversion input)
+  mlx-bf16/    # unquantized MLX runtime package
+  mlx-int8/    # affine int8 (group_size 64)
+  mlx-mxfp8/   # microscaling FP8 (group_size 32)
 ```
 
 The project `models/` entry may be a symlink to a shared local model store —
@@ -53,14 +61,41 @@ the loader follows it transparently.
 
 The upstream Qwen files are already BF16 `.safetensors`. The converter renames
 checkpoint keys from `thinker.*` into this repo's MLX module tree and transposes
-the audio Conv2D weights from PyTorch layout into MLX layout. It does not
-quantize.
+the audio Conv2D weights from PyTorch layout into MLX layout. It can emit an
+unquantized bf16 package or a quantized package — see [Quantization](#quantization).
 
 ```bash
-python scripts/convert/qwen3_asr.py \
-  --input-dir /path/to/Qwen3-ASR-1.7B-original \
-  --output-dir models/Qwen3-ASR-1.7B-MLX-BF16
+# default is int8; pass --quant bf16/int8/mxfp8
+python scripts/convert/qwen3_asr.py --quant int8
+python scripts/convert/qwen3_asr.py --quant mxfp8
+python scripts/convert/qwen3_asr.py --quant bf16
 ```
+
+Output lands in `models/qwen3_asr_1_7b/mlx-<quant>/` by default; pass
+`--input-dir` / `--output-dir` to override.
+
+## Quantization
+
+Two 8-bit builds are supported in addition to bf16:
+
+| Build | Mode | group_size | Bias | Alias |
+| --- | --- | --- | --- | --- |
+| bf16 | — | — | — | `qwen3-asr-1.7b-bf16` |
+| int8 | affine | 64 | yes | `qwen3-asr-1.7b-int8` |
+| mxfp8 | microscaling FP8 (E4M3 / E8M0 scale) | 32 | no | `qwen3-asr-1.7b-mxfp8` |
+
+The quantization mode is stored in each package's `config.json` (`quantization`
+block) and re-applied automatically on load, so it can never desync from the
+weights. Selection is alias-based or by explicit path — both work:
+
+```python
+asr = mlx_speech.asr.load("qwen3-asr-1.7b-mxfp8")
+asr = mlx_speech.asr.load("models/qwen3_asr_1_7b/mlx-mxfp8")
+```
+
+mxfp8 requires `group_size=32` and has no bias term (MLX 0.31.1+). Quantization
+covers the Linear and Embedding layers across the audio tower and text decoder;
+Conv2D layers stay unquantized.
 
 ## Quick Start
 
@@ -78,7 +113,7 @@ mlx-speech asr \
   --audio speech.wav
 ```
 
-A local path such as `models/Qwen3-ASR-1.7B-MLX-BF16` works in place of the
+A local path such as `models/qwen3_asr_1_7b/mlx-int8` works in place of the
 alias everywhere below.
 
 ## Language Behavior
@@ -96,7 +131,7 @@ asr.generate("mixed-speech.wav", language="Chinese")
 
 ```bash
 mlx-speech asr \
-  --model models/Qwen3-ASR-1.7B-MLX-BF16 \
+  --model models/qwen3_asr_1_7b/mlx-int8 \
   --audio mixed-speech.wav \
   --language Chinese
 ```
@@ -114,7 +149,7 @@ asr.generate("speech.wav", language="English")
 
 ```bash
 mlx-speech asr \
-  --model models/Qwen3-ASR-1.7B-MLX-BF16 \
+  --model models/qwen3_asr_1_7b/mlx-int8 \
   --audio speech.wav \
   --language Chinese
 ```
@@ -146,8 +181,8 @@ when language is omitted.
 - Long-audio chunking and language merge logic are deferred.
 - Broader multilingual validation beyond English, Chinese, and mixed
   Chinese/English is deferred.
-- Low-bit quantization is deferred; `Qwen3-ASR-1.7B-MLX-BF16/` is the supported
-  package layout.
+- 8-bit affine int8 and mxfp8 builds are supported (see
+  [Quantization](#quantization)); 4-bit (mxfp4/nvfp4) is deferred.
 
 ## Reference Source
 

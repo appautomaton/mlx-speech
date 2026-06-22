@@ -76,6 +76,30 @@ class Qwen3ASRAudioConfig:
             extra={k: v for k, v in payload.items() if k not in consumed},
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "d_model": self.d_model,
+            "num_mel_bins": self.num_mel_bins,
+            "encoder_layers": self.encoder_layers,
+            "encoder_attention_heads": self.encoder_attention_heads,
+            "encoder_ffn_dim": self.encoder_ffn_dim,
+            "downsample_hidden_size": self.downsample_hidden_size,
+            "output_dim": self.output_dim,
+            "max_source_positions": self.max_source_positions,
+            "n_window": self.n_window,
+            "n_window_infer": self.n_window_infer,
+            "conv_chunksize": self.conv_chunksize,
+            "activation_function": self.activation_function,
+            "dropout": self.dropout,
+            "attention_dropout": self.attention_dropout,
+            "activation_dropout": self.activation_dropout,
+            "scale_embedding": self.scale_embedding,
+            "model_type": self.model_type,
+            "dtype": self.dtype,
+        }
+        payload.update(self.extra)
+        return payload
+
 
 @dataclass(frozen=True)
 class Qwen3ASRTextConfig:
@@ -148,6 +172,31 @@ class Qwen3ASRTextConfig:
             extra={k: v for k, v in payload.items() if k not in consumed},
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "hidden_size": self.hidden_size,
+            "intermediate_size": self.intermediate_size,
+            "num_hidden_layers": self.num_hidden_layers,
+            "num_attention_heads": self.num_attention_heads,
+            "num_key_value_heads": self.num_key_value_heads,
+            "head_dim": self.head_dim,
+            "vocab_size": self.vocab_size,
+            "max_position_embeddings": self.max_position_embeddings,
+            "rms_norm_eps": self.rms_norm_eps,
+            "rope_theta": self.rope_theta,
+            "hidden_act": self.hidden_act,
+            "attention_bias": self.attention_bias,
+            "attention_dropout": self.attention_dropout,
+            "use_cache": self.use_cache,
+            "bos_token_id": self.bos_token_id,
+            "eos_token_id": self.eos_token_id,
+            "pad_token_id": self.pad_token_id,
+            "model_type": self.model_type,
+            "dtype": self.dtype,
+        }
+        payload.update(self.extra)
+        return payload
+
 
 @dataclass(frozen=True)
 class Qwen3ASRThinkerConfig:
@@ -183,6 +232,19 @@ class Qwen3ASRThinkerConfig:
             dtype=str(payload.get("dtype", "bfloat16")),
             extra={k: v for k, v in payload.items() if k not in consumed},
         )
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "audio_config": self.audio_config.to_dict(),
+            "text_config": self.text_config.to_dict(),
+            "audio_token_id": self.audio_token_id,
+            "audio_start_token_id": self.audio_start_token_id,
+            "audio_end_token_id": self.audio_end_token_id,
+            "model_type": self.model_type,
+            "dtype": self.dtype,
+        }
+        payload.update(self.extra)
+        return payload
 
 
 @dataclass(frozen=True)
@@ -220,6 +282,17 @@ class Qwen3ASRConfig:
             ),
             extra={k: v for k, v in payload.items() if k not in consumed},
         )
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "thinker_config": self.thinker_config.to_dict(),
+            "model_type": self.model_type,
+            "architectures": list(self.architectures),
+            "support_languages": list(self.support_languages),
+            "transformers_version": self.transformers_version,
+        }
+        payload.update(self.extra)
+        return payload
 
     @classmethod
     def from_dir(cls, model_dir: str | Path) -> "Qwen3ASRConfig":

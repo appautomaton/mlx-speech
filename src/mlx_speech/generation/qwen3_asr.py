@@ -65,13 +65,20 @@ class Qwen3ASRTranscriber:
         dtype: mx.Dtype = mx.bfloat16,
     ) -> "Qwen3ASRTranscriber":
         from ..models.qwen3_asr.checkpoint import (
+            get_quantization_config,
             load_checkpoint_into_model,
             load_qwen3_asr_checkpoint,
+            quantize_qwen3_asr_model,
         )
 
         model_dir = Path(model_dir)
         checkpoint = load_qwen3_asr_checkpoint(model_dir)
         model = Qwen3ASRModel(checkpoint.config)
+        quantization = get_quantization_config(checkpoint.config)
+        if quantization is not None:
+            quantize_qwen3_asr_model(
+                model, quantization, state_dict=checkpoint.state_dict
+            )
         load_checkpoint_into_model(model, checkpoint, strict=True)
         model.set_dtype(dtype)
         model.eval()

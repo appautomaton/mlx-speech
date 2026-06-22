@@ -1,10 +1,12 @@
-"""Checkpoint loading and BF16 packaging for Qwen3-ASR."""
+"""Checkpoint loading, quantization, and packaging for Qwen3-ASR."""
 
 from __future__ import annotations
 
+import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -19,6 +21,24 @@ GENERATED_MODEL_ONLY_KEYS = frozenset(
         "audio_tower.positional_embedding.positional_embedding",
     }
 )
+
+
+@dataclass(frozen=True)
+class QuantizationConfig:
+    bits: int = 8
+    group_size: int = 64
+    mode: str = "affine"
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "QuantizationConfig":
+        return cls(
+            bits=int(d["bits"]),
+            group_size=int(d["group_size"]),
+            mode=str(d.get("mode", "affine")),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"bits": self.bits, "group_size": self.group_size, "mode": self.mode}
 
 
 @dataclass(frozen=True)
@@ -195,6 +215,87 @@ def save_qwen3_asr_bf16_checkpoint(
     )
 
 
+def quantize_qwen3_asr_model(
+    model: nn.Module,
+    quantization: QuantizationConfig,
+    *,
+    state_dict: dict[str, mx.array] | None = None,
+) -> nn.Module:
+    """Quantize eligible Linear/Embedding layers in place.
+
+    When ``state_dict`` is provided (the load path), only layers that were
+    quantized in the saved checkpoint are re-quantized — matching the exact set
+    via their ``.scales`` keys. When it is ``None`` (the convert path), every
+    eligible layer is quantized.
+    """
+    quantized_keys = set(state_dict) if state_dict is not None else None
+
+    def should_quantize(path: str, module: Any) -> bool:
+        if not (hasattr(module, "weight") and hasattr(module, "to_quantized")):
+            return False
+        if module.weight.shape[-1] % quantization.group_size != 0:
+            return False
+        if quantized_keys is None:
+            return True
+        return f"{path}.scales" in quantized_keys
+
+    nn.quantize(
+        model,
+        group_size=quantization.group_size,
+        bits=quantization.bits,
+        mode=quantization.mode,
+        class_predicate=should_quantize,
+    )
+    return model
+
+
+def save_qwen3_asr_model(
+    model: nn.Module,
+    output_dir: str | Path,
+    *,
+    config: Qwen3ASRConfig,
+    quantization: QuantizationConfig | None = None,
+    copy_supporting_files_from: str | Path | None = None,
+) -> Path:
+    """Save a (quantized) Qwen3-ASR model as an MLX runtime package.
+
+    Writes ``model.safetensors`` from the live module parameters and a
+    ``config.json`` carrying the architecture plus an optional ``quantization``
+    block read back on load by :func:`get_quantization_config`.
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    weights = tree_flatten(model.parameters(), destination={})
+    mx.eval(list(weights.values()))
+    mx.save_safetensors(
+        str(output_dir / "model.safetensors"),
+        weights,
+        metadata={"format": "mlx"},
+    )
+
+    # Copy tokenizer/assets first; the quantization-aware config.json is written
+    # last so it stays authoritative over any copied original config.json.
+    if copy_supporting_files_from is not None:
+        _copy_supporting_files(Path(copy_supporting_files_from), output_dir)
+
+    payload = config.to_dict()
+    if quantization is not None:
+        payload["quantization"] = quantization.to_dict()
+    with (output_dir / "config.json").open("w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+    return output_dir
+
+
+def get_quantization_config(config: Qwen3ASRConfig) -> QuantizationConfig | None:
+    q = config.extra.get("quantization")
+    if q is None:
+        return None
+    return QuantizationConfig.from_dict(q)
+
+
 def _copy_supporting_files(input_dir: Path, output_dir: Path) -> list[Path]:
     copied: list[Path] = []
     for path in sorted(input_dir.iterdir()):
@@ -203,6 +304,10 @@ def _copy_supporting_files(input_dir: Path, output_dir: Path) -> list[Path]:
         if path.suffix == ".safetensors":
             continue
         if path.name == "model.safetensors.index.json":
+            continue
+        # Don't carry the upstream README into our package; the published repo's
+        # README.md is our own model card (scripts/hugging_face/model_cards/).
+        if path.name in {"README.md", ".gitattributes"}:
             continue
         destination = output_dir / path.name
         shutil.copy2(path, destination)

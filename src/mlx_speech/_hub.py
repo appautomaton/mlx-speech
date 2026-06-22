@@ -55,9 +55,26 @@ _ASR_MODELS: dict[str, tuple[str, str, str]] = {
         "Cohere Transcribe — multilingual ASR",
         "cohere",
     ),
+    # Default points at the published int8 build; bf16 stays available via the
+    # explicit ``qwen3-asr-1.7b-bf16`` alias.
     "qwen3-asr-1.7b": (
+        "appautomaton/qwen3-asr-1.7b-int8-mlx",
+        "Qwen3-ASR-1.7B (int8) — English, Chinese, and mixed Chinese/English ASR",
+        "qwen3",
+    ),
+    "qwen3-asr-1.7b-bf16": (
         "appautomaton/qwen3-asr-1.7b-bf16-mlx",
-        "Qwen3-ASR-1.7B — English, Chinese, and mixed Chinese/English ASR",
+        "Qwen3-ASR-1.7B (bf16) — English, Chinese, and mixed Chinese/English ASR",
+        "qwen3",
+    ),
+    "qwen3-asr-1.7b-int8": (
+        "appautomaton/qwen3-asr-1.7b-int8-mlx",
+        "Qwen3-ASR-1.7B (int8, affine) — English, Chinese, and mixed Chinese/English ASR",
+        "qwen3",
+    ),
+    "qwen3-asr-1.7b-mxfp8": (
+        "appautomaton/qwen3-asr-1.7b-mxfp8-mlx",
+        "Qwen3-ASR-1.7B (mxfp8) — English, Chinese, and mixed Chinese/English ASR",
         "qwen3",
     ),
 }
@@ -113,7 +130,7 @@ def _is_local_path(path: str) -> bool:
 # (mlx-int8/, mlx-4bit/, mlx-8bit/) rather than at the snapshot root, so the
 # snapshot returned by snapshot_download doesn't have config.json directly.
 # Listed in priority order — int8 is the default runtime target.
-_QUANTIZATION_SUBDIRS: tuple[str, ...] = ("mlx-int8", "mlx-4bit", "mlx-8bit")
+_QUANTIZATION_SUBDIRS: tuple[str, ...] = ("mlx-int8", "mlx-mxfp8", "mlx-4bit", "mlx-8bit")
 
 
 def _resolve_snapshot_dir(root: Path) -> Path:

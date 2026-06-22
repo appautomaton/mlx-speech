@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 
 import mlx.core as mx
@@ -614,8 +613,10 @@ def _linear_forward(
     output_dtype: mx.Dtype | None = None,
 ) -> mx.array:
     target_dtype = x.dtype if output_dtype is None else output_dtype
+    # Quantized layers hold packed weights; dispatch to their own fused forward
+    # instead of the plain float32 matmul used for unquantized Linear.
     weight = getattr(linear, "weight", None)
-    if weight is None:
+    if weight is None or isinstance(linear, nn.QuantizedLinear):
         y = linear(x)
         return y if y.dtype == target_dtype else y.astype(target_dtype)
     y = mx.matmul(x.astype(mx.float32), weight.astype(mx.float32).T)
