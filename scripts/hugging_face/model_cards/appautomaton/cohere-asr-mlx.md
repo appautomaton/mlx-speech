@@ -76,6 +76,7 @@ print(result.text)
 ## Links
 
 - Source code: [mlx-speech](https://github.com/appautomaton/mlx-speech)
+- Project page: [appautomaton.github.io/mlx-speech](https://appautomaton.github.io/mlx-speech/)
 - More examples: [AppAutomaton](https://github.com/appautomaton)
 
 ## License
