@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>mlx-speech · pure-MLX speech for Apple Silicon</title>
+<meta name="description" content="Local text-to-speech, voice cloning, dialogue, sound effects, and ASR on Apple Silicon, running pure MLX. No cloud, no PyTorch." />
+<meta name="keywords" content="mlx, mlx-speech, apple silicon, text to speech, TTS, ASR, voice cloning, on-device, pure mlx, no pytorch, fish audio, vibevoice, openmoss, step-audio, dramabox, qwen3 asr" />
+<meta name="author" content="App Automaton" />
+<link rel="canonical" href="https://appautomaton.github.io/mlx-speech/" />
+<meta name="theme-color" content="#0d0d0f" media="(prefers-color-scheme: dark)" />
+<meta name="theme-color" content="#faf9f6" media="(prefers-color-scheme: light)" />
+
+<meta property="og:type" content="website" />
+<meta property="og:title" content="mlx-speech · pure-MLX speech for Apple Silicon" />
+<meta property="og:description" content="Local TTS, voice cloning, dialogue, sound effects, and ASR on Apple Silicon, running pure MLX. No cloud, no PyTorch." />
+<meta property="og:url" content="https://appautomaton.github.io/mlx-speech/" />
+<meta property="og:image" content="https://appautomaton.github.io/mlx-speech/assets/og.png" />
+<meta property="og:image:width" content="1200" /><meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="mlx-speech · pure-MLX speech for Apple Silicon" />
+<meta name="twitter:description" content="Local TTS, voice cloning, dialogue, sound effects, and ASR on Apple Silicon, running pure MLX." />
+<meta name="twitter:image" content="https://appautomaton.github.io/mlx-speech/assets/og.png" />
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+
+<!-- set theme before first paint -->
+<script>
+(function(){var q=new URLSearchParams(location.search).get('theme'),t=q;
+if(t!=='light'&&t!=='dark'){try{t=localStorage.getItem('ms-theme')}catch(e){}}
+if(t!=='light'&&t!=='dark')t=window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';
+document.documentElement.setAttribute('data-theme',t);})();
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<style>
+  :root{
+    --display:'Big Shoulders Display',system-ui,sans-serif;
+    --body:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+    --gutter:clamp(18px,5vw,64px);--maxw:1200px;--rad:14px;--rad-lg:22px;
+    --ease:cubic-bezier(.22,1,.36,1);
+  }
+  /* simplistic palette · one accent + neutrals · day & night */
+  [data-theme="dark"]{
+    --bg:#0d0d0f;--bg-2:#151518;--panel:#15151a;--panel-hi:#1c1c22;
+    --ink:#f3efe8;--ink-2:#a39e95;--ink-3:#6b675f;
+    --line:rgba(244,239,232,.10);--line-2:rgba(244,239,232,.18);
+    --accent:#ff6147;--accent-2:#36c9b0;--accent-soft:rgba(255,97,71,.14);
+  }
+  [data-theme="light"]{
+    --bg:#faf9f6;--bg-2:#f1efe8;--panel:#ffffff;--panel-hi:#f6f4ee;
+    --ink:#191711;--ink-2:#5c574c;--ink-3:#928c7e;
+    --line:rgba(25,23,17,.10);--line-2:rgba(25,23,17,.18);
+    --accent:#e0421f;--accent-2:#0f9e87;--accent-soft:rgba(224,66,31,.09);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth;overflow-x:hidden}
+  body{font-family:var(--body);background:var(--bg);color:var(--ink);font-size:16px;line-height:1.6;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden;transition:background .4s var(--ease),color .4s var(--ease)}
+  a{color:inherit;text-decoration:none}
+  svg{display:block}
+  ::selection{background:var(--accent);color:#fff}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 var(--gutter)}
+  .mono{font-family:var(--mono)}
+  .accent{color:var(--accent)}
+  .eyebrow{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-3);display:inline-flex;align-items:center;gap:9px}
+  .eyebrow b{color:var(--accent);font-weight:500}
+
+  /* buttons */
+  .btn{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:13px;font-weight:500;
+    padding:12px 18px;border-radius:999px;border:1px solid var(--line-2);color:var(--ink);background:transparent;cursor:pointer;
+    transition:border-color .25s,transform .25s var(--ease),background .25s,color .25s}
+  .btn:hover{transform:translateY(-2px);border-color:var(--ink)}
+  .btn svg{width:15px;height:15px}
+  .btn-hot{border:none;background:var(--accent);color:#fff;box-shadow:0 8px 26px -10px var(--accent)}
+  .btn-hot:hover{background:var(--accent);filter:brightness(1.06)}
+
+  /* header */
+  .hdr{position:sticky;top:0;z-index:100;transition:background .3s,border-color .3s;border-bottom:1px solid transparent}
+  .hdr.scrolled{background:color-mix(in srgb,var(--bg) 78%,transparent);-webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%);border-bottom-color:var(--line)}
+  .hdr-in{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .brand{display:inline-flex;align-items:center;gap:10px;font-family:var(--mono);font-size:14px}
+  .brand b{font-weight:500}.brand .dim{color:var(--ink-3)}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft);animation:pulse 2.6s var(--ease) infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 4px var(--accent-soft)}50%{box-shadow:0 0 0 7px transparent}}
+  .nav{display:none}
+  .hdr-right .btn{display:none}        /* GitHub pill lives in the menu on mobile */
+  .hdr-right{display:flex;align-items:center;gap:10px}
+  .icon-btn{width:40px;height:40px;display:grid;place-items:center;border:1px solid var(--line-2);border-radius:11px;background:transparent;color:var(--ink);cursor:pointer;transition:border-color .2s,color .2s}
+  .icon-btn:hover{border-color:var(--ink);color:var(--accent)}
+  .icon-btn svg{width:18px;height:18px}
+  [data-theme="dark"] .ico-sun{display:block}[data-theme="dark"] .ico-moon{display:none}
+  [data-theme="light"] .ico-sun{display:none}[data-theme="light"] .ico-moon{display:block}
+  .nav.open{display:flex;flex-direction:column;align-items:stretch;position:absolute;top:64px;left:0;right:0;
+    background:color-mix(in srgb,var(--bg) 96%,transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--line);padding:6px var(--gutter) 16px}
+  .nav.open a{font-family:var(--mono);font-size:15px;color:var(--ink);padding:14px 2px;border-bottom:1px solid var(--line)}
+
+  /* hero */
+  .hero{position:relative;padding:clamp(54px,12vw,120px) 0 0}
+  .hero h1{font-family:var(--display);font-weight:800;font-size:clamp(38px,9.4vw,118px);line-height:.92;letter-spacing:-.005em;margin-top:22px;max-width:15ch;overflow-wrap:break-word}
+  .hero .lede{font-size:clamp(16px,2.4vw,20px);color:var(--ink-2);max-width:54ch;margin-top:24px}
+  .ctas{display:flex;flex-wrap:wrap;gap:12px;margin-top:32px}
+  .ctas .btn{flex:1 1 auto;justify-content:center}
+  .install{display:inline-flex;align-items:center;gap:12px;font-family:var(--mono);font-size:13.5px;padding:5px 5px 5px 18px;border:1px solid var(--line-2);border-radius:999px;background:var(--panel);flex:1 1 auto;justify-content:space-between}
+  .install .pr{color:var(--accent)}
+  .install button{background:var(--panel-hi);border:1px solid var(--line);color:var(--ink-2);border-radius:999px;width:36px;height:36px;display:grid;place-items:center;cursor:pointer}
+  .install button:hover{color:var(--accent)}
+  .install svg{width:15px;height:15px}
+  .install .ico-check{display:none;color:var(--accent-2)}
+  .install.copied .ico-copy{display:none}.install.copied .ico-check{display:block}
+
+  /* live equalizer motif */
+  .eq{display:flex;align-items:flex-end;gap:3px;height:clamp(70px,16vw,140px);margin-top:clamp(40px,7vw,72px);
+    border-bottom:1px solid var(--line);padding-bottom:0}
+  .eq span{flex:1;height:100%;background:linear-gradient(180deg,var(--accent),color-mix(in srgb,var(--accent) 45%,transparent));
+    border-radius:3px 3px 0 0;transform-origin:bottom;transform:scaleY(var(--h,.5));animation:eq 1.5s var(--ease) infinite;animation-delay:var(--d,0s)}
+  @keyframes eq{0%,100%{transform:scaleY(calc(var(--h,.5)*.55))}50%{transform:scaleY(var(--h,.5))}}
+
+  /* spec strip */
+  .specs{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line)}
+  .spec{padding:22px 14px 22px 0;border-top:1px solid var(--line)}
+  .spec:nth-child(odd){border-right:1px solid var(--line);padding-right:14px}
+  .spec:nth-child(even){padding-left:clamp(14px,4vw,32px)}
+  .spec .v{font-family:var(--display);font-weight:700;font-size:clamp(32px,7.6vw,48px);line-height:1;letter-spacing:0}
+  .spec .v .u{font-size:.5em;color:var(--ink-3)}
+  .spec .l{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.14em;text-transform:uppercase;margin-top:9px}
+
+  /* ticker */
+  .ticker{border-bottom:1px solid var(--line);overflow:hidden;background:var(--bg-2)}
+  .ticker-track{display:flex;white-space:nowrap;width:max-content;animation:marq 36s linear infinite}
+  .ticker:hover .ticker-track{animation-play-state:paused}
+  .ticker-item{font-family:var(--mono);font-size:12px;color:var(--ink-2);padding:14px 0}
+  .ticker-item .s{color:var(--accent);margin:0 22px}.ticker-item .k{color:var(--ink-3)}
+  @keyframes marq{to{transform:translateX(-50%)}}
+
+  /* sections */
+  .section{padding:clamp(64px,11vw,130px) 0}
+  .shead{max-width:720px;margin-bottom:clamp(36px,6vw,60px)}
+  .shead h2{font-family:var(--display);font-weight:700;font-size:clamp(34px,6.6vw,60px);line-height:.98;letter-spacing:0;margin-top:16px}
+  .shead p{color:var(--ink-2);margin-top:16px;font-size:clamp(15px,1.8vw,17.5px)}
+
+  /* principles */
+  .grid3{display:grid;grid-template-columns:1fr;gap:14px}
+  .card{border:1px solid var(--line);border-radius:var(--rad-lg);background:var(--panel);padding:26px 24px;position:relative;overflow:hidden;
+    transition:border-color .3s,transform .3s var(--ease)}
+  .card::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent);opacity:0;transition:opacity .3s}
+  .card:hover{border-color:var(--line-2);transform:translateY(-3px)}.card:hover::before{opacity:1}
+  .card .ci{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;border:1px solid var(--line-2);color:var(--accent);margin-bottom:18px}
+  .card .ci svg{width:21px;height:21px}
+  .card h3{font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:-.01em}
+  .card p{color:var(--ink-2);font-size:14px;margin-top:10px}
+  .card code{font-family:var(--mono);font-size:.85em;color:var(--accent-2)}
+
+  /* rack / modules */
+  .rack-label{display:flex;align-items:center;gap:14px;margin:0 0 18px}
+  .rack-label .n{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-2)}
+  .rack-label .ln{flex:1;height:1px;background:var(--line)}
+  .rack-label .c{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+  .rack{display:grid;grid-template-columns:1fr;gap:12px}
+  .rack+.rack-label{margin-top:48px}
+  .mod{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--rad);background:var(--panel);
+    padding:20px 20px 16px;position:relative;overflow:hidden;transition:border-color .3s,transform .3s var(--ease),background .3s}
+  .mod::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);transform:scaleY(0);transform-origin:top;transition:transform .35s var(--ease)}
+  .mod.asr::after{background:var(--accent-2)}
+  .mod:hover{border-color:var(--line-2);transform:translateY(-3px);background:var(--panel-hi)}.mod:hover::after{transform:scaleY(1)}
+  .mtop{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  .midx{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+  .mname{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:-.015em;margin-top:5px}
+  .mfmt{font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);border:1px solid var(--line-2);border-radius:999px;padding:4px 9px;white-space:nowrap}
+  .mdesc{color:var(--ink-2);font-size:13.5px;line-height:1.55;margin:13px 0 14px;flex:1}
+  .mdesc code{font-family:var(--mono);font-size:.85em;color:var(--ink)}
+  .mlinks{display:flex;align-items:center;gap:14px;padding-top:13px;border-top:1px solid var(--line)}
+  .mlinks a{font-family:var(--mono);font-size:12px;display:inline-flex;align-items:center;gap:5px;transition:color .2s,gap .2s}
+  .mlinks a:hover{color:var(--accent);gap:8px}.mlinks a svg{width:13px;height:13px}
+  .mlinks .al{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+  .mfoot{margin-top:24px;font-size:13.5px;color:var(--ink-3)}.mfoot a{color:var(--accent)}.mfoot code{font-family:var(--mono);font-size:.85em;color:var(--ink-2)}
+
+  /* monitor */
+  .monitor{border:1px solid var(--line);border-radius:var(--rad-lg);overflow:hidden;background:var(--bg-2)}
+  .mbar{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .mdots{display:flex;gap:6px}.mdots i{width:10px;height:10px;border-radius:50%;background:var(--line-2)}.mdots i:first-child{background:var(--accent)}
+  .tabs{display:flex;gap:4px}
+  .tab{font-family:var(--mono);font-size:12px;color:var(--ink-3);background:none;border:none;cursor:pointer;padding:6px 13px;border-radius:8px;transition:color .2s,background .2s}
+  .tab.active{color:var(--ink);background:var(--panel-hi)}
+  .mmeta{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.12em;text-transform:uppercase}
+  .term{padding:22px 22px;font-family:var(--mono);font-size:12.5px;line-height:1.9;overflow-x:auto;color:var(--ink)}
+  .term .pr{color:var(--accent)}.term .ar{color:var(--accent-2)}.term .cm{color:var(--ink-3);font-style:italic}.term .ok{color:var(--accent-2)}
+  .pane{display:none}.pane.active{display:block}
+  .qs-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}.qs-actions .btn{flex:1 1 auto;justify-content:center}
+
+  /* footer */
+  .footer{border-top:1px solid var(--line);padding:clamp(56px,8vw,90px) 0 36px;background:var(--bg-2)}
+  .fgrid{display:grid;grid-template-columns:1fr;gap:34px}
+  .fbrand p{color:var(--ink-2);font-size:14px;margin-top:14px;max-width:42ch}
+  .fbrand p a{color:var(--ink);border-bottom:1px solid var(--line-2)}
+  .fcol h4{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-3);margin-bottom:13px}
+  .fcol a{display:block;color:var(--ink-2);font-size:14px;padding:4px 0;transition:color .2s}.fcol a:hover{color:var(--accent)}
+  .fbot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-top:clamp(40px,6vw,64px);padding-top:24px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
+  .fbot a{color:var(--ink-2)}
+
+  /* reveal */
+  .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s var(--ease),transform .7s var(--ease)}
+  .reveal.in{opacity:1;transform:none}
+
+  /* ── tablet / desktop enhancements (mobile-first) ── */
+  @media (min-width:760px){
+    .specs{grid-template-columns:repeat(4,1fr)}
+    .spec{border-top:0;padding:26px 0}
+    .spec:nth-child(n){border-right:0;padding-left:0}
+    .spec+.spec{border-left:1px solid var(--line);padding-left:clamp(18px,3vw,38px)}
+    .specs{border-top:1px solid var(--line)}
+    .grid3{grid-template-columns:repeat(3,1fr);gap:16px}
+    .rack{grid-template-columns:repeat(2,1fr);gap:14px}
+    .ctas{flex-wrap:nowrap;max-width:560px}
+    .fgrid{grid-template-columns:1.6fr 1fr 1fr 1fr;gap:40px}
+  }
+  @media (min-width:900px){
+    .nav{display:flex;align-items:center;gap:28px}
+    .nav a{font-family:var(--mono);font-size:13px;color:var(--ink-2);position:relative;transition:color .2s}
+    .nav a::after{content:"";position:absolute;left:0;bottom:-6px;height:1.5px;width:0;background:var(--accent);transition:width .25s var(--ease)}
+    .nav a:hover{color:var(--ink)}.nav a:hover::after{width:100%}
+    .hdr-right .btn{display:inline-flex}
+    .menu-btn{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .ticker-track,.eq span,.dot{animation:none}
+    .reveal{opacity:1;transform:none;transition:none}html{scroll-behavior:auto}
+  }
+</style>
+</head>
+<body>
+
+<header class="hdr" id="hdr">
+  <div class="wrap hdr-in">
+    <a href="#top" class="brand"><span class="dot"></span><b>mlx-speech</b></a>
+    <nav class="nav" id="nav">
+      <a href="#models">Models</a>
+      <a href="#quickstart">Quickstart</a>
+      <a href="#why">Why MLX</a>
+      <a href="https://github.com/appautomaton/mlx-speech">GitHub</a>
+    </nav>
+    <div class="hdr-right">
+      <button class="icon-btn" id="theme" aria-label="Toggle day / night">
+        <svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+      <a class="btn" href="https://github.com/appautomaton/mlx-speech"><i data-lucide="github"></i> GitHub</a>
+      <button class="icon-btn menu-btn" id="menu" aria-label="Menu" aria-expanded="false"><i data-lucide="menu"></i></button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+<section class="hero">
+  <div class="wrap">
+    <span class="eyebrow"><b>◆</b> Pure MLX · Apple Silicon · No PyTorch</span>
+    <h1>Speech, rendered on the <span class="accent">metal.</span></h1>
+    <p class="lede">An open-source, MLX-native speech library for Apple Silicon. Text-to-speech, voice cloning, dialogue, sound effects, and recognition, all running on the Apple GPU. Weights download on first use. Load any model by a short alias.</p>
+    <div class="ctas">
+      <div class="install" id="install">
+        <span><span class="pr">$</span> pip install mlx-speech</span>
+        <button id="copy" aria-label="Copy">
+          <svg class="ico-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <svg class="ico-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </button>
+      </div>
+      <a class="btn btn-hot" href="https://github.com/appautomaton/mlx-speech"><i data-lucide="arrow-up-right"></i> View on GitHub</a>
+    </div>
+    <div class="eq" id="eq" aria-hidden="true"></div>
+    <div class="specs">
+      <div class="spec"><div class="v">11</div><div class="l">Speech models</div></div>
+      <div class="spec"><div class="v">2</div><div class="l">Tasks · TTS &amp; ASR</div></div>
+      <div class="spec"><div class="v">48<span class="u">kHz</span></div><div class="l">Stereo output</div></div>
+      <div class="spec"><div class="v">0</div><div class="l">PyTorch at runtime</div></div>
+    </div>
+  </div>
+</section>
+
+<div class="ticker" aria-hidden="true">
+  <div class="ticker-track" id="ticker"></div>
+</div>
+
+<section class="section" id="why">
+  <div class="wrap">
+    <div class="shead reveal">
+      <span class="eyebrow"><b>01</b> Why pure MLX</span>
+      <h2>The laptop is the whole runtime.</h2>
+      <p>Everything runs on the Apple GPU through MLX. No Python-side Torch, no server, nothing leaves the machine. Every model returns a real waveform, from text to audio.</p>
+    </div>
+    <div class="grid3">
+      <div class="card reveal"><div class="ci"><i data-lucide="cpu"></i></div><h3>Pure MLX runtime</h3><p>No torch-backed inference under an MLX label. Weights ship as <code>.safetensors</code> with explicit remapping. The Apple GPU does the work.</p></div>
+      <div class="card reveal"><div class="ci"><i data-lucide="shield-check"></i></div><h3>Local &amp; private</h3><p>Converted weights download once, then run fully offline. Aliases and local checkpoint paths are interchangeable.</p></div>
+      <div class="card reveal"><div class="ci"><i data-lucide="terminal"></i></div><h3>One clean interface</h3><p><code>tts.load()</code> / <code>asr.load()</code> in Python, or the <code>mlx-speech</code> CLI. Per-family scripts expose the full surface.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="models" style="padding-top:0">
+  <div class="wrap">
+    <div class="shead reveal">
+      <span class="eyebrow"><b>02</b> The catalog</span>
+      <h2>Eleven models. One loader.</h2>
+      <p>Synthesis, cloning, dialogue, editing, sound effects, and recognition. Each module links to its behavior guide and its converted weights on Hugging Face.</p>
+    </div>
+
+    <div class="rack-label reveal"><span class="n">Text-to-speech</span><span class="ln"></span><span class="c">08 modules</span></div>
+    <div class="rack" id="tts"></div>
+
+    <div class="rack-label reveal"><span class="n">Speech-to-text</span><span class="ln"></span><span class="c">03 modules</span></div>
+    <div class="rack asr-rack" id="asr"></div>
+
+    <p class="mfoot reveal">All weights live under <a href="https://huggingface.co/appautomaton">appautomaton</a> on Hugging Face. Load by alias or full repo id. <code>tts.load("fish-s2-pro")</code> and <code>tts.load("appautomaton/fishaudio-s2-pro-8bit-mlx")</code> are equivalent.</p>
+  </div>
+</section>
+
+<section class="section" id="quickstart" style="padding-top:0">
+  <div class="wrap">
+    <div class="shead reveal">
+      <span class="eyebrow"><b>03</b> Quickstart</span>
+      <h2>Install. Load. Generate.</h2>
+      <p>Requires an Apple Silicon Mac (M1 or later) and Python 3.13+. Weights download on first use.</p>
+    </div>
+    <div class="monitor reveal">
+      <div class="mbar">
+        <span class="mdots"><i></i><i></i><i></i></span>
+        <span class="tabs">
+          <button class="tab active" data-pane="py">python</button>
+          <button class="tab" data-pane="cli">cli</button>
+        </span>
+        <span class="mmeta">mlx-speech</span>
+      </div>
+      <div class="term pane active" id="pane-py">
+<div><span class="cm"># Text-to-speech</span></div>
+<div>model = mlx_speech.tts.load(<span class="ar">"fish-s2-pro"</span>)</div>
+<div>result = model.generate(<span class="ar">"Hello from mlx-speech!"</span>)</div>
+<div><span class="cm"># result.waveform: mx.array · result.sample_rate: int</span></div>
+<div>&nbsp;</div>
+<div><span class="cm"># Voice cloning with emotion tags</span></div>
+<div>result = model.generate(</div>
+<div>&nbsp;&nbsp;<span class="ar">"[excited] This is amazing!"</span>,</div>
+<div>&nbsp;&nbsp;reference_audio=<span class="ar">"reference.wav"</span>,</div>
+<div>&nbsp;&nbsp;reference_text=<span class="ar">"Transcript of the reference."</span>,</div>
+<div>)</div>
+<div>&nbsp;</div>
+<div><span class="cm"># Speech-to-text</span></div>
+<div>asr = mlx_speech.asr.load(<span class="ar">"qwen3-asr-1.7b"</span>)</div>
+<div>print(asr.generate(<span class="ar">"audio.wav"</span>).text)</div>
+      </div>
+      <div class="term pane" id="pane-cli">
+<div><span class="pr">$</span> pip install <span class="ar">mlx-speech</span></div>
+<div>&nbsp;</div>
+<div><span class="pr">$</span> mlx-speech tts --model <span class="ar">fish-s2-pro</span> --text <span class="ar">"Hello!"</span> -o <span class="ar">out.wav</span></div>
+<div class="ok">&nbsp;&nbsp;✓ out.wav</div>
+<div>&nbsp;</div>
+<div><span class="pr">$</span> mlx-speech asr --model <span class="ar">qwen3-asr-1.7b</span> --audio <span class="ar">speech.wav</span></div>
+<div>&nbsp;</div>
+<div><span class="pr">$</span> mlx-speech tts --list-models</div>
+      </div>
+    </div>
+    <div class="qs-actions">
+      <a class="btn btn-hot" href="https://github.com/appautomaton/mlx-speech"><i data-lucide="github"></i> View on GitHub</a>
+      <a class="btn" href="https://pypi.org/project/mlx-speech/"><i data-lucide="package"></i> mlx-speech on PyPI</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="fgrid">
+      <div class="fbrand">
+        <a href="#top" class="brand"><span class="dot"></span><b>mlx-speech</b></a>
+        <p>Local speech synthesis, editing, and transcription on Apple Silicon, running pure MLX. An <a href="https://appautomaton.github.io/">App Automaton</a> project.</p>
+      </div>
+      <div class="fcol"><h4>Project</h4>
+        <a href="https://github.com/appautomaton/mlx-speech">GitHub</a>
+        <a href="https://pypi.org/project/mlx-speech/">PyPI</a>
+        <a href="https://huggingface.co/appautomaton">Hugging Face</a>
+        <a href="https://github.com/appautomaton/mlx-speech/tree/main/docs">Model guides</a>
+      </div>
+      <div class="fcol"><h4>Models</h4>
+        <a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/fish-s2-pro.md">Fish S2 Pro</a>
+        <a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/vibevoice.md">VibeVoice</a>
+        <a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md">DramaBox</a>
+        <a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/qwen3-asr.md">Qwen3-ASR</a>
+      </div>
+      <div class="fcol"><h4>Apple Silicon</h4>
+        <a href="https://github.com/appautomaton/tnt-asr">tnt-asr</a>
+        <a href="https://github.com/appautomaton/ltx-video-mlx">ltx-video-mlx</a>
+        <a href="https://github.com/appautomaton/mlx-cv">mlx-cv</a>
+        <a href="https://appautomaton.github.io/">App Automaton</a>
+      </div>
+    </div>
+    <div class="fbot">
+      <span>© 2026 App Automaton · <a href="https://appcubic.com">AppCubic</a></span>
+      <span>MIT licensed · Pure MLX · No PyTorch</span>
+    </div>
+  </div>
+</footer>
+
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script>
+(function(){
+  var doc=document.documentElement;
+
+  // theme toggle
+  document.getElementById('theme').addEventListener('click',function(){
+    var t=doc.getAttribute('data-theme')==='dark'?'light':'dark';
+    doc.setAttribute('data-theme',t);
+    try{localStorage.setItem('ms-theme',t)}catch(e){}
+  });
+
+  // mobile menu
+  var menu=document.getElementById('menu'),nav=document.getElementById('nav');
+  menu.addEventListener('click',function(){var o=nav.classList.toggle('open');menu.setAttribute('aria-expanded',o)});
+  nav.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){nav.classList.remove('open');menu.setAttribute('aria-expanded',false)})});
+
+  // sticky header style
+  var hdr=document.getElementById('hdr');
+  var onScroll=function(){hdr.classList.toggle('scrolled',window.scrollY>8)};
+  onScroll();addEventListener('scroll',onScroll,{passive:true});
+
+  // copy install
+  var inst=document.getElementById('install');
+  document.getElementById('copy').addEventListener('click',function(){
+    if(navigator.clipboard)navigator.clipboard.writeText('pip install mlx-speech').catch(function(){});
+    inst.classList.add('copied');setTimeout(function(){inst.classList.remove('copied')},1400);
+  });
+
+  // quickstart tabs
+  document.querySelectorAll('.tab').forEach(function(t){t.addEventListener('click',function(){
+    document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active')});
+    document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active')});
+    t.classList.add('active');document.getElementById('pane-'+t.dataset.pane).classList.add('active');
+  })});
+
+  // equalizer bars
+  var eq=document.getElementById('eq');
+  if(eq){var H=[.5,.7,.4,.9,.55,1,.45,.75,.35,.85,.6,.95,.5,.7,.4,.8,.6,.5,.9,.45,.7,.55,.85,.4,.65,.5,.75,.6,.45,.8,.55,.7];
+    for(var i=0;i<H.length;i++){var s=document.createElement('span');s.style.setProperty('--h',H[i]);s.style.setProperty('--d',(-(i%9)*0.13)+'s');eq.appendChild(s)}}
+
+  // ticker
+  var T=[['fish-s2-pro','dual-AR · cloning'],['vibevoice','LLM + diffusion'],['longcat','flow-matching DiT'],['moss-local','multi-VQ'],['moss-ttsd','dialogue'],['moss-sound-effect','text → SFX'],['step-audio','clone + edit'],['dramabox','48kHz stereo'],['cohere-asr','multilingual'],['qwen3-asr-1.7b','EN · ZH'],['granite-speech','local checkpoint']];
+  var tk=document.getElementById('ticker'),html='';
+  function row(){var r='';T.forEach(function(m){r+='<span class="ticker-item">'+m[0]+' <span class="k">'+m[1]+'</span><span class="s">/</span></span>'});return r}
+  tk.innerHTML=row()+row();
+
+  // models
+  var TTS=[
+    ['Fish S2 Pro','int8','fish-s2-pro','fish-s2-pro.md','fishaudio-s2-pro-8bit-mlx','Dual-AR TTS with voice cloning and inline emotion tags like <code>[excited]</code>.'],
+    ['VibeVoice Large','int8','vibevoice','vibevoice.md','vibevoice-mlx','Hybrid LLM-plus-diffusion TTS with voice cloning and long-form delivery.'],
+    ['LongCat AudioDiT','int8','longcat','longcat-audiodit.md','longcat-audiodit-3.5b-8bit-mlx','Flow-matching diffusion TTS built on a 3.5B audio diffusion transformer.'],
+    ['OpenMOSS TTS Local','int8','moss-local','moss-local.md','openmoss-tts-local-mlx','Local-attention, multi-VQ TTS with global + local KV cache.'],
+    ['MOSS-TTSD','int8','moss-ttsd','moss-ttsd.md','openmoss-ttsd-mlx','Delay-pattern dialogue TTS for multi-speaker conversation.'],
+    ['OpenMOSS Sound Effect','4-bit','moss-sound-effect','moss-sound-effect.md','openmoss-sound-effect-mlx','Text-to-sound-effect generation. Turn "rolling thunder with rainfall" into a clip.'],
+    ['Step-Audio-EditX','int8','step-audio','step-audio-editx.md','step-audio-editx-8bit-mlx','Voice cloning plus emotion and style edits on existing speech.'],
+    ['DramaBox','bf16','dramabox','dramabox.md','dramabox-tts-3.3b-bf16-mlx','Resemble flow-matching diffusion TTS at 48&nbsp;kHz stereo.']
+  ];
+  var ASR=[
+    ['Cohere Transcribe','int8','cohere-asr','cohere-asr.md','cohere-asr-mlx','Multilingual ASR with strong long-audio behavior.'],
+    ['Qwen3-ASR-1.7B','int8 · bf16','qwen3-asr-1.7b','qwen3-asr.md','qwen3-asr-1.7b-int8-mlx','English, Chinese, and mixed Chinese/English recognition.'],
+    ['IBM Granite Speech 1B','local','local path','granite-speech-asr.md','','Runs the original sharded checkpoint straight from a local path.']
+  ];
+  var GH='https://github.com/appautomaton/mlx-speech/blob/main/docs/',HF='https://huggingface.co/appautomaton/';
+  function mod(m,i,asr){
+    var wl=m[4]?'<a href="'+HF+m[4]+'">Weights <i data-lucide="arrow-up-right"></i></a>':'<a href="'+GH.replace('/blob/main/docs/','/tree/main/docs/benchmarks')+'">Benchmarks <i data-lucide="arrow-up-right"></i></a>';
+    return '<div class="mod reveal'+(asr?' asr':'')+'">'+
+      '<div class="mtop"><div><div class="midx">'+(asr?'A':'T')+String(i+1).padStart(2,'0')+'</div><div class="mname">'+m[0]+'</div></div><span class="mfmt">'+m[1]+'</span></div>'+
+      '<p class="mdesc">'+m[5]+'</p>'+
+      '<div class="mlinks"><a href="'+GH+m[3]+'">Guide <i data-lucide="arrow-right"></i></a>'+wl+'<span class="al">'+m[2]+'</span></div></div>';
+  }
+  document.getElementById('tts').innerHTML=TTS.map(function(m,i){return mod(m,i,false)}).join('');
+  document.getElementById('asr').innerHTML=ASR.map(function(m,i){return mod(m,i,true)}).join('');
+
+  if(window.lucide)lucide.createIcons();
+
+  // scroll reveal
+  if('IntersectionObserver'in window){
+    var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{rootMargin:'0px 0px -10% 0px'});
+    document.querySelectorAll('.reveal').forEach(function(el){io.observe(el)});
+  }else document.querySelectorAll('.reveal').forEach(function(el){el.classList.add('in')});
+})();
+</script>
+</body>
+</html>

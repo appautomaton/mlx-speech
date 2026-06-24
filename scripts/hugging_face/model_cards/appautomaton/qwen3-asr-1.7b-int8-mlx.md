@@ -86,6 +86,7 @@ asr = mlx_speech.asr.load("models/qwen3_asr_1_7b/mlx-int8")
 ## Links
 
 - Source code: [`appautomaton/mlx-speech`](https://github.com/appautomaton/mlx-speech)
+- Project page: [appautomaton.github.io/mlx-speech](https://appautomaton.github.io/mlx-speech/)
 - Unquantized variant: [`appautomaton/qwen3-asr-1.7b-bf16-mlx`](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx)
 - More from App Automaton: [Project](https://appautomaton.github.io) · [GitHub](https://github.com/appautomaton) · [Hugging Face](https://huggingface.co/appautomaton)
 

@@ -97,6 +97,7 @@ python scripts/generate_dramabox.py \
 ## Links
 
 - Source code: [`appautomaton/mlx-speech`](https://github.com/appautomaton/mlx-speech)
+- Project page: [appautomaton.github.io/mlx-speech](https://appautomaton.github.io/mlx-speech/)
 - Paired text encoder: [`appautomaton/gemma-3-12b-it-backbone-4bit-mlx`](https://huggingface.co/appautomaton/gemma-3-12b-it-backbone-4bit-mlx)
 - Optional voice-ref denoiser: [`appautomaton/re-use-semamba-mlx`](https://huggingface.co/appautomaton/re-use-semamba-mlx)
 - More from App Automaton: [GitHub](https://github.com/appautomaton) · [Hugging Face](https://huggingface.co/appautomaton)

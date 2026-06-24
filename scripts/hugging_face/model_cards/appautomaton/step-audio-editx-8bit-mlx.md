@@ -120,6 +120,7 @@ On Apple Silicon with int8 weights and bf16 activations, real-time factor
 ## Links
 
 - Source code: [`mlx-speech`](https://github.com/appautomaton/mlx-speech)
+- Project page: [appautomaton.github.io/mlx-speech](https://appautomaton.github.io/mlx-speech/)
 - Upstream model: [`stepfun-ai/Step-Audio-EditX`](https://huggingface.co/stepfun-ai/Step-Audio-EditX)
 - Technical report: [arXiv:2511.03601](https://arxiv.org/abs/2511.03601)
 - More examples: [AppAutomaton](https://github.com/appautomaton)

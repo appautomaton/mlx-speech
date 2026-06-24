@@ -70,6 +70,11 @@ VibeVoice uses a 9B-parameter hybrid architecture combining a Qwen2 language mod
 
 See [mlx-speech](https://github.com/appautomaton/mlx-speech) for the full runtime and conversion code.
 
+## Links
+
+- Source code: [mlx-speech](https://github.com/appautomaton/mlx-speech)
+- Project page: [appautomaton.github.io/mlx-speech](https://appautomaton.github.io/mlx-speech/)
+
 ## License
 
 Apache 2.0.

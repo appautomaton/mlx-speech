@@ -4,7 +4,7 @@ version = "0.4.3"
 description = "MLX-native speech library for Apple Silicon."
 license = { file = "LICENSE" }
 authors = [{ name = "appautomaton" }]
-urls = { Repository = "https://github.com/appautomaton/mlx-speech" }
+urls = { Homepage = "https://appautomaton.github.io/mlx-speech/", Repository = "https://github.com/appautomaton/mlx-speech", Documentation = "https://github.com/appautomaton/mlx-speech/tree/main/docs", "Hugging Face" = "https://huggingface.co/appautomaton" }
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
