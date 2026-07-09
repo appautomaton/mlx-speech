@@ -1,12 +1,24 @@
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import mlx.core as mx
 
+# Buffers grow in fixed-size chunks so most decode steps write into
+# already-allocated storage instead of reallocating.
+_ALLOC_STEP = 256
+
 
 class KVCache:
-    """Small per-layer cache container for upcoming decode work."""
+    """Per-layer KV cache with chunked buffer growth.
+
+    Each layer owns its own ``(batch, heads, capacity, head_dim)`` buffer, so
+    a slice update touches only that layer's storage and MLX can donate the
+    buffer and write in place. Storing every layer in one shared
+    ``(num_layers, ...)`` tensor forces a full-tensor copy per update — at
+    36 layers x (K+V) per generated token that is multi-GB of memcopy per
+    token and made decode time grow with memory pressure.
+    """
 
     def __init__(
         self,
@@ -19,8 +31,8 @@ class KVCache:
         self.max_length = max_length
         self._offsets = [0] * num_layers
 
-        self._keys: Optional[mx.array] = None
-        self._values: Optional[mx.array] = None
+        self._keys: List[Optional[mx.array]] = [None] * num_layers
+        self._values: List[Optional[mx.array]] = [None] * num_layers
 
     @property
     def offset(self) -> int:
@@ -39,24 +51,32 @@ class KVCache:
             value: (batch, heads, seq, head_dim)
         """
         seq_len = key.shape[2]
-
-        if self._keys is None:
-            batch = key.shape[0]
-            heads = key.shape[1]
-            head_dim = key.shape[3]
-            self._keys = mx.zeros(
-                (self.num_layers, batch, heads, self.max_length, head_dim),
-                dtype=key.dtype,
-            )
-            self._values = mx.zeros(
-                (self.num_layers, batch, heads, self.max_length, head_dim),
-                dtype=value.dtype,
-            )
-
         start = self._offsets[layer_idx]
         end = start + seq_len
-        self._keys[layer_idx, :, :, start:end] = key
-        self._values[layer_idx, :, :, start:end] = value
+
+        keys = self._keys[layer_idx]
+        if keys is None or end > keys.shape[2]:
+            batch, heads, _, head_dim = key.shape
+            capacity = min(
+                ((end + _ALLOC_STEP - 1) // _ALLOC_STEP) * _ALLOC_STEP,
+                max(self.max_length, end),
+            )
+            new_keys = mx.zeros(
+                (batch, heads, capacity, head_dim), dtype=key.dtype
+            )
+            new_values = mx.zeros(
+                (batch, heads, capacity, head_dim), dtype=value.dtype
+            )
+            if keys is not None and start > 0:
+                new_keys[..., :start, :] = keys[..., :start, :]
+                new_values[..., :start, :] = self._values[layer_idx][
+                    ..., :start, :
+                ]
+            self._keys[layer_idx] = new_keys
+            self._values[layer_idx] = new_values
+
+        self._keys[layer_idx][..., start:end, :] = key
+        self._values[layer_idx][..., start:end, :] = value
         self._offsets[layer_idx] = end
 
     def get(self, layer_idx: Optional[int] = None) -> Tuple[mx.array, mx.array]:
@@ -68,17 +88,25 @@ class KVCache:
         Returns:
             (keys, values) - sliced to current offset
         """
-        if self._keys is None or self._values is None:
-            raise RuntimeError("KV cache is uninitialized")
-
         if layer_idx is not None:
+            keys = self._keys[layer_idx]
+            values = self._values[layer_idx]
+            if keys is None or values is None:
+                raise RuntimeError("KV cache is uninitialized")
+            offset = self._offsets[layer_idx]
             return (
-                self._keys[layer_idx, :, :, : self._offsets[layer_idx]],
-                self._values[layer_idx, :, :, : self._offsets[layer_idx]],
+                keys[..., :offset, :],
+                values[..., :offset, :],
             )
+
+        if any(k is None for k in self._keys) or any(
+            v is None for v in self._values
+        ):
+            raise RuntimeError("KV cache is uninitialized")
+        offset = self.offset
         return (
-            self._keys[:, :, :, : self.offset],
-            self._values[:, :, :, : self.offset],
+            mx.stack([k[..., :offset, :] for k in self._keys], axis=0),
+            mx.stack([v[..., :offset, :] for v in self._values], axis=0),
         )
 
     def reset(self):
