@@ -137,3 +137,66 @@ def test_kv_cache_preserves_dtype_and_requires_initialization():
     assert values.dtype == mx.bfloat16
     assert keys.shape == (1, 2, 3, 8)
     assert values.shape == (1, 2, 3, 8)
+
+
+def test_kv_cache_layers_use_independent_buffers():
+    """Layer buffers must not alias. A shared tensor made decode allocate GBs per token."""
+    cache = KVCache(num_layers=3, dim=16, max_length=64)
+
+    for layer_idx in range(3):
+        step = mx.full((1, 2, 1, 8), float(layer_idx + 1), dtype=mx.float32)
+        cache.update(layer_idx, step, step)
+
+    buffers = {id(cache._keys[i]) for i in range(3)}
+    assert len(buffers) == 3
+
+    for layer_idx in range(3):
+        keys, _ = cache.get(layer_idx)
+        assert float(keys[0, 0, 0, 0]) == float(layer_idx + 1)
+
+
+def test_kv_cache_preserves_history_across_chunk_growth():
+    """Token 257 forces a realloc. Everything written before it must survive."""
+    cache = KVCache(num_layers=1, dim=16, max_length=1024)
+
+    written = []
+    for step in range(300):
+        token = mx.full((1, 2, 1, 8), float(step), dtype=mx.float32)
+        cache.update(0, token, token)
+        written.append(float(step))
+
+    keys, values = cache.get(0)
+    assert keys.shape == (1, 2, 300, 8)
+    assert cache._keys[0].shape[2] > 256, "expected the buffer to have grown past one chunk"
+
+    recovered = [float(keys[0, 0, i, 0]) for i in range(300)]
+    assert recovered == written
+    assert [float(values[0, 0, i, 0]) for i in range(300)] == written
+
+
+def test_kv_cache_reset_reuses_storage_and_trim_to_rewinds():
+    cache = KVCache(num_layers=1, dim=16, max_length=64)
+
+    token = mx.ones((1, 2, 8, 8), dtype=mx.float32)
+    cache.update(0, token, token)
+    buffer_id = id(cache._keys[0])
+
+    cache.trim_to(3)
+    assert cache.get(0)[0].shape[2] == 3
+
+    cache.reset()
+    assert cache.offset == 0
+    cache.update(0, token, token)
+    assert id(cache._keys[0]) == buffer_id, "reset should keep allocated storage"
+    assert cache.get(0)[0].shape[2] == 8
+
+
+def test_kv_cache_rejects_overflow_past_max_length():
+    cache = KVCache(num_layers=1, dim=16, max_length=4)
+
+    exact = mx.zeros((1, 2, 4, 8), dtype=mx.float32)
+    cache.update(0, exact, exact)
+
+    one_more = mx.zeros((1, 2, 1, 8), dtype=mx.float32)
+    with pytest.raises(ValueError, match="KV cache overflow"):
+        cache.update(0, one_more, one_more)
