@@ -14,10 +14,13 @@ class KVCache:
 
     Each layer owns its own ``(batch, heads, capacity, head_dim)`` buffer, so
     a slice update touches only that layer's storage and MLX can donate the
-    buffer and write in place. Storing every layer in one shared
-    ``(num_layers, ...)`` tensor forces a full-tensor copy per update — at
-    36 layers x (K+V) per generated token that is multi-GB of memcopy per
-    token and made decode time grow with memory pressure.
+    buffer and write in place.
+
+    Storing every layer in one shared ``(num_layers, ...)`` tensor forces a
+    full-tensor copy per update. All layer writes land in a single decode
+    graph and are read back before ``mx.eval``, which blocks donation and
+    leaves one live copy per layer. At the slow-AR config that was 5.85 GB of
+    transients per generated token against 0.04 GB here.
     """
 
     def __init__(
@@ -53,13 +56,17 @@ class KVCache:
         seq_len = key.shape[2]
         start = self._offsets[layer_idx]
         end = start + seq_len
+        if end > self.max_length:
+            raise ValueError(
+                f"KV cache overflow: need {end} slots, cache only has {self.max_length}."
+            )
 
         keys = self._keys[layer_idx]
         if keys is None or end > keys.shape[2]:
             batch, heads, _, head_dim = key.shape
             capacity = min(
                 ((end + _ALLOC_STEP - 1) // _ALLOC_STEP) * _ALLOC_STEP,
-                max(self.max_length, end),
+                self.max_length,
             )
             new_keys = mx.zeros(
                 (batch, heads, capacity, head_dim), dtype=key.dtype
@@ -79,34 +86,20 @@ class KVCache:
         self._values[layer_idx][..., start:end, :] = value
         self._offsets[layer_idx] = end
 
-    def get(self, layer_idx: Optional[int] = None) -> Tuple[mx.array, mx.array]:
-        """Get cached keys/values.
+    def get(self, layer_idx: int) -> Tuple[mx.array, mx.array]:
+        """Get one layer's cached keys/values, sliced to its current offset.
 
-        Args:
-            layer_idx: specific layer, or None for all
-
-        Returns:
-            (keys, values) - sliced to current offset
+        Layers are stored in independent buffers with independent capacities,
+        so there is no meaningful stacked view across layers to return.
         """
-        if layer_idx is not None:
-            keys = self._keys[layer_idx]
-            values = self._values[layer_idx]
-            if keys is None or values is None:
-                raise RuntimeError("KV cache is uninitialized")
-            offset = self._offsets[layer_idx]
-            return (
-                keys[..., :offset, :],
-                values[..., :offset, :],
-            )
-
-        if any(k is None for k in self._keys) or any(
-            v is None for v in self._values
-        ):
+        keys = self._keys[layer_idx]
+        values = self._values[layer_idx]
+        if keys is None or values is None:
             raise RuntimeError("KV cache is uninitialized")
-        offset = self.offset
+        offset = self._offsets[layer_idx]
         return (
-            mx.stack([k[..., :offset, :] for k in self._keys], axis=0),
-            mx.stack([v[..., :offset, :] for v in self._values], axis=0),
+            keys[..., :offset, :],
+            values[..., :offset, :],
         )
 
     def reset(self):

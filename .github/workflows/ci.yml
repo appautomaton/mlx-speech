@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    # Apple Silicon runner. MLX has no CPU fallback on x86.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run unit tests
+        run: uv run pytest tests/unit/ -q
+
+      - name: Run checkpoint tests
+        # Skips cleanly when local checkpoints are absent, which is always on CI.
+        run: uv run pytest tests/checkpoint/ -q
