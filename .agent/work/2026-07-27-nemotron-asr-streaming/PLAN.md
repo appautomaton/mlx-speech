@@ -157,7 +157,14 @@ asymmetric padding.
 **Touches:** `src/mlx_speech/models/nemotron_asr/subsampling.py`,
 `tests/unit/test_nemotron_subsampling.py`
 
-**Status:** pending
+**Status:** complete
+**Evidence:** Added three-stage causal `dw_striding` subsampling with NeMo list
+indices, `(2,1)` asymmetric padding on time and frequency, grouped depthwise +
+pointwise stages, vectorized output lengths, valid-frame masking, and `[C,F]`
+flatten order. A deterministic torch fixture covers convolution values and weight
+layout. `MLX_SPEECH_REQUIRE_CHECKPOINTS=1 .venv/bin/python -m pytest
+tests/unit/test_nemotron_subsampling.py -q`: 15 passed, 0 skipped. Ruff passed.
+**Risks / next:** none; Slice 4 can proceed independently.
 
 ### Slice 4: Relative-position attention + `chunked_limited` mask
 
