@@ -60,6 +60,18 @@ As of March 29, 2026:
   `modules/conformer_encoder.py` (cache-aware `chunked_limited` masking),
   `modules/rnnt.py`, `parts/submodules/rnnt_greedy_decoding.py`,
   `parts/preprocessing/features.py`. Read-only.
+- `nvidia/nemotron-3.5-asr-streaming-0.6b`: Hugging Face revision
+  `f3d333391852ba876df169dcc9ba902d25b6ab0b` (2026-07-06), staged under
+  `models/nvidia/nemotron_3_5_asr_streaming_0_6b/original/` (gitignored).
+  The upstream repo ships both a 2.4 GB `.nemo` archive and a 2.6 GB
+  Transformers `model.safetensors`; conversion uses the `.nemo` source. Its
+  checkpoint contains 657 fp32 tensors / 638,030,384 parameters. The NeMo
+  config declares four attention contexts (`[56,3]`, `[56,0]`, `[56,6]`,
+  `[56,13]`); NVIDIA's model card additionally documents `[56,1]` as a 160 ms
+  runtime mode. Governing terms are OpenMDW-1.1, not the NVIDIA Open Model
+  License. Redistribution must retain the OpenMDW-1.1 text and applicable
+  copyright/origin notices; an official license copy is staged beside the
+  checkpoint.
 - `.references/mamba_ssm`: `state-spaces/mamba` tag `v2.2.2` at `8ffd905c91d207f5c0cc84fc2a2fb748655094f0`
   — Two files only: `ops/selective_scan_interface.py` (`selective_scan_ref`,
   `mamba_inner_ref`) and `modules/mamba_simple.py` (`class Mamba`). The exact

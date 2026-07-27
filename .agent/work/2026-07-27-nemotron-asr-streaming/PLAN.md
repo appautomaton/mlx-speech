@@ -60,7 +60,7 @@ should be fixed or the tests retired.
 | --- | --- | --- |
 | AC1 | mel front end matches NeMo featurizer | 2 |
 | AC2 | causal subsampling lengths + values match | 3 |
-| AC3 | `chunked_limited` mask exact across 5 settings | 4 |
+| AC3 | `chunked_limited` mask exact across 5 documented runtime settings | 4 |
 | AC4 | converted weights load, every key mapped | 6 |
 | AC5 | token-identical transcript, greedy decode | 7 |
 | AC6a | streamed == offline encoder, frame-identical (hard gate) | 8 |
@@ -96,7 +96,24 @@ values diffed against DESIGN tables.
 **Checkpoint after:** decision (license)
 **Touches:** `docs/references.md`, `models/` (gitignored)
 
-**Status:** pending
+**Status:** complete
+**Evidence:** Pinned Hugging Face revision `f3d3333`; upstream listing confirms
+both `.nemo` and Transformers formats. Staged the 2.4 GB `.nemo` source at the
+planned gitignored path (SHA-256 `210214ed...a74`), extracted 657 fp32 tensors /
+638,030,384 parameters, and diffed preprocessor, encoder, decoder, joint, prompt,
+and decode limits against DESIGN with no shape/config mismatches. The upstream
+repo has no `LICENSE` file, so its model metadata, model card, NVIDIA NGC
+governing terms, and the official OpenMDW-1.1 text were checked together; they
+identify OpenMDW-1.1 as the governing model license. Official license copy staged
+beside the checkpoint (SHA-256 `2ab44b...4df`).
+`MLX_SPEECH_REQUIRE_CHECKPOINTS=1 .venv/bin/python -m pytest tests/unit/ -q`:
+518 passed, 0 skipped.
+**Risks / next:** License decision resolved: converted-weight redistribution is
+permitted under OpenMDW-1.1 when the license text and applicable copyright/origin
+notices are retained. The `.nemo` config declares four attention contexts while
+NVIDIA documents a fifth 160 ms runtime mode; Slice 4 tests all five but does not
+mislabel `[56,1]` as config-declared. No human choice remains, so continue to
+Slice 2.
 
 ### Slice 2: Mel front end (NeMo parity)
 
@@ -139,8 +156,10 @@ asymmetric padding.
 position biases, plus the cache-aware lookahead mask.
 **Acceptance criteria:**
 - Mask matches `NeMo/nemo/collections/asr/modules/conformer_encoder.py:856-869`
-  exactly, including trunc-division chunk indexing, for all five trained
-  `att_context_size` values.
+  exactly, including trunc-division chunk indexing, for all five
+  NVIDIA-documented runtime `att_context_size` values. The `.nemo` config
+  declares four (`0`, `3`, `6`, `13` right context); NVIDIA's model card also
+  documents the 160 ms `1`-frame mode.
 - `rel_shift` verified against a hand-computed small case.
 - `use_bias=False`; `pos_bias_u` / `pos_bias_v` untied per layer.
 - Additive mask (`0` visible, large negative blocked) applied post-scale.
@@ -393,3 +412,11 @@ and must be reconciled during execution: the published `config.json` reports
 `default_num_lookahead_tokens: 3` — four trained lookahead values, not the five
 this plan and DESIGN.md currently document, and a left context of 57 rather
 than 56.
+
+## Review: Engineering
+
+- Verdict: approved_with_risks
+- Strength: Slice 8 now defines a true live-audio session, enumerates every cross-chunk state component, and hard-gates both encoder-frame identity and ragged-chunk token parity through finalization.
+- Concern: The remaining integration risk is that Slice 8's write set names only model files even though users obtain Nemotron through `mlx_speech.asr.load()`, whose current `ASRModel` protocol and adapters expose only `generate()`.
+- Action: Expose and test `stream_session()` through the Nemotron ASR adapter during Slice 8 or Slice 9 before marking AC13 complete.
+- Verified: Revised PLAN and SPEC, DESIGN, current ASR protocol and adapters, pinned mlx-audio streaming implementation, NeMo references, NVIDIA's documented five latency modes, and 518 passing unit tests were checked.

@@ -1,8 +1,8 @@
 {
   "active_change": "2026-07-27-nemotron-asr-streaming",
-  "stage": "plan",
+  "stage": "execute",
   "canonical_spec": ".agent/work/2026-07-27-nemotron-asr-streaming/SPEC.md",
   "canonical_design": ".agent/work/2026-07-27-nemotron-asr-streaming/DESIGN.md",
   "canonical_plan": ".agent/work/2026-07-27-nemotron-asr-streaming/PLAN.md",
-  "engineering_review": "needs_correction"
+  "engineering_review": "approved_with_risks"
 }
