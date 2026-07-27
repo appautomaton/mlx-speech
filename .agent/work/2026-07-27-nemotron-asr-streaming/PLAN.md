@@ -130,7 +130,16 @@ Slice 2.
 **Touches:** `src/mlx_speech/models/nemotron_asr/feature_extraction.py`,
 `tests/unit/test_nemotron_features.py`
 
-**Status:** pending
+**Status:** complete
+**Evidence:** Added pure-MLX `NemotronFeatureExtractor` with symmetric Hann,
+constant-centered STFT, preemphasis, Slaney-area mel filters, `2^-24` log guard,
+NeMo valid-frame masking, and explicit `normalize: NA`. Captured a deterministic
+NeMo-eval fixture with torch/librosa reference math; runtime source imports
+neither. `MLX_SPEECH_REQUIRE_CHECKPOINTS=1 .venv/bin/python -m pytest
+tests/unit/test_nemotron_features.py -q`: 9 passed, 0 skipped. Ruff passed.
+**Risks / next:** Checkpoint `dither=1e-5` is retained as configuration but not
+applied during inference, matching NeMo's `self.training` guard. Slice 3 consumes
+the returned valid feature length.
 
 ### Slice 3: Causal depthwise-striding subsampling (8x)
 
