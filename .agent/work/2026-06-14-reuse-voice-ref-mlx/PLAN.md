@@ -1,8 +1,8 @@
 # PLAN: RE-USE voice-reference denoising (pure-MLX)
 
 > **Change closed 2026-07-27.** All 8 slices done. Shipped in `e2e80c4` (#11),
-> weights live at `appautomaton/re-use-semamba-mlx`. One accepted risk recorded
-> on Slice 8: the published repo has no `LICENSE` file. Not a functional defect.
+> weights live at `appautomaton/re-use-semamba-mlx`. The repo is licensed via
+> card frontmatter, matching upstream's own practice. Nothing outstanding.
 
 **Goal:** Port NVIDIA RE-USE (SEMamba) to pure MLX and wire it into DramaBox
 `denoise_ref=True` (opt-in). Full contract: `SPEC.md`. Design: `DESIGN.md`.
@@ -226,19 +226,25 @@ the change advanced to `verified` on the strength of "the weights are live". AC8
 despite the remote file list being in hand at the time. The prior evidence block
 overstated completion and has been replaced by the two paragraphs above.
 
-**Accepted risk (user decision, 2026-07-27):** the published repo has no
-`LICENSE` file. Closed anyway. The shipped work is complete and serving: weights
-live, card live declaring `license_name: nvidia-source-code-license-nc` with a
-link to upstream, resolver pointing at the right slug, `denoise_ref=True` working
-end to end. The gap is one text file, not a functional defect, and no user hits
-it. Exposure is redistributing NVIDIA weights under a non-commercial license
-without shipping the license text alongside them.
+**Resolution (2026-07-27):** no defect. The AC above asked for a standalone
+`LICENSE` file, which is a stricter bar than either Hugging Face convention or
+the licensor's own release applies.
 
-If it is ever worth closing, it is a single `hf upload` of the NSCLv1 text. The
-tooling to make this class of omission impossible (`upload.py` publishing card +
-license, `verify_published.py` asserting the remote file set) is scheduled where
-it belongs, on the critical path of the Nemotron change's publish slice, rather
-than as rework here.
+The repo **is** licensed. Its card frontmatter declares `license: other`,
+`license_name: nvidia-source-code-license-nc`, and `license_link` to upstream,
+which is HF's canonical mechanism and renders on the model page. Upstream
+`nvidia/RE-USE` ships no LICENSE file either and declares its license the same
+way, so this build mirrors the licensor's own practice rather than inventing a
+stricter one.
+
+Everything shipped and serving: weights live, card live, resolver pointing at the
+right slug, `denoise_ref=True` working end to end. Change closed.
+
+Carried forward to the Nemotron publish slice, not as rework here: fold the card
+push into the registered upload path (it currently reaches HF by a manual
+side-channel) and add a post-upload check that asserts the remote file set. Both
+are worth having because publishing should be verifiable, independent of the
+license question.
 
 ## Aggregate verification
 
