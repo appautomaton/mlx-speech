@@ -185,7 +185,17 @@ position biases, plus the cache-aware lookahead mask.
 **Touches:** `src/mlx_speech/models/nemotron_asr/attention.py`,
 `tests/unit/test_nemotron_attention.py`
 
-**Status:** pending
+**Status:** complete
+**Evidence:** Added the exact trunc-division `chunked_limited` additive mask,
+Transformer-XL sinusoidal positions, NeMo `rel_shift`, bias-free Q/K/V/out/pos
+projections, and untied per-layer `pos_bias_u/v`. Tests cover all five
+NVIDIA-documented latency modes, a hand-computed shift, mask visibility, and a
+captured torch attention fixture. `MLX_SPEECH_REQUIRE_CHECKPOINTS=1
+.venv/bin/python -m pytest tests/unit/test_nemotron_attention.py -q`: 11 passed,
+0 skipped. Ruff passed.
+**Risks / next:** MLX fused SDPA differs from the unfused torch fixture by at
+most `1.28e-4` in the small reference case; Slice 6 activation parity remains
+the checkpoint-scale numeric gate.
 
 ### Slice 5: FastConformer encoder assembly
 
