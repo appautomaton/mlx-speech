@@ -132,8 +132,19 @@ library from a wrapper.
    none extra, none silently dropped.
 5. **Runtime:** greedy RNN-T decode produces a token-identical transcript to the
    reference on a fixed clip.
-6. **Runtime (hard gate):** streamed encoder output is frame-identical to the
-   offline encoder at native chunk size. Must run green, not skip.
+6. **Runtime (hard gate), two parts, both required:**
+   a. Streamed encoder output is frame-identical to the offline encoder at native
+      chunk size.
+   b. Cumulative streamed **tokens** equal offline decoded tokens when the same
+      waveform is fed in arbitrary, ragged chunk sizes that do not align to mel
+      hops or encoder frames, including a final flush.
+   Encoder identity alone is insufficient: it is satisfiable by an implementation
+   that preloads the whole recording and chunks internally. Must run green, not
+   skip.
+13. **Live session:** a public streaming session accepts waveform chunks of
+    arbitrary length as they arrive, holds encoder caches, RNN-T predictor state,
+    and residual sub-hop samples across calls, and flushes the tail on
+    finalization. Feeding N chunks must equal feeding one.
 7. **Runtime:** language-specified and `auto` prompt modes both decode correctly.
 8. **Performance:** per-frame work is constant as audio length grows (O(n) check),
    and peak memory plus RTFx are recorded against the mlx-audio reference.

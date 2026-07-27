@@ -63,7 +63,9 @@ should be fixed or the tests retired.
 | AC3 | `chunked_limited` mask exact across 5 settings | 4 |
 | AC4 | converted weights load, every key mapped | 6 |
 | AC5 | token-identical transcript, greedy decode | 7 |
-| AC6 | streamed == offline, frame-identical (hard gate) | 8 |
+| AC6a | streamed == offline encoder, frame-identical (hard gate) | 8 |
+| AC6b | streamed == offline **tokens**, ragged chunks + flush (hard gate) | 8 |
+| AC13 | live session: arbitrary chunks, persistent state, flush | 8 |
 | AC7 | language-specified and `auto` both decode | 7 |
 | AC8 | O(n) per-frame work, peak memory, RTFx recorded | 9 |
 | AC9 | no torch/NeMo/transformers on inference path | 9 |
@@ -213,20 +215,58 @@ language-ID prompt fusion. First end-to-end transcript.
 
 ### Slice 8: Cache-aware streaming — HARD GATE
 
-**Objective:** Per-layer attention and conv caches with incremental subsampling,
-giving O(n) streaming with latency independent of utterance length.
+**Objective:** A live streaming session that accepts waveform chunks as they
+arrive, holds all cross-chunk state, and produces the same tokens as an offline
+decode of the same audio.
+
+**Public session lifecycle** (the API this slice must deliver):
+
+```python
+session = model.stream_session(language="en-US", att_context_size=[56, 3])
+for pcm in mic:                     # arbitrary sample counts, not hop-aligned
+    for token in session.feed(pcm): # may yield nothing for several calls
+        ...
+tail = session.finalize()           # flush residual samples, mel, and frames
+```
+
+**State that must persist across `feed()` calls.** Losing any one of these
+silently degrades output while every encoder-level check still passes:
+
+| State | Shape / kind | Consequence if reset per chunk |
+| --- | --- | --- |
+| Per-layer attention cache | `(1, left_context, 1024)` × 24 | Loses 4.48 s of history |
+| Per-layer conv cache | `(1, kernel-1, 1024)` × 24 | Seam artifacts at every boundary |
+| Mel cache | bounded frames | Wrong subsampling at boundaries |
+| **Residual PCM samples** | `< hop_length` | Dropped/duplicated audio on ragged chunks |
+| **RNN-T predictor state** | LSTM `(h, c)` 2×640, `last_token` | Restarts the LM every chunk |
+
 **Acceptance criteria:**
-- Attention cache holds the last `left_context` attention inputs; conv cache
-  holds the last `kernel - 1` post-GLU frames. Both **preallocated fixed-size**
-  and written in place, not concatenate-and-slice (see `DESIGN.md`, cache
-  allocation).
-- Incremental subsampling with a bounded mel cache.
+- `stream_session()` accepts chunks of **arbitrary length**, including shorter
+  than one mel hop (160 samples) and not aligned to encoder frames. Residual
+  samples carry to the next `feed()`.
+- Encoder caches preallocated fixed-size and written in place, not
+  concatenate-and-slice (see `DESIGN.md`, cache allocation).
+- **RNN-T predictor state persists across chunks.** A token emitted in chunk *k*
+  conditions decoding in chunk *k+1*. Tested directly, not inferred.
+- `finalize()` flushes residual samples, the mel cache, and pending encoder
+  frames, emitting any trailing tokens. Without it the tail of the last utterance
+  is silently dropped.
 - Streaming path uses **no attention mask** — the cached window is the context.
-- **Hard gate (AC6):** streamed encoder output frame-identical to the offline
-  `chunked_limited` encoder at native chunk size (`right_context + 1`), within
-  numerical tolerance. Must run green, not skip.
-- Streaming entry point yields incremental transcripts.
-**Verification:** `uv run pytest tests/runtime/test_nemotron_streaming.py -q`
+- **Hard gate (AC6a):** streamed encoder output frame-identical to the offline
+  `chunked_limited` encoder at native chunk size, within numerical tolerance.
+- **Hard gate (AC6b):** cumulative streamed **tokens** equal offline decoded
+  tokens for the same waveform fed in ragged chunk sizes (e.g. 1, 137, 4001,
+  16000 samples), including the `finalize()` tail. Feeding N chunks equals
+  feeding one.
+- Both gates must run green, not skip.
+
+AC6a alone is insufficient and was the review's finding: it is satisfiable by an
+implementation that preloads the whole recording and chunks it internally, or one
+that restarts the decoder each chunk. AC6b plus the ragged-boundary and
+predictor-state tests are what make it genuinely live.
+
+**Verification:**
+`MLX_SPEECH_REQUIRE_CHECKPOINTS=1 uv run pytest tests/runtime/test_nemotron_streaming.py -q`
 (hard gate: must run green, not skip)
 **Execution:** direct
 **Depends on:** Slice 7
@@ -320,3 +360,36 @@ throwing away the entire reason for choosing this model.
 
 Slice 7 is the runner-up: RNN-T is a new decoder family here, and a subtly wrong
 greedy loop produces fluent, plausible, incorrect transcripts.
+
+## Review: Engineering
+
+- Verdict: needs_correction
+- Strength: The plan decomposes the pure-MLX port into reference-anchored, independently testable slices and makes frame identity, runtime purity, and no-skip gates explicit.
+- Concern: Slice 8 specifies encoder caches but not a public waveform-chunk session, final-tail flush, persistent RNN-T decoder state, or end-to-end streamed-versus-offline token parity, so an implementation that preloads the recording or restarts decoding per chunk could satisfy the written gates without providing true live streaming.
+- Action: Define the public streaming session lifecycle and state in Slice 8, then add arbitrary waveform-boundary and final-flush tests that require cumulative streamed tokens to equal offline decoding while preserving predictor state across chunks.
+- Verified: PLAN, DESIGN, SPEC, current ASR protocol and registry, mlx-audio streaming/Conformer/RNN-T reference, NeMo mask and featurizer source, checkpoint skip enforcement, and 518 passing unit tests were checked.
+
+### Response (auto-plan, 2026-07-27)
+
+Concern upheld in full. AC6 as written was satisfiable by an implementation that
+preloads the recording and chunks internally, or restarts the decoder each chunk.
+Encoder frame identity does not imply a live session.
+
+Slice 8 rewritten with:
+- a concrete public `stream_session()` / `feed()` / `finalize()` lifecycle;
+- an explicit table of the five pieces of cross-chunk state, including the two
+  the plan previously omitted — residual sub-hop PCM samples and RNN-T predictor
+  state (LSTM `h`/`c` plus `last_token`);
+- `finalize()` tail flush as an acceptance criterion, not an implementation
+  detail;
+- AC6 split into AC6a (encoder frame identity) and AC6b (cumulative streamed
+  tokens equal offline tokens at ragged, non-hop-aligned chunk boundaries).
+
+SPEC AC6 updated to match; new AC13 covers the session lifecycle.
+
+Also recorded from slice-1 investigation, which contradicts the current plan text
+and must be reconciled during execution: the published `config.json` reports
+`sliding_window: 57` and `supported_num_lookahead_tokens: [3, 0, 6, 13]` with
+`default_num_lookahead_tokens: 3` — four trained lookahead values, not the five
+this plan and DESIGN.md currently document, and a left context of 57 rather
+than 56.
