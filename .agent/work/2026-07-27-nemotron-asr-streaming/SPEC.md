@@ -64,9 +64,21 @@ library from a wrapper.
   windows has reverted to buffered streaming and lost the model's main advantage.
   Correctness tests will not catch this; it needs its own measurement.
 - **Weights:** `nvidia/nemotron-3.5-asr-streaming-0.6b`, license **OpenMDW-1.1**.
-  Sources disagree on whether the NVIDIA Open Model License also applies. Read
-  the LICENSE in the model repo before publishing any converted weights.
+  The HF repo tags `openmdw-1.1` and the card states the model is ready for
+  commercial use, but sources disagree on whether the NVIDIA Open Model License
+  also applies. Read the LICENSE in the model repo and confirm it permits
+  redistributing a derivative (quantized) build before publishing.
   `.safetensors`; weights never in git.
+- **We publish our own quantized build.** The `hf` CLI is authenticated, so
+  originals download directly. Produce an MLX **int8** build as the default
+  runtime weight, matching every other ASR family in this repo, plus **bf16** as
+  the unquantized reference. Published under the `appautomaton` org.
+- **Naming follows the current convention**, not the older one. Recent cards
+  (`qwen3-asr-1.7b-int8-mlx`, `qwen3-asr-1.7b-bf16-mlx`) use `-int8-mlx` /
+  `-bf16-mlx`; older ones use `-8bit-mlx`. Use the newer form:
+  `appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx` and
+  `appautomaton/nemotron-3.5-asr-streaming-0.6b-bf16-mlx`, preserving upstream's
+  model name so provenance is obvious.
 - **Coherence with existing ASR families.** Load through
   `mlx_speech.asr.load(...)`, local-path-first. Module split mirrors
   `granite_speech_asr/`. Read that package's existing Conformer primitives
@@ -128,6 +140,14 @@ library from a wrapper.
    Slower than the reference is a defect.
 9. **Pure MLX:** no torch, NeMo, or transformers import on the inference path.
 10. `pytest tests/unit/` is green.
+11. **Quantization:** an MLX int8 build loads and transcribes, with WER on a
+    fixed evaluation set within an agreed tolerance of the bf16 build. Size
+    reduction and RTFx recorded. Quantization that costs accuracy beyond the
+    tolerance is not shipped as the default.
+12. **Publication:** `appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx` and
+    `-bf16-mlx` are live, each carrying the upstream license, NVIDIA attribution,
+    a model card matching house format, and honest per-tier language quality.
+    `mlx_speech.asr.load(...)` aliases resolve to them.
 
 ## Anti-goals
 
@@ -138,20 +158,22 @@ library from a wrapper.
 - No beam search in this change. Greedy decode first; beam is a follow-up.
 - Not a general streaming framework. The streaming surface is designed to be
   reusable, but only this model is implemented here.
-- No weight publication until the license question is resolved.
+- No quantization below int8 in this change. 4-bit and mixed-precision
+  palettization are a follow-up, informed by what the int8 build measures.
 
 ## Scope coverage
 
 - **Included:** mel front end, causal subsampling, cache-aware FastConformer
   encoder, RNN-T prediction/joint/greedy decode, language-ID prompt conditioning,
-  cache-aware streaming path, checkpoint conversion, docs.
+  cache-aware streaming path, checkpoint conversion, int8 + bf16 quantized
+  builds, model cards, HF publication under `appautomaton`, docs.
 - **Deferred / not in scope:** beam search with internal-LM subtraction,
   batched inference (mlx-audio's reference drops NeMo's padding mask because it
-  only runs batch=1 — decide deliberately in plan), quantization tuning beyond
-  the repo's default int8, HF publication.
+  only runs batch=1 — decide deliberately in plan), sub-int8 quantization.
 - **Decided this conversation:** multilingual checkpoint only; Automaton is the
   planning system; performance and coherence with existing families are standing
-  constraints on every slice, not a final pass.
+  constraints on every slice, not a final pass; we publish our own int8 build
+  rather than depending on a third-party conversion.
 
 ## Assumptions
 

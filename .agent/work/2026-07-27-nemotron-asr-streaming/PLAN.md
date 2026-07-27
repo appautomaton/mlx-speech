@@ -20,10 +20,39 @@ paths. Full contract: `SPEC.md`. Architecture: `DESIGN.md`.
 - **Checkpoints:**
   - Slice 1 — `decision`: the OpenMDW-1.1 vs NVIDIA Open Model License question
     must be resolved from the LICENSE file before any redistribution work. Does
-    not block the port itself.
+    not block the port itself, only Slice 10.
+  - Slice 10 — `human-action`: the Hugging Face publish is outward-facing.
+    Confirm before pushing.
 - **Execution routes:** all `direct` unless the user asks for subagent
   parallelism. Slices 6 and 7 are the natural candidates if that changes
   (cross-subsystem: conversion + model, and transducer + prompt + tokenizer).
+
+## Weights, worktrees, and skipping gates
+
+This change is being executed in a git worktree. `models/` is gitignored, so a
+fresh worktree has **no weights**, and `tests/checkpoint/` + `tests/runtime/`
+skip cleanly when checkpoints are absent. Together those two facts let a gate
+report success having verified nothing.
+
+Measured in this worktree before the fix: `tests/checkpoint/` gave **38 skipped,
+0 passed** with a green exit code, and `tests/unit/` gave 512 passed / 6 skipped
+against main's 518 / 0.
+
+Two mitigations, both in place:
+
+1. **Weights are symlinked, not copied.** Each top-level entry under the main
+   checkout's `models/` (81 GB) is symlinked into the worktree. `models/*` in
+   `.gitignore` has no trailing slash, so symlinks are ignored and `git status`
+   stays clean. After linking, the worktree matches main exactly: checkpoint
+   32 passed / 6 skipped, unit 518 passed / 0 skipped.
+2. **`MLX_SPEECH_REQUIRE_CHECKPOINTS=1` turns any skip into a session failure**
+   (`tests/conftest.py`). Every slice gate below must be run with it set. Slice
+   evidence must record **pass counts, not skip counts**.
+
+Pre-existing issue found while checking: `models/Qwen3-ASR-1.7B-MLX-BF16` in the
+main checkout is a dangling symlink to an empty external directory, so the two
+Qwen3-ASR checkpoint gates have been silently skipping. Out of scope here, but it
+should be fixed or the tests retired.
 
 ## Requirement traceability (SPEC acceptance criteria → slice)
 
@@ -39,6 +68,8 @@ paths. Full contract: `SPEC.md`. Architecture: `DESIGN.md`.
 | AC8 | O(n) per-frame work, peak memory, RTFx recorded | 9 |
 | AC9 | no torch/NeMo/transformers on inference path | 9 |
 | AC10 | `pytest tests/unit/` green | 9 |
+| AC11 | int8 build within WER tolerance of bf16 | 10 |
+| AC12 | int8 + bf16 published with cards and licenses | 10 |
 
 ## Slices
 
@@ -228,7 +259,43 @@ benchmark output recorded in the slice evidence.
 
 **Status:** pending
 
+### Slice 10: Quantize, card, publish
+
+**Objective:** Produce our own MLX int8 and bf16 builds, write model cards, and
+publish under `appautomaton`.
+**Acceptance criteria:**
+- int8 and bf16 builds produced by `scripts/convert/nemotron_asr.py`, following
+  the repo's existing quantization path.
+- **AC11:** int8 WER on a fixed evaluation set is within an agreed tolerance of
+  bf16. Record size reduction and RTFx for both. If int8 costs more than the
+  tolerance, it does not ship as the default and the bf16 build leads.
+- Streaming hard gate (AC6) re-run against the int8 build. Quantization must not
+  break frame identity.
+- Model cards in `scripts/hugging_face/model_cards/appautomaton/`, house format,
+  carrying the upstream license, NVIDIA attribution, the latency table, and the
+  three language tiers stated honestly. A card claiming 40 languages without the
+  tier breakdown is misleading.
+- **AC12:** `appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx` and
+  `-bf16-mlx` live. Naming follows the current convention (`-int8-mlx`,
+  `-bf16-mlx`), not the older `-8bit-mlx` form.
+- `_hub` resolver and `mlx_speech.asr.load(...)` aliases default to the published
+  int8 repo, mirroring `qwen3-asr`.
+- README model table updated.
+**Verification:** `hf auth whoami`; repo listing; `MLX_SPEECH_REQUIRE_CHECKPOINTS=1
+uv run pytest tests/unit/ tests/runtime/test_nemotron_streaming.py -q`
+**Execution:** direct
+**Depends on:** Slice 9
+**Checkpoint after:** human-action (the publish is outward-facing)
+**Touches:** `scripts/convert/nemotron_asr.py`, `scripts/hugging_face/upload.py`,
+`scripts/hugging_face/model_cards/appautomaton/`, `src/mlx_speech/_hub.py`,
+`README.md`, `docs/nemotron-asr.md`
+
+**Status:** pending
+
 ## Aggregate verification
+
+Every command below assumes `MLX_SPEECH_REQUIRE_CHECKPOINTS=1` is set, so a skip
+fails the run. Evidence records pass counts, never skip counts.
 
 | Slice | Command |
 | --- | --- |
@@ -241,6 +308,7 @@ benchmark output recorded in the slice evidence.
 | 7 | `uv run pytest tests/runtime/test_nemotron_decode.py -q` |
 | 8 | `uv run pytest tests/runtime/test_nemotron_streaming.py -q` (hard gate) |
 | 9 | `uv run pytest tests/unit/ tests/runtime/test_nemotron_purity.py -q` + benchmark |
+| 10 | `hf auth whoami`; repo listing; unit + streaming gate against the int8 build |
 
 ## Riskiest slice
 

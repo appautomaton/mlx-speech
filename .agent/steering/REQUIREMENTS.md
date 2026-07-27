@@ -62,6 +62,32 @@ since MLX has no x86 CPU fallback.
 A parity gate that can skip when fixtures are absent is not a gate. Make it hard
 or do not claim it.
 
+**Running gates:** set `MLX_SPEECH_REQUIRE_CHECKPOINTS=1`. Any skip then fails the
+session and names what was skipped (`tests/conftest.py`). Slice evidence records
+pass counts, never skip counts. Without it, a checkpoint or runtime tier with no
+weights present exits green having verified nothing.
+
+## Worktrees and weights
+
+`models/` is gitignored and holds tens of GB. A fresh git worktree therefore has
+**no weights**, which silently converts every checkpoint and runtime gate into a
+no-op.
+
+Symlink, never copy. For each top-level entry in the main checkout's `models/`:
+
+```bash
+for d in /path/to/main/models/*/; do ln -sfn "$d" "models/$(basename "$d")"; done
+```
+
+`models/*` in `.gitignore` has no trailing slash, so it ignores symlinks as well
+as directories and `git status` stays clean. Verify with `git check-ignore -v`
+and by confirming the worktree's test counts match the main checkout's.
+
+The same applies to `.references/`. Its ignore pattern was corrected to
+`.references` (no trailing slash) for exactly this reason: a trailing slash
+matches directories only, so a symlinked reference checkout would have been
+committed.
+
 ## Process
 
 - Finish one clear slice, validate it, update the plan, then move to the next.
