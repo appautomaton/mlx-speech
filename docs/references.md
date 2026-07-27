@@ -29,7 +29,10 @@ As of March 29, 2026:
 - `.references/mlx`: `v0.31.1` at `ce45c52`
 - `.references/MOSS-TTS`: `main` at `c74844ef6c08161160483c1bf3682235bdccae41`
 - `.references/MOSS-TTSD`: `main` at `20dbb4fc44819435fee894d644a0402a0fee736a`
-- `.references/mlx-audio`: `main` at `6408d2a410eb8c57464e07725b92271860199250`
+- `.references/mlx-audio`: `main` at `d28d68c6ac4e28f7d2d66007f640b06cf3fd8ceb` (v0.4.6, 2026-07-27)
+  — Refreshed from `6408d2a` to pick up Nemotron 3.5 ASR support (PRs #771, #774
+  cache-aware `stream_generate`, #775 shared `nemo/` package, #817 OOM fix).
+  `mlx_audio/stt/models/nemotron_asr/` is the MLX-side reference for the v7 plan.
 - `.references/transformers`: `main` at `8213e0d920d52cb00dcade16b6d1f6e952ac0a8c` (sparse: `src/transformers/models/cohere_asr`, `src/transformers/models/moonshine`, `src/transformers/models/parakeet`)
 - `.references/Step-Audio-EditX`: `main` at `8fa0a3e96979d3c47f6e6b531d234ff98acac878`
 - `.references/DramaBox`: `main` at `a70a5818e103c1c9fef22409c1e0c707ebf4f8a7` (2026-05-23)
@@ -49,6 +52,14 @@ As of March 29, 2026:
   1416 keys). Source-truth for the v6 RE-USE MLX port (DramaBox `denoise_ref`).
   Code subset only (no weights, no sample audio); weights live gitignored at
   `models/reuse/original/`. License NSCLv1 (non-commercial). Read-only.
+- `.references/NeMo`: `NVIDIA/NeMo` `main` at `2639d4bef8d1450782263a8f616242acfb6fecb9`
+  (2026-07-27) — Source-truth for the v7 Nemotron 3.5 ASR port. Blobless sparse
+  clone (~8 MB) limited to the ASR inference pipeline:
+  `nemo/collections/asr/{models,modules,parts/submodules,parts/preprocessing,parts/utils}`.
+  Training code, configs, and weights are excluded. Key files:
+  `modules/conformer_encoder.py` (cache-aware `chunked_limited` masking),
+  `modules/rnnt.py`, `parts/submodules/rnnt_greedy_decoding.py`,
+  `parts/preprocessing/features.py`. Read-only.
 - `.references/mamba_ssm`: `state-spaces/mamba` tag `v2.2.2` at `8ffd905c91d207f5c0cc84fc2a2fb748655094f0`
   — Two files only: `ops/selective_scan_interface.py` (`selective_scan_ref`,
   `mamba_inner_ref`) and `modules/mamba_simple.py` (`class Mamba`). The exact
