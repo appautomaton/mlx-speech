@@ -212,7 +212,20 @@ the checkpoint-scale numeric gate.
 `src/mlx_speech/models/nemotron_asr/config.py`,
 `tests/unit/test_nemotron_encoder.py`
 
-**Status:** pending
+**Status:** complete
+**Evidence:** Added immutable checkpoint-mirroring config dataclasses and the
+FastConformer encoder assembly: 8x causal pre-encoding, relative-position
+attention, 24 macaron blocks by default, and the offline `[56,13]` context. Each
+block follows half-FFN → attention → causal convolution → half-FFN → final norm;
+the k=9 depthwise convolution uses `(left=8, right=0)` and preserves NeMo's
+`batch_norm` name for its LayerNorm. Projection biases are absent. Batched
+inference is rejected explicitly, matching the SPEC's deferred scope.
+`MLX_SPEECH_REQUIRE_CHECKPOINTS=1 .venv/bin/python -m pytest
+tests/unit/test_nemotron_encoder.py -q`: 8 passed, 0 skipped. Combined Nemotron
+unit suite: 43 passed, 0 skipped. Ruff passed.
+**Risks / next:** The architecture and parameter hierarchy are ready for Slice
+6's strict checkpoint remap. Checkpoint-scale activation parity remains the next
+numeric gate.
 
 ### Slice 6: Checkpoint conversion and loading
 
