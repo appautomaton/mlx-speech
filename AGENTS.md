@@ -4,16 +4,24 @@ Always address the user as **My Love** at the beginning of your responses.
 
 > GPT-based or Codex agent? Also read `CODEX.md`.
 
-## Plan Status
+## Planning
 
-- **Active:** `plans/v5-dramabox.md`
-- **Done:** `plans/v0-moss-tts-local.done.md`
-- **Done:** `plans/v1-moss-tts.done.md`
-- **Done:** `plans/v2-vibevoice.done.md`
-- **Done:** `plans/v3-cohere-asr.done.md`
-- **Done:** `plans/v4-step-audio-editx.done.md`
+Planning runs through **Automaton**, the stage-gated workflow under `.agent/`.
+It is authoritative. Read `.agent/.automaton/references/FRAMEWORK.md` once per
+session.
 
-If a new active plan is created, read it before starting implementation work.
+- **Machine state:** `.agent/.automaton/state/current.json` — names the active
+  change and stage. Update it only via `.agent/.automaton/scripts/sync-status.mjs`,
+  never by hand.
+- **Steering:** `.agent/steering/{PROJECT,REQUIREMENTS,ROADMAP}.md`
+- **Work artifacts:** `.agent/work/<change>/{SPEC,DESIGN,PLAN}.md`
+- **Stages:** `frame → plan → execute → verify → verified`
+
+Read the active change's `PLAN.md` before starting implementation work.
+
+`plans/v0`–`v5*.md` are the **historical** planning format, kept as a record of
+work shipped before Automaton. All are complete. Do not add to them and do not
+treat them as current.
 
 ## Mission
 

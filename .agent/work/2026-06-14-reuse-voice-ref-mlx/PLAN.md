@@ -179,9 +179,16 @@ NSCLv1 license + NVIDIA attribution + model card; update docs and plan.
 **Checkpoint reason:** the HF publish is outward-facing; confirm before pushing.
 **Touches:** `scripts/hugging_face/upload.py`, model card, `docs/dramabox.md`, `README.md`, `plans/v5-dramabox.md`
 
-**Status:** prep complete; HF publish held (human-action checkpoint)
+**Status:** complete (human-action checkpoint cleared 2026-06-21)
 **Evidence:** Model card `scripts/hugging_face/model_cards/appautomaton/reuse-semamba-mlx.md` (NSCLv1 non-commercial + NVIDIA attribution + ours-only badges + 0.9997 parity). `docs/dramabox.md` `denoise_ref` section corrected (was stale "deferred/IC-LoRA"); Settings table + README footnote document the opt-in + non-commercial weights. `scripts/hugging_face/upload.py` registry has `reuse -> appautomaton/reuse-semamba-mlx` (`models/reuse/mlx`, large-folder). `resolve_reuse_path`/`REUSE_REPO` default to the published repo (Slice 7). v5 plan deferred-items corrected (denoise_ref done; the IC-LoRA framing was a mischaracterization). 507 unit passed; ruff clean; card YAML valid.
-**Risks / next:** the `hf upload` of `models/reuse/mlx` to `appautomaton/reuse-semamba-mlx` is outward-facing and held for explicit user confirmation (the designed Slice 8 checkpoint).
+**Risks / next:** none. The checkpoint was cleared and the upload completed.
+**Publish evidence (recorded 2026-07-27):** `appautomaton/re-use-semamba-mlx` is
+live on Hugging Face, created `2026-06-21T04:26:34Z` — three minutes after the
+slug-rename commit `98e56a0` (#13), whose message reads "Pre-publish; nothing
+live yet" and was accurate only at the moment it was written. Repo holds
+`model.safetensors`, `config.json`, `README.md`; 22 downloads. Resolver default
+`_hub.REUSE_REPO` (`src/mlx_speech/_hub.py:109`) matches the live slug. The old
+`appautomaton/reuse-semamba-mlx` slug does not exist (HTTP 401).
 
 ## Aggregate verification
 
