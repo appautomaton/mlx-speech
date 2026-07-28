@@ -46,6 +46,7 @@ model name links to a guide covering behavior, flags, and known limitations.
 | --- | --- | --- |
 | `cohere-asr` | [Cohere Transcribe](https://github.com/appautomaton/mlx-speech/blob/main/docs/cohere-asr.md) — multilingual ASR | [int8](https://huggingface.co/appautomaton/cohere-asr-mlx) |
 | `qwen3-asr-1.7b` | [Qwen3-ASR-1.7B](https://github.com/appautomaton/mlx-speech/blob/main/docs/qwen3-asr.md) — English, Chinese, and mixed Chinese/English ASR | [int8](https://huggingface.co/appautomaton/qwen3-asr-1.7b-int8-mlx) · [bf16](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx) |
+| `nemotron-asr-streaming` | [NVIDIA Nemotron 3.5 ASR Streaming](https://github.com/appautomaton/mlx-speech/blob/main/docs/nemotron-asr.md) — cache-aware multilingual streaming across three stated quality tiers | [int8](https://huggingface.co/appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx) |
 | — | [IBM Granite Speech 4.0 1B](https://github.com/appautomaton/mlx-speech/blob/main/docs/granite-speech-asr.md) — runs the original sharded checkpoint from a local path | local checkpoint |
 
 ¹ `tts.load("dramabox")` also pulls the [Gemma 3 12B backbone](https://huggingface.co/appautomaton/gemma-3-12b-it-backbone-4bit-mlx)
@@ -87,6 +88,10 @@ result = model.generate(
 asr = mlx_speech.asr.load("qwen3-asr-1.7b")
 print(asr.generate("audio.wav").text)
 
+# True cache-aware waveform streaming is available on Nemotron
+nemotron = mlx_speech.asr.load("nemotron-asr-streaming")
+session = nemotron.stream_session(language="en-US", att_context_size=(56, 3))
+
 # Local checkpoint paths work anywhere an alias does
 granite = mlx_speech.asr.load("models/ibm/granite_4_0_1b_speech/original")
 print(granite.generate("audio.wav").text)
@@ -125,6 +130,7 @@ mlx-speech tts --model moss-sound-effect \
 # Transcribe audio
 mlx-speech asr --model cohere-asr --audio speech.wav
 mlx-speech asr --model qwen3-asr-1.7b --audio speech.wav --language Chinese
+mlx-speech asr --model nemotron-asr-streaming --audio speech.wav --language en-US
 
 # Local checkpoint paths work anywhere an alias does
 mlx-speech tts --model models/fish_s2_pro/mlx-int8 --text "Hello!" -o output.wav

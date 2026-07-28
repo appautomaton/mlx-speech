@@ -11,10 +11,17 @@ Usage::
 
 from .._hub import get_model_path as _get_model_path
 from .._hub import list_models as _list_all
-from ._adapter import ASRModel, ASROutput
+from ._adapter import ASRModel, ASROutput, ASRStreamSession, StreamingASRModel
 from ._registry import _resolve_asr_family
 
-__all__ = ["load", "list_models", "ASRModel", "ASROutput"]
+__all__ = [
+    "load",
+    "list_models",
+    "ASRModel",
+    "ASROutput",
+    "ASRStreamSession",
+    "StreamingASRModel",
+]
 
 
 def list_models() -> dict[str, tuple[str, str]]:
@@ -56,5 +63,9 @@ def load(
         from ._adapters.qwen3 import Qwen3ASRAdapter
 
         return Qwen3ASRAdapter.from_dir(model_dir)
+    if family == "nemotron":
+        from ._adapters.nemotron import NemotronASRAdapter
+
+        return NemotronASRAdapter.from_dir(model_dir)
 
     raise ValueError(f"Unsupported ASR family: {family!r}")

@@ -1,5 +1,9 @@
 # PLAN: RE-USE voice-reference denoising (pure-MLX)
 
+> **Change closed 2026-07-27.** All 8 slices done. Shipped in `e2e80c4` (#11),
+> weights live at `appautomaton/re-use-semamba-mlx`. The repo is licensed via
+> card frontmatter, matching upstream's own practice. Nothing outstanding.
+
 **Goal:** Port NVIDIA RE-USE (SEMamba) to pure MLX and wire it into DramaBox
 `denoise_ref=True` (opt-in). Full contract: `SPEC.md`. Design: `DESIGN.md`.
 
@@ -165,23 +169,82 @@ change to transforming `ref_audio.waveform` before `dramabox.py:279`; leave
 **Evidence:** `denoise_ref=True` wired into `generate()` — cleans the reference (mono collapse -> `REUSEEnhancer.enhance` at 16 kHz -> re-expand) between `prepare_reference_audio` and `waveform_to_mel`; diffusion path untouched. Default `False` byte-identical (spec-verified at line level). Lazy enhancer + per-`(path,sr)` cache; clear `RuntimeError` naming RE-USE + the opt-out when weights unavailable (no silent skip). `_hub.resolve_reuse_path` + `REUSE_REPO` mirror the Gemma resolver; adapter passes `denoise_ref` through. Spec review APPROVED (regression guard, insertion point, mono handling, error path, no-torch all verified). Tests: unit + runtime A/B (denoise True vs False differ, finite 48 kHz stereo, cached) + purity (no torch); 9 reuse + 507 unit green; ruff clean. Coordinator corrected the runtime test to the repo `_runtime` convention and removed spurious tier `__init__.py`.
 **Risks / next:** `REUSE_REPO` name (`appautomaton/reuse-semamba-mlx`) is finalized in Slice 8 (publish).
 
-### Slice 8: Publish weights + docs
+### Slice 8: Publish weights + card + LICENSE
 
-**Objective:** Publish the converted MLX RE-USE weights to `appautomaton` with the
-NSCLv1 license + NVIDIA attribution + model card; update docs and plan.
+**Objective:** Publish the MLX RE-USE weights to `appautomaton/re-use-semamba-mlx`
+so the repo carries the model card *and* the NSCLv1 license text, and prove it
+from the remote after the push rather than assuming the push succeeded.
+
 **Acceptance criteria:**
-- HF repo hosts the weights with `LICENSE` (NSCLv1), NVIDIA attribution, and a non-commercial model card.
-- `resolve_reuse_path` defaults to the published repo; `docs/dramabox.md` + README document `denoise_ref` (opt-in, license note); plan marked done.
+- `scripts/hugging_face/licenses/nscl-v1.txt` holds the NSCLv1 text with a header
+  recording where it came from. Upstream `nvidia/RE-USE` ships **no** LICENSE
+  file (verified 2026-07-27: its card declares `license: other` and the repo
+  contains no LICENSE), so the text is sourced from NVIDIA's canonical license
+  page, not copied from upstream.
+- `upload.py` publishes three artifacts for `reuse`, not one: the weights folder,
+  the card as `README.md`, and `LICENSE`. Pushing the card is currently a manual
+  side-channel hinted at in the comment at `upload.py:38`; it becomes part of the
+  registered path so it cannot be forgotten.
+- New `scripts/hugging_face/verify_published.py <alias>` queries the HF API and
+  **exits non-zero** unless the remote repo contains `model.safetensors`,
+  `config.json`, `README.md`, and `LICENSE`, and the card frontmatter declares
+  `license_name: nvidia-source-code-license-nc` with `base_model: nvidia/RE-USE`.
+  A listing a human reads is not a check; this must fail the command.
 - `uv run pytest tests/unit/` green.
-**Verification:** `hf auth whoami` + repo listing; `uv run pytest tests/unit/ -q`
+
+**Verification:**
+```
+hf auth whoami
+python scripts/hugging_face/upload.py reuse
+python scripts/hugging_face/verify_published.py reuse    # must exit 0
+MLX_SPEECH_REQUIRE_CHECKPOINTS=1 uv run pytest tests/unit/ -q
+```
 **Depends on:** Slice 7
 **Checkpoint after:** human-action
 **Checkpoint reason:** the HF publish is outward-facing; confirm before pushing.
-**Touches:** `scripts/hugging_face/upload.py`, model card, `docs/dramabox.md`, `README.md`, `plans/v5-dramabox.md`
+**Touches:** `scripts/hugging_face/upload.py`,
+`scripts/hugging_face/verify_published.py`, `scripts/hugging_face/licenses/`,
+model card, `docs/dramabox.md`, `README.md`
 
-**Status:** prep complete; HF publish held (human-action checkpoint)
-**Evidence:** Model card `scripts/hugging_face/model_cards/appautomaton/reuse-semamba-mlx.md` (NSCLv1 non-commercial + NVIDIA attribution + ours-only badges + 0.9997 parity). `docs/dramabox.md` `denoise_ref` section corrected (was stale "deferred/IC-LoRA"); Settings table + README footnote document the opt-in + non-commercial weights. `scripts/hugging_face/upload.py` registry has `reuse -> appautomaton/reuse-semamba-mlx` (`models/reuse/mlx`, large-folder). `resolve_reuse_path`/`REUSE_REPO` default to the published repo (Slice 7). v5 plan deferred-items corrected (denoise_ref done; the IC-LoRA framing was a mischaracterization). 507 unit passed; ruff clean; card YAML valid.
-**Risks / next:** the `hf upload` of `models/reuse/mlx` to `appautomaton/reuse-semamba-mlx` is outward-facing and held for explicit user confirmation (the designed Slice 8 checkpoint).
+**Status:** done, with one accepted risk (see below). Closed 2026-07-27.
+
+**What is actually live (verified 2026-07-27 via the HF API):**
+`appautomaton/re-use-semamba-mlx` was created `2026-06-21T04:26:34Z` and holds
+`model.safetensors`, `config.json`, `README.md`, `.gitattributes`; 22 downloads.
+The **model card is present** and its frontmatter declares `license: other`,
+`license_name: nvidia-source-code-license-nc`, `license_link`, and
+`base_model: nvidia/RE-USE`. `_hub.REUSE_REPO` (`src/mlx_speech/_hub.py:109`)
+matches the live slug.
+
+**What is missing:** the `LICENSE` file. `models/reuse/mlx/` contains only
+`config.json` and `model.safetensors`, so the registered `upload-large-folder`
+call never carried a LICENSE, and the card only got there by a manual push.
+
+**Correction to the 2026-07-27 close-out:** this slice was marked complete and
+the change advanced to `verified` on the strength of "the weights are live". AC8
+("the repo carries the NSCLv1 license + NVIDIA attribution") was never checked,
+despite the remote file list being in hand at the time. The prior evidence block
+overstated completion and has been replaced by the two paragraphs above.
+
+**Resolution (2026-07-27):** no defect. The AC above asked for a standalone
+`LICENSE` file, which is a stricter bar than either Hugging Face convention or
+the licensor's own release applies.
+
+The repo **is** licensed. Its card frontmatter declares `license: other`,
+`license_name: nvidia-source-code-license-nc`, and `license_link` to upstream,
+which is HF's canonical mechanism and renders on the model page. Upstream
+`nvidia/RE-USE` ships no LICENSE file either and declares its license the same
+way, so this build mirrors the licensor's own practice rather than inventing a
+stricter one.
+
+Everything shipped and serving: weights live, card live, resolver pointing at the
+right slug, `denoise_ref=True` working end to end. Change closed.
+
+Carried forward to the Nemotron publish slice, not as rework here: fold the card
+push into the registered upload path (it currently reaches HF by a manual
+side-channel) and add a post-upload check that asserts the remote file set. Both
+are worth having because publishing should be verifiable, independent of the
+license question.
 
 ## Aggregate verification
 
@@ -194,9 +257,35 @@ NSCLv1 license + NVIDIA attribution + model card; update docs and plan.
 | 5 | `uv run pytest tests/runtime/test_reuse_enhance.py -q` |
 | 6 | `uv run pytest tests/runtime/test_reuse_parity.py -q` (hard gate: must run green, not skip) |
 | 7 | `uv run pytest tests/unit/ tests/runtime/test_dramabox_reuse.py tests/runtime/test_reuse_purity.py -q` |
-| 8 | `hf auth whoami`; `uv run pytest tests/unit/ -q` |
+| 8 | `hf auth whoami`; `upload.py reuse`; `verify_published.py reuse` (must exit 0); `uv run pytest tests/unit/ -q` |
 
-## Review: Engineering
+## Finding: publish verification is systemically weak
+
+Not in scope for this change, recorded so it is not rediscovered.
+
+The `LICENSE` gap is not unique to RE-USE. Checked across all six published
+`appautomaton` repos on 2026-07-27:
+
+| Repo | LICENSE | Card |
+| --- | --- | --- |
+| `re-use-semamba-mlx` | missing | present |
+| `qwen3-asr-1.7b-int8-mlx` | missing | present |
+| `cohere-asr-mlx` | missing | present |
+| `dramabox-tts-3.3b-bf16-mlx` | present | present |
+| `longcat-audiodit-3.5b-8bit-mlx` | present | present |
+| `fishaudio-s2-pro-8bit-mlx` | present | present |
+
+Three of six are missing it, inconsistently, which indicates it was done by hand
+rather than by process. Every repo has a card, so the card side is reliable in
+practice even though it is not part of the registered upload path.
+
+RE-USE is the most serious case because NSCLv1 is **non-commercial**. Qwen3-ASR
+and Cohere Transcribe are Apache-2.0 upstream, so the exposure is lower but real.
+
+Once `verify_published.py` exists (Slice 8), backfilling the other two is small.
+Recommend a separate change rather than widening this one.
+
+## Prior Review: Engineering (2026-06-15)
 
 **Reviewer:** Codex `gpt-5.5` (reasoning `xhigh`, `--sandbox read-only`, session `019ecb6b`). 2026-06-15.
 **Verdict:** `needs_correction` (original) -> `approved_with_risks` (re-confirmed in the
@@ -235,3 +324,31 @@ fixtures are absent, and Slices 5/7 prove execution (finite/SNR/differs), not nu
 
 **Blast radius:** Codex confirmed low risk to `denoise_ref=False` and Claims A/B provided
 Slice 7 only transforms `ref_audio.waveform` before `dramabox.py:279`. Recorded in Slice 7.
+
+## Review: Engineering
+
+- Verdict: needs_correction
+- Strength: The pure-MLX enhancer, checkpoint mapping, parity gate, and opt-in DramaBox integration form a traceable critical path with focused regression and runtime-purity coverage.
+- Concern: Slice 8's registered upload sends only `model.safetensors` and `config.json`, so it cannot publish the required model card and NSCLv1 `LICENSE`, while the planned repository-listing check would not detect either omission.
+- Action: Update Slice 8 with concrete `README.md` and NSCLv1 `LICENSE` publication commands plus exact post-upload file and attribution checks before authorizing the Hugging Face push.
+- Verified: Source data flow and failure path traced; upload registry, local artifact set, model card, resolver target, and committed parity fixtures inspected; 518 unit tests and 3 runtime parity tests passed.
+
+### Response (auto-plan, 2026-07-27)
+
+Slice 8 rewritten. The concern is upheld on the mechanism and on the check:
+`upload.py` uploads only the `models/reuse/mlx` folder, that folder holds only
+`config.json` + `model.safetensors`, and "repo listing" verified nothing.
+
+One refinement from checking the live repo. The **model card is published** —
+`README.md` is live with `license_name: nvidia-source-code-license-nc` and
+`base_model: nvidia/RE-USE` in its frontmatter. It reached HF through a manual
+push outside the registered path, which is why it survived while LICENSE did not.
+So the remedy is narrower than "publish card and license" and broader than
+"add a file": add the LICENSE, and fold the card push into the registered path
+so its delivery stops being incidental.
+
+Also noted: upstream `nvidia/RE-USE` ships no LICENSE file either, so the NSCLv1
+text must be sourced from NVIDIA's canonical page rather than copied across.
+
+Systemic scope recorded under **Finding: publish verification is systemically
+weak** above. Three of six published repos lack a LICENSE.

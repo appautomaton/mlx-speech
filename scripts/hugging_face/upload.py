@@ -42,6 +42,11 @@ MODELS: dict[str, tuple[str, str, bool]] = {
         "models/qwen3_asr_1_7b/mlx-int8",
         True,
     ),
+    "nemotron-asr-streaming-int8": (
+        "appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx",
+        "models/nvidia/nemotron_3_5_asr_streaming_0_6b/mlx-int8",
+        True,
+    ),
     "openmoss-audio-tokenizer": (
         "appautomaton/openmoss-audio-tokenizer-mlx",
         "models/openmoss/moss_audio_tokenizer/mlx-int8",
@@ -121,6 +126,20 @@ def upload(alias: str, *, root: Path, hf: str) -> None:
         _run(
             [hf, "upload", "--repo-type", "model",
              repo_id, str(local_path), "mlx-int8"],
+            env=env,
+        )
+
+    card = (
+        root
+        / "scripts"
+        / "hugging_face"
+        / "model_cards"
+        / "appautomaton"
+        / f"{repo_id.partition('/')[2]}.md"
+    )
+    if card.is_file():
+        _run(
+            [hf, "upload", "--repo-type", "model", repo_id, str(card), "README.md"],
             env=env,
         )
 

@@ -29,3 +29,23 @@ class ASRModel(Protocol):
         language: str | None = None,
         **kwargs,
     ) -> ASROutput: ...
+
+
+class ASRStreamSession(Protocol):
+    """Persistent token stream returned by streaming-native ASR families."""
+
+    def feed(self, pcm: np.ndarray | mx.array) -> tuple[int, ...]: ...
+
+    def finalize(self) -> tuple[int, ...]: ...
+
+
+class StreamingASRModel(ASRModel, Protocol):
+    """ASR model that additionally supports live arbitrary-chunk input."""
+
+    def stream_session(
+        self,
+        *,
+        sample_rate: int = 16000,
+        language: str | None = None,
+        att_context_size: tuple[int, int] | list[int] | None = None,
+    ) -> ASRStreamSession: ...

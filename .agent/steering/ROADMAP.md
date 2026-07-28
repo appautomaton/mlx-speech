@@ -1,9 +1,42 @@
 # Roadmap
 
-No active roadmap.
+## Now
 
-First-time onboarding does not create roadmap phases. Refresh imports require strong roadmap evidence and user confirmation in chat.
+**Nemotron 3.5 ASR (streaming, 0.6B).** The repo's first streaming ASR path and
+first transducer decoder. Every ASR family shipped so far is offline, so the
+latency floor is the length of the audio. Cache-aware FastConformer-RNNT changes
+that, and both the transducer decode loop and the cache-aware Conformer are
+reusable beyond this checkpoint.
 
-## Deferred or Not Now
+Multilingual only. The English-only sibling is out of scope.
 
-- **RE-USE reference-denoise (optional cloning-quality upgrade)** — port DramaBox's optional pre-encode speech enhancer to pure MLX so cloned-voice conditioning matches warm-server `denoise_ref=True` (cleaner result when the reference clip is noisy). **Deferred, not blocked** — it's separable from the core clone: optional (core ships `denoise_ref=False`; upstream falls back gracefully) and a self-contained model (SEMamba, ~9.6M params, Mamba/SSM-based). Implementation notes: MLX has no prebuilt fused selective-scan kernel, so the scan is hand-written — involved but well-trodden (community MLX Mamba ports exist); `nvidia/RE-USE` weights aren't local and would need fetching + conversion — check the model license before redistributing. Revisit as its own change after `2026-05-28-dramabox-voice-cloning`. Evidence: `.references/DramaBox/src/super_resolution.py`, `.references/DramaBox/src/inference_server.py:239-304`.
+## Next candidates
+
+Ordered by effort-to-value, not preference. Nothing here is committed.
+
+- **Granite Speech 4.1 2B.** Its `config.json` matches this repo's existing
+  `granite_speech_asr` defaults on every field: 16-layer Conformer, 2-layer
+  BLIP-2 Q-Former, `granite-4.0-1b-base` decoder, `window_size` 15,
+  `downsample_rate` 5. A weights-only swap plus tokenizer and chat-template work
+  for the added translation prompts. Cheapest item on the list.
+- **Cohere Transcribe Arabic (07-2026).** Same Conformer encoder-decoder family
+  as the shipped `cohere-asr`. Leads the Arabic leaderboard at 25.87 WER, beating
+  a 7B model at 2B. Likely a remap plus tokenizer swap.
+- **MOSS-Transcribe-Diarize 0.9B.** Transcript, speaker labels, word timestamps,
+  and acoustic events in one generation over recordings up to 90 minutes, across
+  50+ languages. Diarization is a capability the repo has none of, and no MLX
+  port appeared to exist when surveyed.
+- **ARK-ASR-3B.** Top of the Open ASR Leaderboard, 19 languages, Whisper-style
+  encoder with MLP adapter into a Qwen decoder. A shape this repo already
+  implements twice. Cost is reading their custom `arkasr` remote code closely.
+
+## Deferred or not now
+
+Nothing currently deferred.
+
+## Closed
+
+- **RE-USE reference-denoise.** Shipped 2026-06-21 as
+  `2026-06-14-reuse-voice-ref-mlx`. Pure-MLX SEMamba with a hand-written
+  selective scan, wired into DramaBox as opt-in `denoise_ref=True`. Weights
+  published at `appautomaton/re-use-semamba-mlx` under NSCLv1 (non-commercial).

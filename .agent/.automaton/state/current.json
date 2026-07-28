@@ -1,8 +1,8 @@
 {
-  "active_change": "2026-06-14-reuse-voice-ref-mlx",
-  "stage": "execute",
-  "canonical_spec": ".agent/work/2026-06-14-reuse-voice-ref-mlx/SPEC.md",
-  "canonical_design": ".agent/work/2026-06-14-reuse-voice-ref-mlx/DESIGN.md",
-  "canonical_plan": ".agent/work/2026-06-14-reuse-voice-ref-mlx/PLAN.md",
+  "active_change": "2026-07-27-nemotron-asr-streaming",
+  "stage": "verified",
+  "canonical_spec": ".agent/work/2026-07-27-nemotron-asr-streaming/SPEC.md",
+  "canonical_design": ".agent/work/2026-07-27-nemotron-asr-streaming/DESIGN.md",
+  "canonical_plan": ".agent/work/2026-07-27-nemotron-asr-streaming/PLAN.md",
   "engineering_review": "approved_with_risks"
 }
