@@ -22,8 +22,17 @@ from .config import (
     PromptArgs,
 )
 from .encoder import ConformerBlock, ConformerConvolution, FastConformerEncoder
-from .feature_extraction import NemotronFeatureExtractor
+from .feature_extraction import NemotronFeatureExtractor, NemotronPreprocessor
+from .model import NemotronASRModel, NemotronASRResult
+from .prompt import apply_language_prompt, resolve_prompt_index
 from .subsampling import CausalDwStridingSubsampling
+from .tokenizer import NemotronTokenizer
+from .transducer import (
+    GreedyDecodeResult,
+    JointNetwork,
+    PredictionNetwork,
+    greedy_transducer_decode,
+)
 
 __all__ = [
     "CausalDwStridingSubsampling",
@@ -32,18 +41,28 @@ __all__ = [
     "ConformerConvolution",
     "ConversionReport",
     "FastConformerEncoder",
+    "GreedyDecodeResult",
     "JointArgs",
+    "JointNetwork",
+    "NemotronASRModel",
+    "NemotronASRResult",
     "NemotronFeatureExtractor",
+    "NemotronPreprocessor",
     "NemotronASRConfig",
     "NemotronCheckpoint",
     "NemotronKeyError",
     "PredictArgs",
+    "PredictionNetwork",
     "PreprocessArgs",
     "PromptArgs",
     "RelPositionalEncoding",
     "RelPositionMultiHeadAttention",
+    "NemotronTokenizer",
+    "apply_language_prompt",
     "create_chunked_limited_mask",
     "convert_nemo_state_dict",
     "load_nemotron_checkpoint",
     "load_state_dict_strict",
+    "greedy_transducer_decode",
+    "resolve_prompt_index",
 ]

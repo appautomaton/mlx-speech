@@ -20,6 +20,7 @@ from mlx_speech.models.nemotron_asr.checkpoint import (
     load_state_dict_strict,
 )
 from mlx_speech.models.nemotron_asr.encoder import FastConformerEncoder
+from mlx_speech.models.nemotron_asr.model import NemotronASRModel
 
 CHECKPOINT = Path("models/nvidia/nemotron_3_5_asr_streaming_0_6b/mlx-bf16")
 REFERENCE = Path(
@@ -116,6 +117,13 @@ def test_vocabulary_and_prompt_dictionary_are_extracted() -> None:
     assert config.prompt.prompt_dictionary["en-US"] == 0
     assert config.prompt.prompt_dictionary["auto"] == 101
     assert config.default_att_context_size == (56, 13)
+
+
+def test_full_model_loads_all_converted_parameters_strictly() -> None:
+    checkpoint = load_nemotron_checkpoint(CHECKPOINT)
+    model = NemotronASRModel(checkpoint.config)
+
+    assert load_state_dict_strict(model, checkpoint.state_dict).is_exact_match
 
 
 def test_encoder_activations_match_mlx_audio_reference() -> None:

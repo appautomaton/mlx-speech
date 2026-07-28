@@ -286,7 +286,22 @@ language-ID prompt fusion. First end-to-end transcript.
 `src/mlx_speech/models/nemotron_asr/model.py`,
 `tests/runtime/test_nemotron_decode.py`
 
-**Status:** pending
+**Status:** complete
+**Evidence:** Added the 13,088-row blank-as-pad embedding, two-layer 640-wide
+MLX LSTM prediction network, 1024/640→640 joint projections, single-cell greedy
+decode, max-10-symbol guard, prompt one-hot fusion through `1152→2048→1024`,
+and multilingual vocabulary decoding. Refactored the featurizer buffers into the
+model tree, allowing all 655 converted parameters to load with exact keys and
+shapes. On the pinned 4.14-second FLEURS en-US clip, language-specified and
+`auto` inference produce the same 31-token sequence; `auto` emits and detects
+`<en-US>`. A separate live decode through the pinned mlx-audio encoder,
+prediction, and joint modules is token-identical. `MLX_SPEECH_REQUIRE_CHECKPOINTS=1
+.venv/bin/python -m pytest tests/runtime/test_nemotron_decode.py -q`: 3 passed,
+0 skipped. Combined Slice 2–7 gate: 62 passed, 0 skipped. Ruff passed.
+**Risks / next:** Offline decode is complete. Slice 8 must replace whole-utterance
+encoder execution with persistent incremental mel, subsampling, attention,
+convolution, and RNN-T state, then expose that live session through the public
+ASR adapter/protocol as required by engineering review.
 
 ### Slice 8: Cache-aware streaming — HARD GATE
 

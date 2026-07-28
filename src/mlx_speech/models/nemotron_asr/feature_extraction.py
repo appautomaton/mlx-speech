@@ -5,7 +5,10 @@ from __future__ import annotations
 import math
 
 import mlx.core as mx
+import mlx.nn as nn
 import numpy as np
+
+from .config import PreprocessArgs
 
 _SLANEY_F_SP = 200.0 / 3.0
 _SLANEY_MIN_LOG_HZ = 1000.0
@@ -56,7 +59,7 @@ def _slaney_mel_filters(
     return filters.astype(np.float32)
 
 
-class NemotronFeatureExtractor:
+class NemotronFeatureExtractor(nn.Module):
     """Inference-time NeMo ``AudioToMelSpectrogramPreprocessor`` parity.
 
     NeMo stores ``dither=1e-5`` in the checkpoint config but applies it only
@@ -78,6 +81,7 @@ class NemotronFeatureExtractor:
         log_zero_guard_value: float = 2**-24,
         pad_value: float = 0.0,
     ) -> None:
+        super().__init__()
         if min(sample_rate, n_fft, win_length, hop_length, n_mels) <= 0:
             raise ValueError("feature-extractor dimensions must be positive")
         if win_length > n_fft:
@@ -97,12 +101,9 @@ class NemotronFeatureExtractor:
         self.pad_value = pad_value
 
         filters = _slaney_mel_filters(sample_rate, n_fft, n_mels)
-        self._filters = mx.array(filters)
-
-        window = np.hanning(win_length).astype(np.float32)
-        left = (n_fft - win_length) // 2
-        right = n_fft - win_length - left
-        self._window = mx.array(np.pad(window, (left, right)))
+        # Public names and shapes match the two NeMo featurizer buffers.
+        self.fb = mx.array(filters[None, :, :])
+        self.window = mx.array(np.hanning(win_length).astype(np.float32))
 
     def __call__(self, waveform: mx.array | np.ndarray) -> tuple[mx.array, mx.array]:
         """Return ``(features, lengths)`` as ``[1, T, 128]`` and ``[1]``."""
@@ -125,9 +126,12 @@ class NemotronFeatureExtractor:
             shape=(frame_count, self.n_fft),
             strides=(self.hop_length, 1),
         )
-        spectrum = mx.fft.rfft(frames * self._window, axis=-1)
+        left = (self.n_fft - self.win_length) // 2
+        right = self.n_fft - self.win_length - left
+        window = mx.pad(self.window, ((left, right),))
+        spectrum = mx.fft.rfft(frames * window, axis=-1)
         power = mx.square(mx.abs(spectrum)).astype(mx.float32)
-        mel = self._filters @ mx.transpose(power, (1, 0))
+        mel = self.fb[0] @ mx.transpose(power, (1, 0))
         features = mx.transpose(mx.log(mel + self.log_zero_guard_value), (1, 0))
 
         # NeMo reports floor(samples / hop) valid frames and masks the final
@@ -140,4 +144,27 @@ class NemotronFeatureExtractor:
         )
 
 
-__all__ = ["NemotronFeatureExtractor"]
+class NemotronPreprocessor(nn.Module):
+    """Checkpoint-compatible wrapper retaining ``preprocessor.featurizer``."""
+
+    def __init__(self, args: PreprocessArgs | None = None) -> None:
+        super().__init__()
+        self.args = args or PreprocessArgs()
+        self.featurizer = NemotronFeatureExtractor(
+            sample_rate=self.args.sample_rate,
+            n_fft=self.args.n_fft,
+            win_length=self.args.win_length,
+            hop_length=self.args.hop_length,
+            n_mels=self.args.features,
+            preemphasis=self.args.preemph,
+            dither=self.args.dither,
+            normalize=self.args.normalize,
+            log_zero_guard_value=self.args.log_zero_guard_value,
+            pad_value=self.args.pad_value,
+        )
+
+    def __call__(self, waveform: mx.array | np.ndarray) -> tuple[mx.array, mx.array]:
+        return self.featurizer(waveform)
+
+
+__all__ = ["NemotronFeatureExtractor", "NemotronPreprocessor"]
