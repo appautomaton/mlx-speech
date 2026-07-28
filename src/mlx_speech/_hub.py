@@ -72,6 +72,18 @@ _ASR_MODELS: dict[str, tuple[str, str, str]] = {
         "Qwen3-ASR-1.7B (int8, affine) — English, Chinese, and mixed Chinese/English ASR",
         "qwen3",
     ),
+    # Int8 is the only published Nemotron build. A temporary long-form English
+    # and Mandarin comparison found negligible accuracy differences from bf16.
+    "nemotron-asr-streaming": (
+        "appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx",
+        "Nemotron 3.5 ASR Streaming (int8) — cache-aware multilingual ASR",
+        "nemotron",
+    ),
+    "nemotron-asr-streaming-int8": (
+        "appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx",
+        "Nemotron 3.5 ASR Streaming (int8, affine) — cache-aware multilingual ASR",
+        "nemotron",
+    ),
     # mxfp8 is a supported conversion mode (scripts/convert/qwen3_asr.py --quant
     # mxfp8) but is not published as a downloadable repo — at 8-bit it offers no
     # advantage over int8. Load a locally-built mxfp8 package by path; the

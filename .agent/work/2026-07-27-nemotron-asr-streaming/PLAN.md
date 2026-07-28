@@ -70,8 +70,8 @@ should be fixed or the tests retired.
 | AC8 | O(n) per-frame work, peak memory, RTFx recorded | 9 |
 | AC9 | no torch/NeMo/transformers on inference path | 9 |
 | AC10 | `pytest tests/unit/` green | 9 |
-| AC11 | int8 build within WER tolerance of bf16 | 10 |
-| AC12 | int8 + bf16 published with cards and licenses | 10 |
+| AC11 | int8 English/Mandarin difference reviewed against local bf16 | 10 |
+| AC12 | int8 published with card and license; no bf16 upload | 10 |
 
 ## Slices
 
@@ -424,27 +424,29 @@ tests/unit/ tests/runtime/test_nemotron_purity.py -q`: 584 passed, 0 skipped
 **Risks / next:** The public local-path adapter and streaming protocol are live.
 Short Hugging Face aliases stay release-coupled to Slice 10 so they cannot point
 at nonexistent repos. Slice 10 must build and validate int8, rerun the streaming
-hard gate on it, prepare both cards, then stop at the human publish checkpoint.
+hard gate on it, prepare its card, then stop at the human publish checkpoint.
 
 ### Slice 10: Quantize, card, publish
 
-**Objective:** Produce our own MLX int8 and bf16 builds, write model cards, and
-publish under `appautomaton`.
+**Objective:** Produce our own MLX int8 release build, write its model card, and
+publish it under `appautomaton`; bf16 remains local validation material only.
 **Acceptance criteria:**
-- int8 and bf16 builds produced by `scripts/convert/nemotron_asr.py`, following
-  the repo's existing quantization path.
-- **AC11:** int8 WER on a fixed evaluation set is within an agreed tolerance of
-  bf16. Record size reduction and RTFx for both. If int8 costs more than the
-  tolerance, it does not ship as the default and the bf16 build leads.
+- int8 release and local bf16 reference builds produced by
+  `scripts/convert/nemotron_asr.py`, following the repo's existing quantization
+  path.
+- **AC11:** compare int8 with the local bf16 reference on temporary,
+  uncommitted longer English and Mandarin web recordings with human-provided
+  transcripts. Display WER/CER for the human release decision; do not turn this
+  decision aid into a committed benchmark dataset or evaluator.
 - Streaming hard gate (AC6) re-run against the int8 build. Quantization must not
   break frame identity.
-- Model cards in `scripts/hugging_face/model_cards/appautomaton/`, house format,
+- An int8 model card in `scripts/hugging_face/model_cards/appautomaton/`, house format,
   carrying the upstream license, NVIDIA attribution, the latency table, and the
   three language tiers stated honestly. A card claiming 40 languages without the
   tier breakdown is misleading.
-- **AC12:** `appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx` and
-  `-bf16-mlx` live. Naming follows the current convention (`-int8-mlx`,
-  `-bf16-mlx`), not the older `-8bit-mlx` form.
+- **AC12:** `appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx` live. Naming
+  follows the current `-int8-mlx` convention, not the older `-8bit-mlx` form.
+  No bf16 repository is published.
 - `_hub` resolver and `mlx_speech.asr.load(...)` aliases default to the published
   int8 repo, mirroring `qwen3-asr`.
 - README model table updated.
@@ -457,7 +459,37 @@ uv run pytest tests/unit/ tests/runtime/test_nemotron_streaming.py -q`
 `scripts/hugging_face/model_cards/appautomaton/`, `src/mlx_speech/_hub.py`,
 `README.md`, `docs/nemotron-asr.md`
 
-**Status:** pending
+**Status:** in progress — awaiting human publish checkpoint
+**Evidence:** Produced strict-load local bf16 validation and int8 release packages. The
+bf16 artifact has 655 tensors / 1,276,192,217 bytes; int8 affine group-size 64
+has 1,101 saved tensors (223 quantized module layouts) / 755,732,373 bytes, a
+40.8% reduction. Both retain fp32 preprocessing buffers, OpenMDW-1.1, tokenizer
+assets, source attribution, and explicit safetensors quantization metadata.
+
+A temporary, uncommitted comparison used two 15-minute VOA English programs
+with read-along transcripts and two natural 6.5–7.5-minute Mandarin podcast
+episodes with creator transcripts. Across 2,851 English words, bf16 measured
+3.788% WER and int8 3.823% (+0.035 percentage points). Across 2,679 Mandarin
+characters, bf16 measured 5.972% CER and int8 6.084% (+0.112 points). Inputs,
+transcripts, detailed hypotheses, and results stayed in the system cache and
+were not committed. The user reviewed these displayed results, judged the
+difference negligible, and selected int8 as the only release; no bf16 upload.
+
+Re-ran the architectural streaming gate on both artifacts. Bf16 remains within
+`1.5e-4`; int8's batch-shape quantized arithmetic remains within `2.5e-3`
+(measured max `2.20e-3`). Both builds preserve exact offline/streaming tokens,
+one-feed/ragged-feed equality, predictor state, and final flush behavior. Added
+one house-format int8 card with all three language tiers and the NVIDIA latency
+table, one upload target, int8-only resolver aliases, and bf16/int8 strict-load
+audits. Changed-file Ruff passed.
+`MLX_SPEECH_REQUIRE_CHECKPOINTS=1 .venv/bin/python -m pytest tests/unit/
+tests/checkpoint/test_nemotron_load.py tests/runtime/test_nemotron_decode.py
+tests/runtime/test_nemotron_streaming.py tests/runtime/test_nemotron_purity.py
+-q`: 606 passed, 0 skipped. Hugging Face identity is `tamarher` with the
+`appautomaton` org; the planned int8 repository name is currently absent.
+**Remaining:** Human approval is required before the outward-facing upload.
+After approval, publish the int8 package/card, verify the live repo listing, and
+mark Slice 10 complete.
 
 ## Aggregate verification
 

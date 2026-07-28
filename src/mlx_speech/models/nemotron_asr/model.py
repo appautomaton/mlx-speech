@@ -9,7 +9,12 @@ import mlx.core as mx
 import mlx.nn as nn
 import numpy as np
 
-from .checkpoint import load_nemotron_checkpoint, load_state_dict_strict
+from .checkpoint import (
+    get_quantization_config,
+    load_nemotron_checkpoint,
+    load_state_dict_strict,
+    quantize_nemotron_model,
+)
 from .config import NemotronASRConfig
 from .encoder import FastConformerEncoder
 from .feature_extraction import NemotronPreprocessor
@@ -45,6 +50,13 @@ class NemotronASRModel(nn.Module):
     def from_dir(cls, model_dir: str | Path) -> "NemotronASRModel":
         checkpoint = load_nemotron_checkpoint(model_dir)
         model = cls(checkpoint.config)
+        quantization = get_quantization_config(checkpoint.config)
+        if quantization is not None:
+            quantize_nemotron_model(
+                model,
+                quantization,
+                state_dict=checkpoint.state_dict,
+            )
         load_state_dict_strict(model, checkpoint.state_dict)
         model.eval()
         mx.eval(model.parameters())

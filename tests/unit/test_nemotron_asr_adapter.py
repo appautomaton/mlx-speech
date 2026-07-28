@@ -9,6 +9,7 @@ import pytest
 
 import mlx_speech.asr as asr
 import mlx_speech.asr._adapters.nemotron as adapter_module
+from scripts.hugging_face.upload import MODELS as HF_UPLOAD_MODELS
 from mlx_speech.asr._adapter import ASROutput
 from mlx_speech.asr._adapters.nemotron import NemotronASRAdapter
 
@@ -82,3 +83,19 @@ def test_asr_load_returns_nemotron_adapter(monkeypatch, tmp_path: Path) -> None:
 
     assert isinstance(loaded, NemotronASRAdapter)
     assert loaded._runtime.model_dir == tmp_path
+
+
+def test_nemotron_release_aliases_publish_only_int8() -> None:
+    models = asr.list_models()
+
+    assert models["nemotron-asr-streaming"][0] == (
+        "appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx"
+    )
+    assert models["nemotron-asr-streaming-int8"][0] == (
+        "appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx"
+    )
+    assert HF_UPLOAD_MODELS["nemotron-asr-streaming-int8"][0] == models[
+        "nemotron-asr-streaming-int8"
+    ][0]
+    assert "nemotron-asr-streaming-bf16" not in models
+    assert "nemotron-asr-streaming-bf16" not in HF_UPLOAD_MODELS

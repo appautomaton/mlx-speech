@@ -152,6 +152,7 @@ class NemotronASRConfig:
     default_language: str = "auto"
     default_att_context_size: tuple[int, int] = (56, 13)
     max_symbols: int = 10
+    quantization: dict[str, Any] | None = None
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "NemotronASRConfig":
@@ -174,6 +175,11 @@ class NemotronASRConfig:
             default_language=str(payload.get("default_language", "auto")),
             default_att_context_size=default_context,
             max_symbols=int(payload.get("max_symbols", 10)),
+            quantization=(
+                dict(payload["quantization"])
+                if payload.get("quantization") is not None
+                else None
+            ),
         )
 
     @classmethod
@@ -185,6 +191,8 @@ class NemotronASRConfig:
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["vocabulary"] = list(self.vocabulary)
+        if self.quantization is None:
+            payload.pop("quantization")
         return payload
 
 

@@ -9,9 +9,11 @@ from .checkpoint import (
     ConversionReport,
     NemotronCheckpoint,
     NemotronKeyError,
+    QuantizationConfig,
     convert_nemo_state_dict,
     load_nemotron_checkpoint,
     load_state_dict_strict,
+    quantize_nemotron_model,
 )
 from .config import (
     ConformerArgs,
@@ -53,6 +55,7 @@ __all__ = [
     "NemotronASRConfig",
     "NemotronCheckpoint",
     "NemotronKeyError",
+    "QuantizationConfig",
     "PredictArgs",
     "PredictionNetwork",
     "PreprocessArgs",
@@ -67,6 +70,7 @@ __all__ = [
     "convert_nemo_state_dict",
     "load_nemotron_checkpoint",
     "load_state_dict_strict",
+    "quantize_nemotron_model",
     "greedy_transducer_decode",
     "resolve_prompt_index",
 ]

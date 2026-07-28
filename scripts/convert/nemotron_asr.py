@@ -6,15 +6,27 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import mlx.core as mx
+from mlx.utils import tree_flatten
 
-from mlx_speech.models.nemotron_asr.checkpoint import convert_nemo_state_dict
+from mlx_speech.models.nemotron_asr.checkpoint import (
+    QuantizationConfig,
+    convert_nemo_state_dict,
+    load_state_dict_strict,
+    quantize_nemotron_model,
+)
 from mlx_speech.models.nemotron_asr.config import NemotronASRConfig
+from mlx_speech.models.nemotron_asr.model import NemotronASRModel
 
 DEFAULT_INPUT = Path("models/nvidia/nemotron_3_5_asr_streaming_0_6b/original")
-DEFAULT_OUTPUT = Path("models/nvidia/nemotron_3_5_asr_streaming_0_6b/mlx-bf16")
+DEFAULT_BASE_OUTPUT = Path("models/nvidia/nemotron_3_5_asr_streaming_0_6b")
+_QUANTIZATION = {
+    "bf16": None,
+    "int8": QuantizationConfig(bits=8, group_size=64, mode="affine"),
+}
 
 
 def _build_config(payload: dict) -> NemotronASRConfig:
@@ -117,6 +129,7 @@ def convert(
     output_dir: Path,
     *,
     dtype: mx.Dtype = mx.bfloat16,
+    quantization: QuantizationConfig | None = None,
 ) -> dict[str, int]:
     """Convert one extracted NeMo directory and return audit counts."""
     config = _load_nemo_config(input_dir / "model_config.yaml")
@@ -127,12 +140,22 @@ def convert(
         n_layers=config.encoder.n_layers,
         rnn_layers=config.decoder.pred_rnn_layers,
     )
+    if quantization is not None:
+        model = NemotronASRModel(config)
+        load_state_dict_strict(model, weights)
+        quantize_nemotron_model(model, quantization)
+        weights = tree_flatten(model.parameters(), destination={})
+        config = replace(config, quantization=quantization.to_dict())
 
     output_dir.mkdir(parents=True, exist_ok=True)
     mx.save_safetensors(
         str(output_dir / "model.safetensors"),
         weights,
-        metadata={"format": "mlx", "source": "nvidia-nemo"},
+        metadata={
+            "format": "mlx",
+            "source": "nvidia-nemo",
+            "quantization": "none" if quantization is None else "int8-affine",
+        },
     )
     with (output_dir / "config.json").open("w", encoding="utf-8") as handle:
         json.dump(config.to_dict(), handle, ensure_ascii=False, indent=2)
@@ -159,33 +182,45 @@ def convert(
     return {
         "source_count": report.source_count,
         "destination_count": report.destination_count,
+        "saved_count": len(weights),
         "transformed_count": report.transformed_count,
         "vocabulary_size": len(config.vocabulary),
         "prompt_count": len(config.prompt.prompt_dictionary),
+        "quantized": int(quantization is not None),
     }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-dir", type=Path, default=DEFAULT_INPUT)
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--output-dir", type=Path, default=None)
+    parser.add_argument(
+        "--quant",
+        choices=tuple(_QUANTIZATION),
+        default="int8",
+        help="Build to produce. Default: int8.",
+    )
     parser.add_argument(
         "--dtype",
         choices=("float32", "float16", "bfloat16"),
         default="bfloat16",
     )
     args = parser.parse_args()
+    output_dir = args.output_dir or (DEFAULT_BASE_OUTPUT / f"mlx-{args.quant}")
     summary = convert(
         args.input_dir,
-        args.output_dir,
+        output_dir,
         dtype=getattr(mx, args.dtype),
+        quantization=_QUANTIZATION[args.quant],
     )
     print(
         "Converted Nemotron: "
         f"{summary['source_count']} source -> "
-        f"{summary['destination_count']} MLX tensors; "
+        f"{summary['destination_count']} mapped / "
+        f"{summary['saved_count']} saved MLX tensors; "
         f"{summary['vocabulary_size']} vocabulary entries; "
-        f"{summary['prompt_count']} prompt aliases"
+        f"{summary['prompt_count']} prompt aliases; "
+        f"quantized={bool(summary['quantized'])}"
     )
 
 

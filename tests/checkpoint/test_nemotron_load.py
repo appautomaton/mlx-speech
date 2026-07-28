@@ -10,12 +10,15 @@ from collections import Counter
 from pathlib import Path
 
 import mlx.core as mx
+import mlx.nn as nn
 import numpy as np
 import pytest
 from safetensors import safe_open
 
 from mlx_speech.models.nemotron_asr.checkpoint import (
+    QuantizationConfig,
     expected_nemo_keys,
+    get_quantization_config,
     load_nemotron_checkpoint,
     load_state_dict_strict,
 )
@@ -23,6 +26,7 @@ from mlx_speech.models.nemotron_asr.encoder import FastConformerEncoder
 from mlx_speech.models.nemotron_asr.model import NemotronASRModel
 
 CHECKPOINT = Path("models/nvidia/nemotron_3_5_asr_streaming_0_6b/mlx-bf16")
+INT8_CHECKPOINT = Path("models/nvidia/nemotron_3_5_asr_streaming_0_6b/mlx-int8")
 REFERENCE = Path(
     ".references/mlx-audio/mlx_audio/stt/models/nemotron_asr"
 )
@@ -97,7 +101,11 @@ def test_converted_checkpoint_namespaces_shapes_and_metadata() -> None:
         "prompt_kernel": 4,
         "preprocessor": 2,
     }
-    assert metadata == {"format": "mlx", "source": "nvidia-nemo"}
+    assert metadata == {
+        "format": "mlx",
+        "quantization": "none",
+        "source": "nvidia-nemo",
+    }
     assert shapes == {
         "preprocessor.featurizer.window": [400],
         "preprocessor.featurizer.fb": [1, 128, 257],
@@ -124,6 +132,37 @@ def test_full_model_loads_all_converted_parameters_strictly() -> None:
     model = NemotronASRModel(checkpoint.config)
 
     assert load_state_dict_strict(model, checkpoint.state_dict).is_exact_match
+
+
+@pytest.mark.skipif(
+    not (INT8_CHECKPOINT / "model.safetensors").is_file(),
+    reason="converted Nemotron int8 checkpoint not present",
+)
+def test_int8_checkpoint_layout_and_full_strict_load() -> None:
+    with safe_open(
+        INT8_CHECKPOINT / "model.safetensors", framework="numpy"
+    ) as handle:
+        keys = list(handle.keys())
+        metadata = handle.metadata()
+
+    assert len(keys) == 1_101
+    assert sum(key.endswith(".scales") for key in keys) == 223
+    assert sum(key.endswith(".biases") for key in keys) == 223
+    assert metadata == {
+        "format": "mlx",
+        "quantization": "int8-affine",
+        "source": "nvidia-nemo",
+    }
+
+    checkpoint = load_nemotron_checkpoint(INT8_CHECKPOINT)
+    assert get_quantization_config(checkpoint.config) == QuantizationConfig(
+        bits=8,
+        group_size=64,
+        mode="affine",
+    )
+    model = NemotronASRModel.from_dir(INT8_CHECKPOINT)
+    assert any(isinstance(module, nn.QuantizedLinear) for module in model.modules())
+    assert any(isinstance(module, nn.QuantizedEmbedding) for module in model.modules())
 
 
 def test_encoder_activations_match_mlx_audio_reference() -> None:

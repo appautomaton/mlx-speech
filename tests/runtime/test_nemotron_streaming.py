@@ -15,22 +15,26 @@ from mlx_speech.models.nemotron_asr.streaming import (
     StreamingMelFrontend,
 )
 
-CHECKPOINT = Path("models/nvidia/nemotron_3_5_asr_streaming_0_6b/mlx-bf16")
+CHECKPOINTS = (
+    Path("models/nvidia/nemotron_3_5_asr_streaming_0_6b/mlx-bf16"),
+    Path("models/nvidia/nemotron_3_5_asr_streaming_0_6b/mlx-int8"),
+)
 CLIP = Path(".references/mlx-audio/mlx_audio/stt/tests/mega_asr/fixtures/clean.wav")
 CONTEXT = (56, 3)
 RAGGED_SIZES = (1, 137, 4001, 16_000)
 
 pytestmark = pytest.mark.skipif(
-    not (CHECKPOINT / "model.safetensors").is_file() or not CLIP.is_file(),
-    reason="Nemotron checkpoint or pinned speech fixture not present",
+    not all((path / "model.safetensors").is_file() for path in CHECKPOINTS)
+    or not CLIP.is_file(),
+    reason="Nemotron bf16/int8 checkpoints or pinned speech fixture not present",
 )
 
 
-@pytest.fixture(scope="module")
-def runtime() -> tuple[NemotronASRModel, mx.array]:
+@pytest.fixture(scope="module", params=CHECKPOINTS, ids=("bf16", "int8"))
+def runtime(request) -> tuple[NemotronASRModel, mx.array]:  # type: ignore[no-untyped-def]
     waveform, sample_rate = load_audio(CLIP, sample_rate=16_000, mono=True)
     assert sample_rate == 16_000
-    return NemotronASRModel.from_dir(CHECKPOINT), waveform
+    return NemotronASRModel.from_dir(request.param), waveform
 
 
 def _ragged(waveform: mx.array):  # type: ignore[no-untyped-def]
@@ -78,11 +82,14 @@ def test_streamed_encoder_frames_equal_offline_at_native_chunk_size(
     assert tuple(id(buffer) for buffer in encoder_stream.cache_buffers) == cache_ids
     assert streamed.shape == offline.shape
     assert streamed.shape[1] == int(offline_lengths[0].item())
+    # Quantized matmuls have a larger batch-shape rounding envelope than bf16.
+    # Both thresholds are checkpoint-measured and still gate every output frame.
+    atol = 2.5e-3 if model.config.quantization is not None else 1.5e-4
     np.testing.assert_allclose(
         np.asarray(streamed.astype(mx.float32)),
         np.asarray(offline.astype(mx.float32)),
         rtol=1e-4,
-        atol=1.5e-4,
+        atol=atol,
     )
 
 

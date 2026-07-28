@@ -5,24 +5,24 @@ cache-aware streaming. This port runs the complete inference path in MLX:
 waveform to log-mel features, causal subsampling, 24 encoder blocks, language
 prompt fusion, and greedy RNN-T decoding.
 
-The current package is local-path first:
+The converted packages are:
 
 ```text
 models/nvidia/nemotron_3_5_asr_streaming_0_6b/
   original/   # extracted NVIDIA .nemo checkpoint
-  mlx-bf16/   # converted MLX runtime package
+  mlx-bf16/   # local validation reference; not published
+  mlx-int8/   # published 8-bit affine Linear/Embedding package
 ```
 
-Published bf16 and int8 aliases are added only after their release gate.
+The generic and precision-specific aliases both resolve to the published int8
+package. There is no public bf16 variant.
 
 ## Load and transcribe
 
 ```python
 import mlx_speech
 
-model = mlx_speech.asr.load(
-    "models/nvidia/nemotron_3_5_asr_streaming_0_6b/mlx-bf16"
-)
+model = mlx_speech.asr.load("nemotron-asr-streaming")
 result = model.generate(
     "speech.wav",
     language="en-US",
@@ -106,7 +106,7 @@ zero-shot transcription claims.
 ```bash
 uv run --with torch python scripts/convert/nemotron_asr.py \
   --input-dir models/nvidia/nemotron_3_5_asr_streaming_0_6b/original \
-  --output-dir models/nvidia/nemotron_3_5_asr_streaming_0_6b/mlx-bf16
+  --quant int8
 ```
 
 PyTorch is confined to this offline `.ckpt` reader and is not a project/runtime
@@ -119,10 +119,22 @@ The encoder processes every emitted frame once through every block; it does not
 re-encode overlapping windows. Fixed cache storage remains bounded with utterance
 length. See the reproducible [Apple M5 Max benchmark](./benchmarks/nemotron-asr-streaming-2026-07-27.md).
 
+The int8 weight file is 40.8% smaller than the local bf16 validation artifact.
+A temporary, uncommitted pre-release comparison used two 15-minute VOA
+read-along programs ([part 1](https://www.manythings.org/voa/english/201.html),
+[part 2](https://www.manythings.org/voa/english/202.html)) and two natural
+5 Minute Chinese podcast episodes
+([mattress](https://5minutechinese.buzzsprout.com/1868166/episodes/19511303-experiencing-chinese-customer-service-through-buying-a-mattress),
+[mountain](https://5minutechinese.buzzsprout.com/1868166/episodes/19478937-a-chance-encounter-beyond-the-mountain)).
+Across 2,851 English words, int8 changed WER from 3.788% to 3.823% (+0.035
+percentage points). Across 2,679 Mandarin characters, CER changed from 5.972%
+to 6.084% (+0.112 points). The difference was judged negligible, so only int8
+is published.
+
 ## Current limits
 
 - batch size one
 - greedy RNN-T only
 - no word timestamps or forced alignment
-- bf16 is the validated reference build; int8 validation and publication are a
-  separate release gate
+- the temporary pre-release comparison covered English and Mandarin only; use
+  NVIDIA's upstream evaluation for broader quality claims

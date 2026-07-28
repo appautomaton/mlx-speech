@@ -22,6 +22,28 @@ class NemotronKeyError(ValueError):
 
 
 @dataclass(frozen=True)
+class QuantizationConfig:
+    bits: int = 8
+    group_size: int = 64
+    mode: str = "affine"
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "QuantizationConfig":
+        return cls(
+            bits=int(payload["bits"]),
+            group_size=int(payload["group_size"]),
+            mode=str(payload.get("mode", "affine")),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "bits": self.bits,
+            "group_size": self.group_size,
+            "mode": self.mode,
+        }
+
+
+@dataclass(frozen=True)
 class SourceMapping:
     source: str
     destination: str
@@ -311,16 +333,55 @@ def load_state_dict_strict(
     return report
 
 
+def quantize_nemotron_model(
+    model: nn.Module,
+    quantization: QuantizationConfig,
+    *,
+    state_dict: dict[str, mx.array] | None = None,
+) -> nn.Module:
+    """Quantize eligible Linear/Embedding layers, or recreate a saved layout."""
+    checkpoint_keys = set(state_dict) if state_dict is not None else None
+
+    def should_quantize(path: str, module: Any) -> bool:
+        if not isinstance(module, (nn.Linear, nn.Embedding)):
+            return False
+        if module.weight.shape[-1] % quantization.group_size != 0:
+            return False
+        if checkpoint_keys is None:
+            return True
+        return f"{path}.scales" in checkpoint_keys
+
+    nn.quantize(
+        model,
+        group_size=quantization.group_size,
+        bits=quantization.bits,
+        mode=quantization.mode,
+        class_predicate=should_quantize,
+    )
+    return model
+
+
+def get_quantization_config(
+    config: NemotronASRConfig,
+) -> QuantizationConfig | None:
+    if config.quantization is None:
+        return None
+    return QuantizationConfig.from_dict(config.quantization)
+
+
 __all__ = [
     "AlignmentReport",
     "ConversionReport",
     "NemotronCheckpoint",
     "NemotronKeyError",
+    "QuantizationConfig",
     "SourceMapping",
     "convert_nemo_state_dict",
     "expected_nemo_keys",
+    "get_quantization_config",
     "load_nemotron_checkpoint",
     "load_state_dict_strict",
     "map_nemo_key",
+    "quantize_nemotron_model",
     "validate_state_dict",
 ]
