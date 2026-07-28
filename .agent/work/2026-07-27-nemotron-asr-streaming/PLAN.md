@@ -459,7 +459,7 @@ uv run pytest tests/unit/ tests/runtime/test_nemotron_streaming.py -q`
 `scripts/hugging_face/model_cards/appautomaton/`, `src/mlx_speech/_hub.py`,
 `README.md`, `docs/nemotron-asr.md`
 
-**Status:** in progress — awaiting human publish checkpoint
+**Status:** complete
 **Evidence:** Produced strict-load local bf16 validation and int8 release packages. The
 bf16 artifact has 655 tensors / 1,276,192,217 bytes; int8 affine group-size 64
 has 1,101 saved tensors (223 quantized module layouts) / 755,732,373 bytes, a
@@ -486,10 +486,15 @@ audits. Changed-file Ruff passed.
 tests/checkpoint/test_nemotron_load.py tests/runtime/test_nemotron_decode.py
 tests/runtime/test_nemotron_streaming.py tests/runtime/test_nemotron_purity.py
 -q`: 606 passed, 0 skipped. Hugging Face identity is `tamarher` with the
-`appautomaton` org; the planned int8 repository name is currently absent.
-**Remaining:** Human approval is required before the outward-facing upload.
-After approval, publish the int8 package/card, verify the live repo listing, and
-mark Slice 10 complete.
+`appautomaton` org. After explicit human approval, published
+`appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx` at Hub revision
+`b7f2d0d6c2193a4c36cb0e9d3f09c65fd07d00ae`. All 10 package files committed;
+the remote safetensors resolves from the CDN at exactly 755,732,373 bytes.
+Downloaded the live card, config, OpenMDW-1.1 license, and tokenizer metadata
+back into a system-cache verification directory: every file hash exactly matches
+its local source. The live config records `{bits: 8, group_size: 64, mode:
+affine}`; Hugging Face reports MLX, automatic-speech-recognition, quantized/int8
+tags, and the complete file inventory. No bf16 repository was published.
 
 ## Aggregate verification
 
