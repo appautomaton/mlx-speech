@@ -392,7 +392,9 @@ runtime purity, and document.
 - **O(n) check (AC8):** per-frame work is constant as audio length grows.
   Correctness tests do not catch a regression to buffered streaming; this does.
 - Peak memory (`mx.get_peak_memory()`) and RTFx recorded against the mlx-audio
-  reference. Slower than the reference is a defect, not a tradeoff.
+  reference at 256/512/1024 mel frames. Performance parity means the median over
+  at least nine repeats is within 5% of reference RTFx at each length, with no
+  incremental peak-memory regression. Exceeding either tolerance is a defect.
 - **Purity (AC9):** no torch, NeMo, or transformers import on the inference path.
 - `mlx_speech.asr.load(...)` alias registered, local-path-first.
 - `docs/nemotron-asr.md` written: the two independent knobs, the three language
@@ -416,15 +418,33 @@ guide covering both independent controls, all five latency modes, and NVIDIA's
 incremental peak versus mlx-audio's 28.809× / 2.755 ms / 851.5 MB: steady-state
 throughput is within 0.12% and peak memory is lower. Memory remains bounded as
 duration grows. The tighter `(56,3)` mode measures 9.308× versus 9.637× (3.5%
-slower) with 8.8 MB lower peak; this is recorded as an optimization defect, not
-a tradeoff. `MLX_SPEECH_REQUIRE_CHECKPOINTS=1 .venv/bin/python -m pytest
+slower) with 8.8 MB lower peak; this remains inside the performance-parity band
+and is a non-blocking optimization opportunity. `MLX_SPEECH_REQUIRE_CHECKPOINTS=1 .venv/bin/python -m pytest
 tests/unit/ tests/runtime/test_nemotron_purity.py -q`: 584 passed, 0 skipped
 (579 unit + 5 purity/O(n)). Changed-file Ruff passed; a repo-wide scan reports
 18 pre-existing unrelated DramaBox/Gemma/Fish warnings.
-**Risks / next:** The public local-path adapter and streaming protocol are live.
-Short Hugging Face aliases stay release-coupled to Slice 10 so they cannot point
-at nonexistent repos. Slice 10 must build and validate int8, rerun the streaming
-hard gate on it, prepare its card, then stop at the human publish checkpoint.
+**Risks / next:** none for the current release. Further performance profiling is
+an independent, non-blocking improvement objective.
+
+> **VERIFY-GAP (2026-07-28, auto-verify) — AC8 reference-performance tolerance. [RESOLVED 2026-07-28 gap-fix]**
+> **Severity:** resolved; the original zero-tolerance wording treated normal
+> benchmark variance as a release blocker.
+> **Resolution:** With user approval, SPEC and PLAN now define performance parity
+> as median RTFx within 5% of mlx-audio over at least nine repeats at every
+> measured length, with no incremental peak-memory regression. Further profiling
+> is a separate, non-blocking improvement objective rather than release scope.
+> **Evidence:** The post-correction `(56,13)` nine-repeat medians passed at every
+> measured length: 38.258 vs 39.797 RTFx (256 mel frames; 3.87% slower), 48.370
+> vs 49.177 (512; 1.64% slower), and 51.249 vs 52.503 (1024; 2.39% slower).
+> Incremental peak memory was 4.47–5.07 MB lower at all three lengths. A separate
+> 21-repeat 1024-frame run confirmed 53.693 vs 54.286 RTFx (1.09% slower), while
+> retaining lower incremental peak memory (846,500,164 vs 851,456,228 bytes).
+> `MLX_SPEECH_REQUIRE_CHECKPOINTS=1 .venv/bin/python -m pytest tests/unit/
+> tests/runtime/test_nemotron_purity.py -q` passed 587 tests with zero skips,
+> including constant block-work and runtime purity.
+> **Fix objective:** complete; replace the noise-sensitive zero-tolerance gate
+> with the approved measurable parity band and preserve performance optimization
+> as independent follow-up work.
 
 ### Slice 10: Quantize, card, publish
 

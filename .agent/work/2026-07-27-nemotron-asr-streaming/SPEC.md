@@ -146,7 +146,9 @@ library from a wrapper.
 7. **Runtime:** language-specified and `auto` prompt modes both decode correctly.
 8. **Performance:** per-frame work is constant as audio length grows (O(n) check),
    and peak memory plus RTFx are recorded against the mlx-audio reference.
-   Slower than the reference is a defect.
+   Performance parity means the median over at least nine repeats is within 5%
+   of the reference RTFx at each measured length, with no incremental peak-memory
+   regression. Exceeding either tolerance is a defect.
 9. **Pure MLX:** no torch, NeMo, or transformers import on the inference path.
 10. `pytest tests/unit/` is green.
 11. **Quantization:** an MLX int8 build loads and transcribes. A temporary,
