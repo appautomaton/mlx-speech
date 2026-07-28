@@ -119,7 +119,62 @@ class RelPositionMultiHeadAttention(nn.Module):
 
     def stream(self, query: mx.array, key_value: mx.array, pos_emb: mx.array) -> mx.array:
         """Attend a new chunk to its fixed cached window without a mask."""
-        return self._attention(query, key_value, pos_emb, None)
+        projected_query = self.linear_q(query)
+        key = self.linear_k(key_value)
+        value = self.linear_v(key_value)
+        position = self.linear_pos(pos_emb)
+
+        batch, query_length, _ = projected_query.shape
+        key_length = key.shape[1]
+        position_length = position.shape[1]
+        projected_query = projected_query.reshape(
+            batch, query_length, self.n_heads, self.head_dim
+        )
+        query_u = mx.transpose(
+            projected_query + self.pos_bias_u, (0, 2, 1, 3)
+        )
+        query_v = mx.transpose(
+            projected_query + self.pos_bias_v, (0, 2, 1, 3)
+        )
+        key = mx.transpose(
+            key.reshape(batch, key_length, self.n_heads, self.head_dim),
+            (0, 2, 1, 3),
+        )
+        value = mx.transpose(
+            value.reshape(batch, key_length, self.n_heads, self.head_dim),
+            (0, 2, 1, 3),
+        )
+        position = mx.transpose(
+            position.reshape(
+                position.shape[0], position_length, self.n_heads, self.head_dim
+            ),
+            (0, 2, 1, 3),
+        )
+
+        # Queries are the tail of key_value, not index zero of that window. For
+        # local query i and key k, Transformer-XL needs relative-position index
+        # (query_length - 1) + k - i in the descending 2L-1 position table.
+        position_scores = query_v @ mx.swapaxes(position, -2, -1)
+        query_index = mx.arange(query_length, dtype=mx.int32)[:, None]
+        key_index = mx.arange(key_length, dtype=mx.int32)[None, :]
+        gather_index = query_length - 1 + key_index - query_index
+        position_scores = mx.take_along_axis(
+            position_scores,
+            gather_index[None, None, :, :],
+            axis=-1,
+        )
+
+        output = mx.fast.scaled_dot_product_attention(
+            query_u,
+            key,
+            value,
+            scale=self.scale,
+            mask=position_scores * self.scale,
+        )
+        output = mx.transpose(output, (0, 2, 1, 3)).reshape(
+            batch, query_length, self.d_model
+        )
+        return self.linear_out(output)
 
     def _attention(
         self,

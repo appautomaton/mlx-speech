@@ -58,12 +58,20 @@ class NemotronASRModel(nn.Module):
         language: str,
         att_context_size: tuple[int, int] | None = None,
     ) -> tuple[mx.array, mx.array]:
-        dtype = self.encoder.pre_encode.out.weight.dtype
-        encoded, encoded_lengths = self.encoder(
-            features.astype(dtype),
-            lengths,
-            att_context_size or self.config.default_att_context_size,
-        )
+        from .streaming import StreamingEncoder
+
+        context = att_context_size or self.config.default_att_context_size
+        valid_mel_frames = int(lengths[0].item())
+        stream = StreamingEncoder(self.encoder, att_context_size=context)
+        chunks = stream.feed(features[:, :valid_mel_frames], final=True)
+        if not chunks:
+            encoded = mx.zeros(
+                (1, 0, self.config.encoder.d_model),
+                dtype=mx.float32,
+            )
+        else:
+            encoded = mx.concatenate(chunks, axis=1)
+        encoded_lengths = mx.array([encoded.shape[1]], dtype=mx.int32)
         encoded = apply_language_prompt(
             encoded,
             language,
@@ -128,6 +136,28 @@ class NemotronASRModel(nn.Module):
             language=language,
             att_context_size=att_context_size,
             strip_language_tags=strip_language_tags,
+        )
+
+    def stream_session(
+        self,
+        *,
+        language: str | None = None,
+        att_context_size: tuple[int, int] | list[int] | None = None,
+    ):  # type: ignore[no-untyped-def]
+        """Create a persistent arbitrary-chunk waveform streaming session."""
+        from .prompt import resolve_prompt_index
+        from .streaming import NemotronStreamSession
+
+        selected_language = language or self.config.default_language
+        resolve_prompt_index(selected_language, self.config.prompt)
+        context = att_context_size or self.config.default_att_context_size
+        if len(context) != 2:
+            raise ValueError("att_context_size must be a (left, right) pair")
+        normalized = (int(context[0]), int(context[1]))
+        return NemotronStreamSession(
+            self,
+            language=selected_language,
+            att_context_size=normalized,
         )
 
 

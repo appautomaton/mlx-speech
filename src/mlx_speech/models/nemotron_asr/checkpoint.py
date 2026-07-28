@@ -214,7 +214,8 @@ def convert_nemo_state_dict(
     bias_parts: dict[str, list[mx.array]] = {}
     for key in sorted(weights):
         mapping = map_nemo_key(key, n_layers=n_layers, rnn_layers=rnn_layers)
-        value = _as_mlx(weights[key], dtype)
+        tensor_dtype = mx.float32 if key.startswith("preprocessor.") else dtype
+        value = _as_mlx(weights[key], tensor_dtype)
         if mapping.transform == "conv_layout":
             if value.ndim == 4:
                 value = mx.transpose(value, (0, 2, 3, 1))

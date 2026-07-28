@@ -14,6 +14,7 @@ _SLANEY_F_SP = 200.0 / 3.0
 _SLANEY_MIN_LOG_HZ = 1000.0
 _SLANEY_MIN_LOG_MEL = _SLANEY_MIN_LOG_HZ / _SLANEY_F_SP
 _SLANEY_LOGSTEP = math.log(6.4) / 27.0
+_MEL_COMPUTE_BLOCK = 8
 
 
 def _hz_to_mel(freq: float) -> float:
@@ -129,10 +130,7 @@ class NemotronFeatureExtractor(nn.Module):
         left = (self.n_fft - self.win_length) // 2
         right = self.n_fft - self.win_length - left
         window = mx.pad(self.window, ((left, right),))
-        spectrum = mx.fft.rfft(frames * window, axis=-1)
-        power = mx.square(mx.abs(spectrum)).astype(mx.float32)
-        mel = self.fb[0] @ mx.transpose(power, (1, 0))
-        features = mx.transpose(mx.log(mel + self.log_zero_guard_value), (1, 0))
+        features = self.log_mel_frames(frames, window=window)
 
         # NeMo reports floor(samples / hop) valid frames and masks the final
         # center-padded STFT frame when present.
@@ -142,6 +140,29 @@ class NemotronFeatureExtractor(nn.Module):
         return features[None, :, :].astype(mx.float32), mx.array(
             [valid_frames], dtype=mx.int32
         )
+
+    def log_mel_frames(
+        self, frames: mx.array, *, window: mx.array | None = None
+    ) -> mx.array:
+        """Compute frame features in fixed blocks, independent of feed shape."""
+        if window is None:
+            left = (self.n_fft - self.win_length) // 2
+            right = self.n_fft - self.win_length - left
+            window = mx.pad(self.window, ((left, right),))
+        outputs = []
+        for start in range(0, frames.shape[0], _MEL_COMPUTE_BLOCK):
+            block = frames[start : start + _MEL_COMPUTE_BLOCK]
+            spectrum = mx.fft.rfft(block * window, axis=-1)
+            power = mx.square(mx.abs(spectrum)).astype(mx.float32)
+            mel = self.fb[0].astype(mx.float32) @ mx.transpose(power, (1, 0))
+            outputs.append(
+                mx.transpose(
+                    mx.log(mel + self.log_zero_guard_value), (1, 0)
+                )
+            )
+        if not outputs:
+            return mx.zeros((0, self.n_mels), dtype=mx.float32)
+        return mx.concatenate(outputs, axis=0)
 
 
 class NemotronPreprocessor(nn.Module):

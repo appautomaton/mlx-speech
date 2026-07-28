@@ -364,7 +364,25 @@ predictor-state tests are what make it genuinely live.
 `src/mlx_speech/models/nemotron_asr/model.py`,
 `tests/runtime/test_nemotron_streaming.py`
 
-**Status:** pending
+**Status:** complete
+**Evidence:** Added a live arbitrary-PCM session with fixed-block incremental
+centered STFT, bounded PCM/mel history, incremental 8x subsampling, and 24 pairs
+of fixed ring caches (`[1,56,1024]` attention and `[1,8,1024]` convolution).
+Native chunk boundaries are preserved through the final subsampling tail; the
+streaming attention path has no mask. Cache buffers retain their identities and
+are updated in place. The public lifecycle is available both on
+`NemotronASRModel` and through `mlx_speech.asr.load(local_path)` plus the new
+streaming ASR protocol. On the real 4.14-second clip, all 53×1024 streamed
+encoder values match the independent full-mask oracle within a measured maximum
+absolute difference of `1.24e-4`. Cumulative tokens match offline decode for
+ragged `1,137,4001,16000`-sample feeds; one feed equals many; `finalize()` emits
+the trailing tokens. Predictor `(h,c)` and `last_token` persistence is tested
+directly across a one-sample sub-hop boundary. `MLX_SPEECH_REQUIRE_CHECKPOINTS=1
+.venv/bin/python -m pytest tests/runtime/test_nemotron_streaming.py -q`: 5
+passed, 0 skipped. Combined Slice 2–8 gate: 74 passed, 0 skipped. Ruff passed.
+**Risks / next:** Correctness is hard-gated. Slice 9 must now prove constant
+per-frame work, measure peak memory and RTFx against mlx-audio, audit runtime
+imports for purity, and document the public latency/language contract.
 
 ### Slice 9: Performance validation, purity, and docs
 

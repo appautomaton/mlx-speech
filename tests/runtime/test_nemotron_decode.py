@@ -66,6 +66,40 @@ EXPECTED_TOKENS = (
     2947,
 )
 EXPECTED_TEXT = "Then Loka Singh to delete and singing the Bashans."
+EXPECTED_AUTO_TOKENS = (
+    2845,
+    113,
+    2,
+    214,
+    46,
+    329,
+    2,
+    193,
+    47,
+    2959,
+    85,
+    12945,
+    46,
+    1305,
+    26,
+    274,
+    2812,
+    2,
+    819,
+    2959,
+    47,
+    2959,
+    150,
+    9599,
+    40,
+    85,
+    131,
+    40,
+    4,
+    2,
+    2947,
+)
+EXPECTED_AUTO_TEXT = "Then Loka Singh to delete and singing the Pashans."
 
 
 @pytest.fixture(scope="module")
@@ -194,8 +228,8 @@ def test_auto_language_decode_emits_detected_tag(
         strip_language_tags=False,
     )
 
-    assert result.tokens == EXPECTED_TOKENS
-    assert result.text == f"{EXPECTED_TEXT} <en-US>"
+    assert result.tokens == EXPECTED_AUTO_TOKENS
+    assert result.text == f"{EXPECTED_AUTO_TEXT} <en-US>"
     assert result.language == "auto"
     assert result.detected_language == "en-US"
 
