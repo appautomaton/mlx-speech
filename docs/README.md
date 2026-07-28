@@ -21,11 +21,13 @@ Current guides:
 - [CohereASR](./cohere-asr.md)
 - [Granite Speech ASR](./granite-speech-asr.md)
 - [Qwen3-ASR](./qwen3-asr.md)
+- [Nemotron 3.5 ASR Streaming](./nemotron-asr.md)
 
 Benchmarks:
 
 - [Granite Speech long-audio benchmark, 2026-05-29](./benchmarks/granite-speech-long-audio-2026-05-29.md)
 - [Cohere ASR long-audio benchmark, 2026-05-29](./benchmarks/cohere-asr-long-audio-2026-05-29.md)
+- [Nemotron 3.5 ASR streaming benchmark, 2026-07-27](./benchmarks/nemotron-asr-streaming-2026-07-27.md)
 
 Guide scope:
 

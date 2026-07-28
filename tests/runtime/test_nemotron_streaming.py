@@ -58,11 +58,11 @@ def test_streamed_encoder_frames_equal_offline_at_native_chunk_size(
     encoder_stream = StreamingEncoder(model.encoder, att_context_size=CONTEXT)
     cache_ids = tuple(id(buffer) for buffer in encoder_stream.cache_buffers)
     assert all(
-        layer.attention.buffer.shape == (1, 56, 1024)
+        layer.attention.capacity == 56
         for layer in encoder_stream.layers
     )
     assert all(
-        layer.convolution.buffer.shape == (1, 8, 1024)
+        layer.convolution.capacity == 8
         for layer in encoder_stream.layers
     )
     chunks = []

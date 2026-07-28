@@ -151,18 +151,8 @@ class RelPositionMultiHeadAttention(nn.Module):
             (0, 2, 1, 3),
         )
 
-        # Queries are the tail of key_value, not index zero of that window. For
-        # local query i and key k, Transformer-XL needs relative-position index
-        # (query_length - 1) + k - i in the descending 2L-1 position table.
         position_scores = query_v @ mx.swapaxes(position, -2, -1)
-        query_index = mx.arange(query_length, dtype=mx.int32)[:, None]
-        key_index = mx.arange(key_length, dtype=mx.int32)[None, :]
-        gather_index = query_length - 1 + key_index - query_index
-        position_scores = mx.take_along_axis(
-            position_scores,
-            gather_index[None, None, :, :],
-            axis=-1,
-        )
+        position_scores = self.rel_shift(position_scores)[..., :key_length]
 
         output = mx.fast.scaled_dot_product_attention(
             query_u,

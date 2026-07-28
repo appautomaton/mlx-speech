@@ -405,7 +405,26 @@ benchmark output recorded in the slice evidence.
 **Touches:** `src/mlx_speech/asr/`, `docs/nemotron-asr.md`, `README.md`,
 `tests/runtime/test_nemotron_purity.py`, `tests/unit/`
 
-**Status:** pending
+**Status:** complete
+**Evidence:** Added an exact work counter and runtime-purity gate: every emitted
+encoder frame visits each of 24 blocks once for 256/512/1024-mel inputs, and
+neither source inspection nor a public local-path load/inference imports torch,
+NeMo, or Transformers. Added a reproducible live-chunk benchmark and operational
+guide covering both independent controls, all five latency modes, and NVIDIA's
+19/13/8 locale tiers. On an M5 Max at the default `(56,13)` mode, the nine-run
+10.24-second median is 28.775× RTFx / 2.759 ms per encoder frame / 846.5 MB
+incremental peak versus mlx-audio's 28.809× / 2.755 ms / 851.5 MB: steady-state
+throughput is within 0.12% and peak memory is lower. Memory remains bounded as
+duration grows. The tighter `(56,3)` mode measures 9.308× versus 9.637× (3.5%
+slower) with 8.8 MB lower peak; this is recorded as an optimization defect, not
+a tradeoff. `MLX_SPEECH_REQUIRE_CHECKPOINTS=1 .venv/bin/python -m pytest
+tests/unit/ tests/runtime/test_nemotron_purity.py -q`: 584 passed, 0 skipped
+(579 unit + 5 purity/O(n)). Changed-file Ruff passed; a repo-wide scan reports
+18 pre-existing unrelated DramaBox/Gemma/Fish warnings.
+**Risks / next:** The public local-path adapter and streaming protocol are live.
+Short Hugging Face aliases stay release-coupled to Slice 10 so they cannot point
+at nonexistent repos. Slice 10 must build and validate int8, rerun the streaming
+hard gate on it, prepare both cards, then stop at the human publish checkpoint.
 
 ### Slice 10: Quantize, card, publish
 

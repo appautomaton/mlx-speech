@@ -22,7 +22,7 @@ _SUBSAMPLING_HISTORY = 16
 
 
 class FixedFrameCache:
-    """Fixed-capacity ring buffer for one batch of hidden-state frames."""
+    """Fixed-capacity mirrored ring with a contiguous logical cache view."""
 
     def __init__(
         self,
@@ -35,24 +35,30 @@ class FixedFrameCache:
         if capacity < 0:
             raise ValueError("cache capacity must be non-negative")
         self.capacity = capacity
-        self.buffer = mx.zeros((1, capacity, width), dtype=dtype)
+        self.buffer = mx.zeros((1, 2, capacity, width), dtype=dtype)
         self.length = capacity if initially_full else 0
-        self.write_offset = 0 if initially_full else self.length
+        self.write_offset = 0
+
+    def _flat(self) -> mx.array:
+        return self.buffer.reshape(1, self.capacity * 2, self.buffer.shape[-1])
 
     def values(self) -> mx.array:
-        if self.length == 0:
-            return self.buffer[:, :0]
+        flat = self._flat()
         if self.length < self.capacity:
-            return self.buffer[:, : self.length]
-        if self.write_offset == 0:
-            return self.buffer
-        return mx.concatenate(
-            [
-                self.buffer[:, self.write_offset :],
-                self.buffer[:, : self.write_offset],
-            ],
-            axis=1,
-        )
+            return flat[:, : self.length]
+        return flat[:, self.write_offset : self.write_offset + self.capacity]
+
+    def joined(self, *tails: mx.array) -> mx.array:
+        """Return ordered cached frames plus tails without an intermediate copy."""
+        pieces = []
+        if self.length:
+            pieces.append(self.values())
+        pieces.extend(tail for tail in tails if tail.shape[1])
+        if not pieces:
+            return self.buffer[:, :0]
+        if len(pieces) == 1:
+            return pieces[0]
+        return mx.concatenate(pieces, axis=1)
 
     def append(self, frames: mx.array) -> None:
         if frames.ndim != 3 or frames.shape[0] != 1:
@@ -61,18 +67,20 @@ class FixedFrameCache:
         if count == 0 or self.capacity == 0:
             return
         if count >= self.capacity:
-            self.buffer[:, :] = frames[:, -self.capacity :]
+            tail = frames[:, -self.capacity :]
+            self.buffer[:, :] = tail[:, None]
             self.length = self.capacity
             self.write_offset = 0
             return
-
         first = min(count, self.capacity - self.write_offset)
-        self.buffer[:, self.write_offset : self.write_offset + first] = frames[
-            :, :first
-        ]
+        self.buffer[
+            :,
+            :,
+            self.write_offset : self.write_offset + first,
+        ] = frames[:, None, :first]
         remaining = count - first
         if remaining:
-            self.buffer[:, :remaining] = frames[:, first:]
+            self.buffer[:, :, :remaining] = frames[:, None, first:]
         self.write_offset = (self.write_offset + count) % self.capacity
         self.length = min(self.capacity, self.length + count)
 
@@ -244,6 +252,7 @@ class StreamingEncoder:
         )
         self.consumed_mel_frames = 0
         self.emitted_encoder_frames = 0
+        self.block_frame_evaluations = 0
         self.finalized = False
 
     @property
@@ -273,6 +282,8 @@ class StreamingEncoder:
             self.pending_mel = self.pending_mel[:, :0]
             output.extend(self._subsample_and_encode(tail, final=True))
             self.finalized = True
+        if output:
+            mx.eval(*output)
         return output
 
     def _subsample_and_encode(
@@ -310,6 +321,8 @@ class StreamingEncoder:
 
     def _encode_chunk(self, hidden: mx.array) -> mx.array:
         real_frames = hidden.shape[1]
+        is_native = real_frames == self.chunk_frames
+        self.block_frame_evaluations += real_frames * len(self.encoder.layers)
 
         def native_tail(function, values):  # type: ignore[no-untyped-def]
             if real_frames == self.chunk_frames:
@@ -327,25 +340,29 @@ class StreamingEncoder:
 
         for index, block in enumerate(self.encoder.layers):
             state = self.layers[index]
-            residual = hidden + 0.5 * native_tail(
-                lambda values: block.feed_forward1(
-                    block.norm_feed_forward1(values)
-                ),
-                hidden,
-            )
+            if is_native:
+                residual = hidden + 0.5 * block.feed_forward1(
+                    block.norm_feed_forward1(hidden)
+                )
+            else:
+                residual = hidden + 0.5 * native_tail(
+                    lambda values: block.feed_forward1(
+                        block.norm_feed_forward1(values)
+                    ),
+                    hidden,
+                )
 
-            normalized = native_tail(block.norm_self_att, residual)
-            cached = state.attention.values()
-            key_value = (
-                normalized
-                if cached.shape[1] == 0
-                else mx.concatenate([cached, normalized], axis=1)
+            normalized = (
+                block.norm_self_att(residual)
+                if is_native
+                else native_tail(block.norm_self_att, residual)
             )
+            key_value = state.attention.joined(normalized)
             positions = self.encoder.pos_enc.for_length(
                 key_value.shape[1], hidden.dtype
             )
             attention_query = normalized
-            if normalized.shape[1] < self.chunk_frames:
+            if not is_native:
                 # Keep the fused attention query geometry identical to a native
                 # chunk. Real final-tail queries occupy the trailing positions;
                 # prefix outputs are discarded and never enter either cache.
@@ -364,20 +381,30 @@ class StreamingEncoder:
             residual = residual + attention_output
             state.attention.append(normalized)
 
-            convolution_input = native_tail(block.norm_conv, residual)
-            pointwise = native_tail(block.conv.pointwise_conv1, convolution_input)
+            if is_native:
+                convolution_input = block.norm_conv(residual)
+                pointwise = block.conv.pointwise_conv1(convolution_input)
+            else:
+                convolution_input = native_tail(block.norm_conv, residual)
+                pointwise = native_tail(
+                    block.conv.pointwise_conv1, convolution_input
+                )
             gated = nn.glu(pointwise, axis=-1)
-            convolution_suffix = mx.zeros(
-                (
-                    gated.shape[0],
-                    self.chunk_frames - real_frames,
-                    gated.shape[2],
-                ),
-                dtype=gated.dtype,
-            )
-            convolution_window = mx.concatenate(
-                [state.convolution.values(), gated, convolution_suffix], axis=1
-            )
+            convolution_history = state.convolution.joined(gated)
+            if is_native:
+                convolution_window = convolution_history
+            else:
+                convolution_suffix = mx.zeros(
+                    (
+                        gated.shape[0],
+                        self.chunk_frames - real_frames,
+                        gated.shape[2],
+                    ),
+                    dtype=gated.dtype,
+                )
+                convolution_window = mx.concatenate(
+                    [convolution_history, convolution_suffix], axis=1
+                )
             convolved = block.conv.depthwise_conv(convolution_window)
             state.convolution.append(gated)
             convolved = block.conv.batch_norm(convolved)
@@ -385,15 +412,20 @@ class StreamingEncoder:
             convolved = block.conv.pointwise_conv2(convolved)[:, :real_frames]
             residual = residual + convolved
 
-            residual = residual + 0.5 * native_tail(
-                lambda values: block.feed_forward2(
-                    block.norm_feed_forward2(values)
-                ),
-                residual,
-            )
-            hidden = native_tail(block.norm_out, residual)
+            if is_native:
+                residual = residual + 0.5 * block.feed_forward2(
+                    block.norm_feed_forward2(residual)
+                )
+                hidden = block.norm_out(residual)
+            else:
+                residual = residual + 0.5 * native_tail(
+                    lambda values: block.feed_forward2(
+                        block.norm_feed_forward2(values)
+                    ),
+                    residual,
+                )
+                hidden = native_tail(block.norm_out, residual)
 
-        mx.eval(hidden, *self.cache_buffers)
         return hidden
 
 
