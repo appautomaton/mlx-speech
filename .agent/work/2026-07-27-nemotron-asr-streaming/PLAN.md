@@ -243,7 +243,24 @@ fallbacks.
 **Touches:** `src/mlx_speech/models/nemotron_asr/checkpoint.py`,
 `scripts/convert/nemotron_asr.py`, `tests/checkpoint/test_nemotron_load.py`
 
-**Status:** pending
+**Status:** complete
+**Evidence:** Added a strict, schema-enumerated NeMo remapper and a conversion
+entry point that keeps torch confined to the offline `.ckpt` reader. The real
+checkpoint converts from 657 source tensors to 655 bf16 MLX tensors: all 657
+have audit rows, 77 convolution kernels receive explicit channels-last layout
+transforms, and 8 LSTM tensors receive explicit MLX transforms (the two ih/hh
+bias pairs are intentionally summed into two destinations). Unknown, missing,
+duplicate, or shape-mismatched keys raise. The resulting gitignored artifact is
+1.2 GB and retains both featurizer buffers; config extraction records 13,087
+vocabulary entries and 121 prompt aliases. Encoder keys and shapes load exactly,
+and fixed-input activations match the pinned mlx-audio reference at `rtol=1e-5,
+atol=1e-5`. `MLX_SPEECH_REQUIRE_CHECKPOINTS=1 .venv/bin/python -m pytest
+tests/checkpoint/test_nemotron_load.py -q`: 4 passed, 0 skipped. Combined Slice
+2–6 gate: 51 passed, 0 skipped. Ruff passed.
+**Risks / next:** The converted decoder, joint, and prompt paths are fully
+accounted for by the schema but cannot be model-tree loaded until Slice 7 lands
+those modules. Slice 7 must make that final full-model strict load an explicit
+gate before transcript parity.
 
 ### Slice 7: RNN-T decode and language prompt — first transcript
 

@@ -5,6 +5,14 @@ from .attention import (
     RelPositionMultiHeadAttention,
     create_chunked_limited_mask,
 )
+from .checkpoint import (
+    ConversionReport,
+    NemotronCheckpoint,
+    NemotronKeyError,
+    convert_nemo_state_dict,
+    load_nemotron_checkpoint,
+    load_state_dict_strict,
+)
 from .config import (
     ConformerArgs,
     JointArgs,
@@ -22,14 +30,20 @@ __all__ = [
     "ConformerArgs",
     "ConformerBlock",
     "ConformerConvolution",
+    "ConversionReport",
     "FastConformerEncoder",
     "JointArgs",
     "NemotronFeatureExtractor",
     "NemotronASRConfig",
+    "NemotronCheckpoint",
+    "NemotronKeyError",
     "PredictArgs",
     "PreprocessArgs",
     "PromptArgs",
     "RelPositionalEncoding",
     "RelPositionMultiHeadAttention",
     "create_chunked_limited_mask",
+    "convert_nemo_state_dict",
+    "load_nemotron_checkpoint",
+    "load_state_dict_strict",
 ]

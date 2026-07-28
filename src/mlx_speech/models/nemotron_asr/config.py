@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
+from dataclasses import asdict, dataclass, field, replace
+from pathlib import Path
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -29,6 +32,10 @@ class PreprocessArgs:
     @property
     def hop_length(self) -> int:
         return int(self.window_stride * self.sample_rate)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "PreprocessArgs":
+        return cls(**payload)
 
 
 @dataclass(frozen=True)
@@ -61,6 +68,24 @@ class ConformerArgs:
     use_bias: bool = False
     xscaling: bool = False
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ConformerArgs":
+        values = dict(payload)
+        context = values.get("conv_context_size")
+        if isinstance(context, list):
+            values["conv_context_size"] = tuple(int(value) for value in context)
+        contexts = values.get("att_context_size")
+        if contexts is not None:
+            values["att_context_size"] = tuple(
+                tuple(int(value) for value in item) for item in contexts
+            )
+        default_context = values.get("default_att_context_size")
+        if default_context is not None:
+            values["default_att_context_size"] = tuple(
+                int(value) for value in default_context
+            )
+        return cls(**values)
+
 
 @dataclass(frozen=True)
 class PromptArgs:
@@ -69,6 +94,15 @@ class PromptArgs:
     num_prompts: int = 128
     prompt_hidden: int = 2048
     prompt_dictionary: dict[str, int] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "PromptArgs":
+        values = dict(payload)
+        values["prompt_dictionary"] = {
+            str(key): int(value)
+            for key, value in values.get("prompt_dictionary", {}).items()
+        }
+        return cls(**values)
 
 
 @dataclass(frozen=True)
@@ -80,6 +114,10 @@ class PredictArgs:
     vocab_size: int = 13_087
     blank_as_pad: bool = True
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "PredictArgs":
+        return cls(**payload)
+
 
 @dataclass(frozen=True)
 class JointArgs:
@@ -90,6 +128,10 @@ class JointArgs:
     encoder_hidden: int = 1024
     pred_hidden: int = 640
     num_classes: int = 13_087
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "JointArgs":
+        return cls(**payload)
 
 
 @dataclass(frozen=True)
@@ -108,7 +150,42 @@ class NemotronASRConfig:
         "EncDecRNNTBPEModelWithPrompt"
     )
     default_language: str = "auto"
+    default_att_context_size: tuple[int, int] = (56, 13)
     max_symbols: int = 10
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "NemotronASRConfig":
+        default_context = tuple(
+            int(value)
+            for value in payload.get("default_att_context_size", (56, 13))
+        )
+        encoder = ConformerArgs.from_dict(payload.get("encoder", {}))
+        if "default_att_context_size" not in payload.get("encoder", {}):
+            encoder = replace(encoder, default_att_context_size=default_context)
+        return cls(
+            preprocessor=PreprocessArgs.from_dict(payload.get("preprocessor", {})),
+            encoder=encoder,
+            prompt=PromptArgs.from_dict(payload.get("prompt", {})),
+            decoder=PredictArgs.from_dict(payload.get("decoder", {})),
+            joint=JointArgs.from_dict(payload.get("joint", {})),
+            vocabulary=tuple(str(value) for value in payload.get("vocabulary", ())),
+            model_type=str(payload.get("model_type", "nemotron_asr")),
+            target=str(payload.get("target", cls().target)),
+            default_language=str(payload.get("default_language", "auto")),
+            default_att_context_size=default_context,
+            max_symbols=int(payload.get("max_symbols", 10)),
+        )
+
+    @classmethod
+    def from_path(cls, model_dir: str | Path) -> "NemotronASRConfig":
+        path = Path(model_dir) / "config.json"
+        with path.open(encoding="utf-8") as handle:
+            return cls.from_dict(json.load(handle))
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["vocabulary"] = list(self.vocabulary)
+        return payload
 
 
 __all__ = [
