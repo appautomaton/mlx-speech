@@ -77,3 +77,24 @@ diagnostics, skill trees differed only in the three host-specific
 `HOST-TOOLS.md` files, credential and out-of-scope scans found nothing, and
 `git diff --check` passed. `.venv/bin/python -m pytest tests/unit/`: 582 passed.
 **Risks / next:** none.
+
+## Verification
+
+### Summary
+
+**Overall:** PASS
+**Passed:** 8 of 8 slice criteria
+**Remaining gaps:** none
+
+**Slice 1 — Integrate, validate, and commit the harness upgrade:** PASS, 8
+criteria. Fresh checks proved both stale steering files absent and
+the roadmap byte-identical to the empty contract; found no stale `AGENTS.md`
+references, host paths, credentials, whitespace errors, or out-of-scope commit
+paths; confirmed the 0.4.0 receipt, executable state scripts, JavaScript syntax,
+portable hook launchers, clean Automaton context, and Codex/Claude parity except
+for the three expected host-specific `HOST-TOOLS.md` files. Commit `caaeb9c`
+passed `git show --check`; `.venv/bin/python -m pytest tests/unit/` passed 582
+tests. The virtual-environment invocation replaced the unavailable bare
+`pytest` executable. No checks were skipped. Content inspection confirmed that
+`AGENTS.md` only lost stale sections and `ROADMAP.md` uses the normative empty
+body, so no new prose or anti-slop pattern was introduced.

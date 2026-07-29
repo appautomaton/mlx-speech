@@ -1,6 +1,7 @@
 {
   "active_change": "2026-07-29-automaton-0-4-harness-upgrade",
-  "stage": "execute",
+  "stage": "verified",
   "canonical_spec": ".agent/work/2026-07-29-automaton-0-4-harness-upgrade/SPEC.md",
-  "canonical_plan": ".agent/work/2026-07-29-automaton-0-4-harness-upgrade/PLAN.md"
+  "canonical_plan": ".agent/work/2026-07-29-automaton-0-4-harness-upgrade/PLAN.md",
+  "disengaged": true
 }
