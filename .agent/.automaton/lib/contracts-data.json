@@ -10,20 +10,69 @@
     "agentRoot": ".agent",
     "runtimeRoot": ".agent/.automaton",
     "steeringDir": "steering",
-    "wikiDir": "wiki",
     "workDir": "work"
   },
   "stagePrerequisites": {
     "frame": [],
     "plan": ["canonicalSpec"],
-    "execute": ["canonicalPlan"],
-    "verify": ["canonicalPlan"],
-    "verified": ["canonicalPlan"],
+    "execute": ["canonicalSpec", "canonicalPlan"],
+    "verify": ["canonicalSpec", "canonicalPlan"],
+    "verified": ["canonicalSpec", "canonicalPlan"],
     "resume": []
   },
   "reviewVerdicts": {
-    "product": ["approved", "approved_with_risks", "needs_clarification", "descoped"],
     "engineering": ["approved", "approved_with_risks", "needs_correction"]
+  },
+  "verdictRouting": {
+    "engineering": {
+      "approved": ["auto-execute"],
+      "approved_with_risks": ["auto-execute"],
+      "needs_correction": ["auto-plan"]
+    }
+  },
+  "subagentStatuses": {
+    "implementer": ["DONE", "DONE_WITH_CONCERNS", "NEEDS_CONTEXT", "BLOCKED"],
+    "reviewer": ["APPROVED", "CHANGES_REQUESTED", "BLOCKED"]
+  },
+  "contentFields": {
+    "requiredCore": ["Audience", "Thesis", "Voice", "Content Anti-Goals"],
+    "deferred": ["Channel", "Source Policy", "Factual Risk", "Format"]
+  },
+  "artifactLabels": {
+    "verifyGap": "VERIFY-GAP"
+  },
+  "artifactLint": {
+    "spec": [
+      {
+        "code": "spec_missing_acceptance_criteria",
+        "pattern": "acceptance criteria|requirement matrix",
+        "message": "SPEC.md names no acceptance criteria or requirement matrix"
+      },
+      {
+        "code": "spec_missing_anti_goals",
+        "pattern": "anti-goal",
+        "message": "SPEC.md names no anti-goals"
+      }
+    ],
+    "planSliceHeading": "^###\\s+Slice\\s+(\\S+):",
+    "planSliceFields": [
+      { "code": "slice_missing_objective", "label": "**Objective:**" },
+      { "code": "slice_missing_acceptance_criteria", "label": "**Acceptance criteria:**" },
+      { "code": "slice_missing_verification", "label": "**Verification:**" }
+    ],
+    "planMissingSlices": {
+      "code": "plan_missing_slices",
+      "message": "PLAN.md has no slice headings"
+    },
+    "reviewSections": [
+      {
+        "verdictField": "engineeringReview",
+        "artifactField": "canonicalPlan",
+        "heading": "## Review: Engineering",
+        "code": "engineering_review_section_missing",
+        "message": "engineering_review verdict is set but PLAN.md has no '## Review: Engineering' section"
+      }
+    ]
   },
   "prerequisiteDiagnosticCodes": {
     "canonicalSpec": "missing_canonical_spec",

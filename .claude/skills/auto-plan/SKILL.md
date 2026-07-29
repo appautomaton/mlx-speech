@@ -15,7 +15,7 @@ First action: run `node .agent/.automaton/scripts/get-context.mjs` from the proj
 
 auto-plan builds the smallest plan that makes execution safe while preserving the approved scope. It does not write code or broaden scope beyond the approved spec.
 
-Loading discipline: hold SPEC.md, review state, and source files needed for accurate slices. Read wider project files when understanding existing code informs slice boundaries or verification commands. Read `.agent/.automaton/references/CONTEXT-BUDGET.md` when wider reads threaten context pressure. When locating code or tracing a flow would otherwise pull wide reads into context, you may dispatch the read-only `automaton-librarian` for a one-shot lookup (see `.agent/.automaton/references/LIBRARIAN.md`); it returns evidence, you keep the decision.
+Loading discipline: hold SPEC.md, review state, and source files needed for accurate slices. Read wider project files when understanding existing code informs slice boundaries or verification commands. Read `.agent/.automaton/references/CONTEXT-BUDGET.md` when wider reads threaten context pressure. When a lookup would otherwise pull wide reads into context, dispatch the read-only `automaton-librarian` (see `.agent/.automaton/references/LIBRARIAN.md`): it returns evidence, you keep the decision.
 
 Artifact discipline: `PLAN.md` is the reloadable execution index, not the whole implementation dossier. Keep PLAN.md compact enough to re-read. For large coherent work, summarize slices in PLAN.md and link optional detail files under `.agent/work/<change>/slices/`. Split only for independent outcomes, not because one coherent plan has many requirements.
 
@@ -36,11 +36,9 @@ Load the canonical SPEC.md, linked spec detail that carries normative requiremen
 
 ### Assess Review State (if reviews exist)
 
-If `product_review` exists in `current.json`, read `## Review: Product` in SPEC.md. Address each `approved_with_risks` risk in the plan. Stop and recommend `auto-frame` for `descoped` or `needs_clarification`.
+If `engineering_review` exists in `current.json` for this change, this is a re-plan: read `## Review: Engineering` in the prior PLAN.md and address each correction and `approved_with_risks` risk in the revised plan. Syncing the revised plan clears the standing verdict (`.agent/.automaton/references/ARTIFACT-LIFECYCLE.md`, Review Verdict Routing).
 
-If the engineering approach is complex or risky, recommend `auto-eng-review` before execution.
-
-If SPEC.md contains content fields or produces writing, articles, briefs, decks, newsletters, documentation, or proposals, read `references/content-planning.md`; carry forward channel, source policy, factual risk, and format where they affect execution or verification.
+If SPEC.md contains content fields or produces writing, articles, briefs, decks, newsletters, documentation, or proposals, read `references/content-planning.md`. Carry forward channel, source policy, factual risk, and format where they affect execution or verification.
 
 If SPEC.md names requirement IDs, gap IDs, invariants, audit questions, migration checkpoints, or coverage targets, preserve them in PLAN.md and attach them to satisfying slices. Do not collapse traceable requirements into untraceable prose.
 
@@ -52,7 +50,7 @@ Break work into ordered execution units, not topic buckets. Each slice must be:
 - Independent: it can be executed without loading slices that come after it.
 - Checkpointed only for human input: it marks a pause only when a human must act or choose before the next approved slice can start.
 
-Read `references/slice-examples.md` when uncertain whether a slice is well-designed.
+Read `references/slice-examples.md` when a slice may need the subagent route, or when rendering the topology section.
 
 For content slices, also name the artifact target, allowed sources, factual-risk gate, and format constraint so `auto-execute` does not invent missing context.
 
@@ -83,60 +81,58 @@ Include when useful:
 
 Rules:
 - Every material slice must have a verification command. Verify the exact behavior, not the absence of errors. Include rollback verification for migrations.
-- Every material slice must have acceptance criteria; execution cannot verify vibes.
-- Omitted `Execution` means `direct`. Use `subagent recommended` for broad, cross-subsystem, interface, schema, or review-risk work. Use `subagent required` only for user-requested multi-agent execution or security-critical, production-data, or irreversible-state changes.
-- Omitted `Depends on` means `none`.
-- Continuation is the default. Omitted `Checkpoint after` means `none`, so the next slice may start after verification passes.
-- Verification findings, implementation caveats, downstream consequences, and next-slice recommendations are not checkpoints when the approved plan already names the next slice. Record them as slice evidence or risks and continue.
-- Checkpoint types (`human-verify`, `decision`, `human-action`) are defined once in `.agent/.automaton/references/ARTIFACT-LIFECYCLE.md` (Checkpoint Semantics). Assign a checkpoint only when its definition holds; default to `none`.
-- Keep slices small enough for one session. Move extended instructions to `slices/slice-NNN.md`; split only for independent outcomes.
+- Every material slice must have acceptance criteria. Execution cannot verify vibes.
+- Use `subagent recommended` for broad, cross-subsystem, interface, schema, or review-risk work. Use `subagent required` only for user-requested multi-agent execution or security-critical, production-data, or irreversible-state changes.
+- Continuation is the default. Omitted slice fields carry the defaults pinned in `.agent/.automaton/references/ARTIFACT-LIFECYCLE.md` (Slice Defaults).
+- Checkpoint types are defined once in `.agent/.automaton/references/ARTIFACT-LIFECYCLE.md` (Checkpoint Semantics). Assign a checkpoint only when its definition holds; default to `none`.
+- Keep slices small enough for one session. Move extended instructions to `slices/slice-NNN.md`. Split only for independent outcomes.
+
+<GATE>
+
+Do NOT write PLAN.md if:
+- SPEC.md is missing or unreadable.
+- The scope is still ambiguous after reading SPEC.md.
+
+If any of these are true, recommend `auto-frame` and stop.
+</GATE>
 
 ### Write PLAN.md
 
 Write the plan to `.agent/work/<change>/PLAN.md`.
 
 **Core** sections (always present):
-- **Goal**: one-line bounded goal or SPEC.md pointer; do not mirror the full SPEC text.
+- **Goal**: one-line bounded goal or SPEC.md pointer. Do not mirror the full SPEC text.
 - **Ordered slice sequence**: dependency order, with linked detail files when needed.
 - **Execution routing and topology**: default continuation path, explicit overrides/checkpoints, and a **Parallel-safe groups:** line set to `none` or the slice groups.
 - **Per-slice verification**: one verification command inline on every material slice.
 
-**Conditional** sections appear only when their trigger applies; omit or mark "n/a" otherwise:
-- **Architecture approach:** introduces a new pattern, non-obvious decision, or cross-system integration. Omit when the design is obvious from SPEC.
+**Conditional** sections appear only when their trigger applies. Omit when the trigger does not apply:
+- **Architecture approach:** introduces a new pattern, non-obvious decision, or cross-system integration. Name the contestable decisions and their tradeoffs plainly; a review can only bite what the plan states. Omit when the design is obvious from SPEC.
 - **Requirement traceability:** SPEC names gap IDs, invariant IDs, audit questions, migration checkpoints, or coverage targets. Omit when the SPEC has no traceable IDs.
 - **Aggregate verification commands table:** ≥ 3 slices or commands not captured per-slice. Per-slice inline suffices for smaller plans (index over transcript).
 
-Apply the Artifact Signal Discipline rules from `.agent/.automaton/references/ARTIFACT-LIFECYCLE.md` while writing: no mirror sections, index over transcript, append-replace not stack. Replace prior `## Review:` sections on re-run for the same change. Do not stack reviews.
+Apply the Artifact Signal Discipline rules from `.agent/.automaton/references/FRAMEWORK.md` while writing. Preserve existing `## Review:` sections on re-run unless the user explicitly requests consolidation. Review skills replace their own sections.
 
-### Write DESIGN.md (if non-trivial)
+### Write DESIGN.md (if it earns existence)
 
-Write `.agent/work/<change>/DESIGN.md` only for non-trivial architecture or new patterns. Keep it under 200 lines; skip it when the approach is obvious from SPEC.
-
-<GATE>
-
-Do NOT write PLAN.md if:
-- SPEC.md is missing or unreadable.
-- `product_review` is `descoped` or `needs_clarification`.
-- The scope is still ambiguous after reading SPEC.md.
-
-If any of these are true, recommend `auto-frame` and stop.
-</GATE>
+Write `.agent/work/<change>/DESIGN.md` only when all three hold: the decision is hard to reverse, a future reader would be surprised without context, and it resolved a real trade-off between genuine alternatives. Any one missing means the rationale lives in PLAN.md prose. Keep it under 200 lines so it stays a reloadable contract rather than a dossier.
 
 ### Update State
 
 Run `node .agent/.automaton/scripts/sync-status.mjs --canonical-plan ".agent/work/<change>/PLAN.md" --stage plan` from the project root. Add `--canonical-design ".agent/work/<change>/DESIGN.md"` when DESIGN.md was written.
+
+### Hand Off
+
+Planning always stops. The edge's why: `.agent/.automaton/references/ARTIFACT-LIFECYCLE.md` (Handoff Contract).
+
+Report the slice count, the execution topology, and any checkpoint. Then end the turn with `**Next:** auto-execute, <reason>`, or `**Next:** auto-eng-review, <reason>` when the plan carries non-trivial engineering risk.
 
 ## Output
 
 - `PLAN.md`: written to `.agent/work/<change>/PLAN.md`
 - `DESIGN.md`: written to `.agent/work/<change>/DESIGN.md` (if needed)
 - `.agent/.automaton/state/current.json`: records `canonical_design` (when written), `canonical_plan`, and `stage: plan` through `sync-status.mjs`
-- Handoff (always stops): `Next: auto-eng-review` (optional review) or `Next: auto-execute`.
 
 ## Rules
 
-- Prefer the smallest correct design.
-- Remove placeholders instead of preserving them.
-- Do not broaden scope to cover hypothetical future work.
-- Preserve review sections on refresh unless the user explicitly requests consolidation.
-- Every material slice must have acceptance criteria and an explicit verification command.
+- Do not add slices the approved SPEC does not call for. Scope questions return to `auto-frame`; planning never expands scope.

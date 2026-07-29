@@ -7,6 +7,11 @@ Per-call dispatch slots for the `automaton-implementer` subagent. The static rol
 {SLICE_TEXT}
 </slice>
 
+<edit-scope>
+{FILES_OR_DIRECTORIES_THE_IMPLEMENTER_MAY_MODIFY}
+Unlisted paths are read-only.
+</edit-scope>
+
 <constraints>
 {CONSTRAINTS}
 </constraints>

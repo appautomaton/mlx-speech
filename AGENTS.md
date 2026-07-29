@@ -13,7 +13,6 @@ session.
 - **Machine state:** `.agent/.automaton/state/current.json` — names the active
   change and stage. Update it only via `.agent/.automaton/scripts/sync-status.mjs`,
   never by hand.
-- **Steering:** `.agent/steering/{PROJECT,REQUIREMENTS,ROADMAP}.md`
 - **Work artifacts:** `.agent/work/<change>/{SPEC,DESIGN,PLAN}.md`
 - **Stages:** `frame → plan → execute → verify → verified`
 
@@ -73,14 +72,6 @@ docs/               # Model-family behavior guides
 - Comments and docs: short, explicit, high-signal.
 - Scope is defined in the active plan. Do not broaden beyond it.
 - No `Co-Authored-By` lines in git commits.
-
-## Runtime State
-
-`MossTTSLocal` v0 is complete and operational — not a skeleton.
-
-- Default: `mlx-int8` weights, `W8Abf16` mixed precision, global + local KV cache.
-- `--no-kv-cache` is a debug fallback only. KV cache default is settled.
-- Inference modes: direct generation, clone, continuation, continuation + clone.
 
 ## Testing
 

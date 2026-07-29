@@ -37,7 +37,6 @@ const STATE_FIELDS = [
   { camel: 'canonicalSpec', snake: 'canonical_spec', flag: '--canonical-spec' },
   { camel: 'canonicalDesign', snake: 'canonical_design', flag: '--canonical-design' },
   { camel: 'canonicalPlan', snake: 'canonical_plan', flag: '--canonical-plan' },
-  { camel: 'productReview', snake: 'product_review', flag: '--product-review' },
   { camel: 'engineeringReview', snake: 'engineering_review', flag: '--engineering-review' }
 ]
 
@@ -156,7 +155,6 @@ function diagnoseState(state, projectRoot) {
 
   const diagnostics = []
   const validStages = new Set(contracts.stages ?? [])
-  const productVerdicts = new Set(contracts.reviewVerdicts?.product ?? [])
   const engineeringVerdicts = new Set(contracts.reviewVerdicts?.engineering ?? [])
   let invalidStage = false
   let stageIsValid = false
@@ -182,12 +180,6 @@ function diagnoseState(state, projectRoot) {
       }
     }
 
-    if (state.productReview !== undefined && state.productReview !== null) {
-      if (!productVerdicts.has(state.productReview)) {
-        diagnostics.push(diagnostic('error', 'invalid_product_review', `unrecognized product_review verdict: ${state.productReview}`))
-      }
-    }
-
     if (state.engineeringReview !== undefined && state.engineeringReview !== null) {
       if (!engineeringVerdicts.has(state.engineeringReview)) {
         diagnostics.push(diagnostic('error', 'invalid_engineering_review', `unrecognized engineering_review verdict: ${state.engineeringReview}`))
@@ -199,6 +191,55 @@ function diagnoseState(state, projectRoot) {
     for (const { field, code, level } of contracts.canonicalPointerChecks ?? []) {
       if (state[field] && !existsSync(join(projectRoot, state[field]))) {
         diagnostics.push(diagnostic(level, code, `${field} points to ${state[field]} but file does not exist`))
+      }
+    }
+  }
+
+  return diagnostics
+}
+
+// L2 artifact-shape lint. Warning-level only: it surfaces gaps for the writing
+// skill to judge, it never blocks a sync. L1 stage/pointer checks above stay the
+// only error-level gate.
+function lintArtifacts(state, projectRoot) {
+  const lint = contracts?.artifactLint
+  if (!lint) {
+    return []
+  }
+
+  const diagnostics = []
+
+  if (state.canonicalSpec) {
+    const specPath = join(projectRoot, state.canonicalSpec)
+    if (existsSync(specPath)) {
+      const spec = readFileSync(specPath, 'utf8')
+      for (const check of lint.spec ?? []) {
+        if (!new RegExp(check.pattern, 'i').test(spec)) {
+          diagnostics.push(diagnostic('warning', check.code, check.message))
+        }
+      }
+    }
+  }
+
+  if (state.canonicalPlan && lint.planSliceHeading) {
+    const planPath = join(projectRoot, state.canonicalPlan)
+    if (existsSync(planPath)) {
+      const plan = readFileSync(planPath, 'utf8')
+      const headings = [...plan.matchAll(new RegExp(lint.planSliceHeading, 'gm'))]
+
+      if (headings.length === 0 && lint.planMissingSlices) {
+        diagnostics.push(diagnostic('warning', lint.planMissingSlices.code, lint.planMissingSlices.message))
+      }
+
+      for (let i = 0; i < headings.length; i += 1) {
+        const end = i + 1 < headings.length ? headings[i + 1].index : plan.length
+        const body = plan.slice(headings[i].index, end)
+        for (const field of lint.planSliceFields ?? []) {
+          if (!body.includes(field.label)) {
+            const fieldName = field.label.replaceAll('*', '').replace(':', '')
+            diagnostics.push(diagnostic('warning', field.code, `slice ${headings[i][1]} lacks ${fieldName}`))
+          }
+        }
       }
     }
   }
@@ -250,7 +291,6 @@ function applyStatePatch(currentState, patch) {
       'canonicalSpec',
       'canonicalDesign',
       'canonicalPlan',
-      'productReview',
       'engineeringReview'
     ])
   }
@@ -259,13 +299,26 @@ function applyStatePatch(currentState, patch) {
     clearUnlessPatched(nextState, patch, [
       'canonicalDesign',
       'canonicalPlan',
-      'productReview',
       'engineeringReview'
     ])
   }
 
-  if (patch.canonicalPlan !== undefined && patch.canonicalPlan !== currentState.canonicalPlan) {
+  // A verdict describes the plan content that was synced with it. A re-plan
+  // rewrites the same PLAN.md path, so the clear keys on the patch itself, not
+  // on a path change: otherwise needs_correction outlives the re-plan and
+  // deadlocks execute's entry gate.
+  if (patch.canonicalPlan !== undefined) {
     clearUnlessPatched(nextState, patch, ['engineeringReview'])
+  }
+
+  // The harness disengages when a change verifies: the session hook quiets
+  // until new work starts. The flag is derived from syncs, never set by hand:
+  // the verified sync sets it, and any sync that starts or advances work
+  // clears it.
+  if (patch.stage === 'verified') {
+    nextState.disengaged = true
+  } else if (patch.stage !== undefined || patch.activeChange !== undefined) {
+    delete nextState.disengaged
   }
 
   return nextState
@@ -294,7 +347,10 @@ if (args.changed.length > 0) {
   const nextState = applyStatePatch(loaded.state, args.patch)
   const diagnostics = loaded.diagnostics.length > 0
     ? loaded.diagnostics
-    : diagnoseState(nextState, resolve(root))
+    : [
+        ...diagnoseState(nextState, resolve(root)),
+        ...lintArtifacts(nextState, resolve(root))
+      ]
   const hasError = diagnostics.some((item) => item.level === 'error')
 
   result.statePath = statePath

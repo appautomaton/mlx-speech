@@ -3,7 +3,6 @@ import { join } from 'node:path'
 
 import {
   isValidStage,
-  isValidProductReview,
   isValidEngineeringReview,
   STAGE_PREREQUISITES,
   PREREQUISITE_DIAGNOSTIC_CODES,
@@ -36,12 +35,6 @@ export function validateState(state) {
     if (state[field] === undefined || state[field] === null) {
       const code = PREREQUISITE_DIAGNOSTIC_CODES[field] ?? `missing_${field}`
       diagnostics.push(diagnostic('error', code, `${state.stage} stage requires ${field}`))
-    }
-  }
-
-  if (state.productReview !== undefined && state.productReview !== null) {
-    if (!isValidProductReview(state.productReview)) {
-      diagnostics.push(diagnostic('error', 'invalid_product_review', `unrecognized product_review verdict: ${state.productReview}`))
     }
   }
 

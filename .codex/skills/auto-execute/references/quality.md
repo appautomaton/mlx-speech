@@ -2,36 +2,16 @@
 
 Load this reference only before marking a slice complete or when editing code, tests, docs, or project artifacts.
 
-## Execute Anti-Patterns
+**The test:** if the diff looks clever rather than inevitable from the plan, simplify it.
+
+Failures that pass the test but still sink a slice:
 
 - Obvious comments: prose that restates what the next line of code does.
-- Unnecessary abstraction: helpers, wrappers, or indirection not required by the plan.
-- Defensive boilerplate: branches for impossible states without evidence from the codebase.
+- Defensive boilerplate: branches for impossible states, with no evidence from the codebase that they occur.
 - Style drift: patterns that ignore local naming, error handling, or test conventions.
-- Unrelated cleanup: opportunistic edits outside the active slice.
+- Unrelated cleanup: opportunistic edits outside the active slice. Note them as follow-up instead.
 - Evidence theater: claiming completion before verification exists.
 
-## Better Shape
+Record what changed and what the verification observed, not how the work went.
 
-- Match existing local patterns before introducing a new one.
-- Keep edits within the touched files or subsystems named by the slice.
-- Record concrete evidence: files changed, commands run, outcomes observed.
-- If cleanup is needed but unrelated, note it as follow-up instead of doing it.
-
-## Prose Hygiene
-
-Execution artifacts attract obvious comments and inflated summaries. Orchestration notes should record what happened, not sell what was accomplished.
-
-Scan for:
-- Comments that restate what the next line does
-- "successfully" in completion notes: either it passed or it failed
-- "crucial fix", "important improvement": name the bug or delta
-- Sycophantic openers in subagent dispatch ("Great work on...")
-- -ing summaries ("highlighting the completion of...", "ensuring the stability of...")
-
-Before: "Successfully implemented the crucial authentication middleware, ensuring robust security across all endpoints."
-After: "Added verifyToken middleware to 4 protected routes. Tests pass. 401 on invalid token confirmed."
-
-## Final Check
-
-If the diff looks clever rather than inevitable from the plan, simplify it.
+Prose patterns: `.agent/.automaton/references/ANTI-SLOP.md`.

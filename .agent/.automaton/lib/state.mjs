@@ -8,7 +8,6 @@ const FIELD_MAP = [
   ['canonicalSpec', 'canonical_spec'],
   ['canonicalDesign', 'canonical_design'],
   ['canonicalPlan', 'canonical_plan'],
-  ['productReview', 'product_review'],
   ['engineeringReview', 'engineering_review']
 ]
 

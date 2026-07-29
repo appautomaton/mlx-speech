@@ -1,8 +1,6 @@
 {
-  "active_change": "2026-07-27-nemotron-asr-streaming",
-  "stage": "verified",
-  "canonical_spec": ".agent/work/2026-07-27-nemotron-asr-streaming/SPEC.md",
-  "canonical_design": ".agent/work/2026-07-27-nemotron-asr-streaming/DESIGN.md",
-  "canonical_plan": ".agent/work/2026-07-27-nemotron-asr-streaming/PLAN.md",
-  "engineering_review": "approved_with_risks"
+  "active_change": "2026-07-29-automaton-0-4-harness-upgrade",
+  "stage": "execute",
+  "canonical_spec": ".agent/work/2026-07-29-automaton-0-4-harness-upgrade/SPEC.md",
+  "canonical_plan": ".agent/work/2026-07-29-automaton-0-4-harness-upgrade/PLAN.md"
 }

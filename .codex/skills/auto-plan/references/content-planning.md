@@ -4,7 +4,7 @@ Load this reference when `SPEC.md` has content fields or the change is about wri
 
 ## Inputs From Framing
 
-Carry these Pass 1 fields into every content slice:
+Carry these framing fields into every content slice:
 
 | Field | Planning use |
 | --- | --- |
@@ -13,9 +13,9 @@ Carry these Pass 1 fields into every content slice:
 | Voice | Constrains tone, sentence rhythm, formality, and point of view. |
 | Content Anti-Goals | Defines what the artifact must not sound like or do. |
 
-If any field is missing, add a planning assumption or a blocking question. Do not let execution invent it.
+If a required-core field (Audience, Thesis, Voice, Content Anti-Goals) is missing from SPEC.md, that is a framing gap: stop and ask, or recommend `auto-frame`. Never fill it with a planning assumption. Assumptions are for the deferred dimensions below, and only when execution does not hinge on the answer.
 
-## Pass 2 Slice Constraints
+## Deferred Dimensions
 
 Add these when they affect execution or verification:
 
@@ -47,13 +47,13 @@ Prefer Markdown-first artifacts unless SPEC.md names a different format.
 ### Slice: Draft Technical Blog Outline
 
 - **Artifact target:** `.agent/work/<change>/outline.md`
-- **Inputs:** SPEC.md audience, thesis, voice, anti-goals; source notes in `research.md`
+- **Inputs:** SPEC.md audience, thesis, voice, anti-goals. Source notes in `research.md`
 - **Constraints:** channel = blog, format = outline, factual risk = medium
 - **Verification:** check headings support the thesis, name the audience, and include source placeholders for factual claims
 
 ### Slice: Rewrite Documentation Page
 
 - **Artifact target:** `docs/foo.md`
-- **Inputs:** existing doc and SPEC.md voice direction
+- **Inputs:** existing doc and SPEC.md voice
 - **Constraints:** channel = docs site, source policy = existing repo only, format = reference doc
 - **Verification:** run markdown/lint tests when available and inspect for audience fit, preserved facts, and anti-goal violations

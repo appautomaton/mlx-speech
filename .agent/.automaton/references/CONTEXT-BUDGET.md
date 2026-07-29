@@ -2,75 +2,52 @@
 
 Internal guidelines for preserving reasoning headroom across multi-session agentic work.
 
-## Principles
+## Artifact Language Boundary
 
-1. **Context is finite.** Every token loaded reduces headroom for reasoning. Treat context like memory, not storage.
-2. **Load progressively.** Start with the smallest artifact that unlocks the next decision. Load more only when needed.
-3. **Never re-read.** If you loaded a file in this session, do not read it again unless the user explicitly requests it, you know it has changed, or you are running a verification step that requires fresh evidence.
-4. **Generate summaries, not transcripts.** When reporting findings, compress 500 lines of evidence into 5 lines of conclusion.
-5. **Keep artifacts concrete.** Do not write context-budget fields, token-allocation notes, or percentage estimates into SPEC.md, PLAN.md, slice detail files, or evidence blocks. Artifacts record objectives, acceptance criteria, verification, dependencies, status, evidence, risks, and links.
+Loading is a decision you make during the session. It is not a fact the artifacts record.
+
+**Keep artifacts concrete.** Do not write context-budget fields, token-allocation notes, or percentage estimates into SPEC.md, PLAN.md, slice detail files, or evidence blocks. Artifacts record objectives, acceptance criteria, verification, dependencies, status, evidence, risks, and links. Context-size estimates in PLAN.md are the common form of this mistake: when slice instructions outgrow the plan index, the answer is a `Detail: slices/slice-NNN.md` link, not a note about how large the slice is.
+
+Report findings as conclusions rather than transcripts. The evidence you read stays in the session. The artifact carries what it proved.
 
 ## Progressive Loading Order
 
 When entering any stage, load files in this order. Stop as soon as you have enough context to proceed.
 
 ```
-1. .agent/.automaton/state/current.json (always, < 50 tokens)
-2. SPEC.md               (if canonical_spec exists, < 1000 tokens)
-3. PLAN.md               (if executing, < 1000 tokens)
-4. Wiki pages            (only if referenced by spec or plan)
-5. Source files          (read as needed to understand the project and produce accurate work)
+1. .agent/.automaton/state/current.json   (always, tiny)
+2. SPEC.md      (if canonical_spec exists)
+3. PLAN.md      (if executing or verifying)
+4. Linked detail files (spec/*.md and similar, only when referenced by spec or plan)
+5. Source files (read those the current decision requires)
 ```
 
-## Artifact Language Boundary
+## Degradation Signals
 
-Use this guide to decide what to load, link, summarize, or checkpoint. Do not turn the heuristic into durable artifact prose.
+You cannot reliably measure your own context usage. Watch behavior, not percentages:
 
-| Instead of... | Use... |
-|---------------|--------|
-| Context-size estimates in PLAN.md | `Detail: slices/slice-NNN.md` when slice instructions are too large for the plan index |
-| "This is a big change" | "This requires three independently verifiable slices" |
-| "Read the whole codebase" | "Load files named by the active slice; scan wider only when correctness requires it" |
-| "Re-read the spec" | "The spec is already loaded. Summarize the relevant section unless this is a verification step." |
+- **Silent partial completion.** Work is claimed done but the implementation is incomplete.
+- **Increasing vagueness.** "Appropriate handling" or "standard patterns" replace specific code and paths.
+- **Skipped steps.** Protocol steps that would normally run are omitted.
+- **Lost conclusions.** Re-deriving or contradicting something settled earlier in the session.
 
-## Session Headroom
+When the host surfaces actual context usage, treat it as corroboration: above roughly half, conserve. Near exhaustion, checkpoint. Do not guess percentages the host does not report.
 
-**Rule of thumb:** Keep loaded context under 60% of total window. The remaining 40% is for reasoning and response generation.
+## Conserve Then Checkpoint
 
-## Context Degradation Tiers
+Two responses, in order:
 
-Monitor context usage and adjust behavior accordingly. These are behavioral rules, not hard limits.
+1. **Conserve.** Stop new wide reads. In skills that carry `references/HOST-TOOLS.md`, dispatch the librarian for lookups instead of reading inline. Summarize aggressively. Finish the current slice before starting anything new.
+2. **Checkpoint.** When signals persist after conserving, record slice evidence and durable state, then stop with a clear next action. A clean checkpoint beats a degraded continuation.
 
-| Tier | Usage | Behavior |
-|------|-------|----------|
-| **PEAK** | 0–30% | Full operations. Read bodies, spawn multiple agents, inline results. |
-| **GOOD** | 30–50% | Normal operations. Prefer frontmatter reads, delegate aggressively. |
-| **DEGRADING** | 50–70% | Economize. Frontmatter-only reads, minimal inlining, warn user about context pressure. |
-| **EMERGENCY** | 70%+ | Halt new work. Checkpoint progress immediately. No new reads unless critical. |
+## Re-Read Rule
 
-**Warning signs before panic thresholds fire:**
+Default: a file read this session stays usable from memory. Re-read it when any of these hold:
 
-- **Silent partial completion.** Agent claims task is done but implementation is incomplete.
-- **Increasing vagueness.** Phrases like "appropriate handling" or "standard patterns" replace specific code.
-- **Skipped steps.** Agent omits protocol steps it would normally follow.
+- The user asks you to.
+- You wrote to it and need to verify the write.
+- It is known to have changed.
+- The current skill is an explicit verification pass and fresh evidence is part of the acceptance criteria.
+- The session was compacted, or you are no longer sure what it said.
 
-When you see these, assume context pressure and move to a higher tier of conservation.
-
-## Anti-Patterns
-
-- **Broad scans.** `find . -name "*.js" | xargs cat` loads the entire codebase. Never do this.
-- **Greedy wiki loading.** Loading every file in `.agent/wiki/` because "they might be useful."
-- **Artifact bloat.** SPEC.md that is 800 lines long. Link detail under `spec/*.md` or move architecture rationale to DESIGN.md.
-- **Re-read loops.** Reading `package.json` three times in one session because it was not held in working memory.
-
-## No-Re-Read Rule
-
-**Absolute rule:** Once a file is read in a session, it stays loaded. Do not read it again.
-
-**Exceptions:**
-- The user explicitly asks you to re-read it.
-- You wrote to the file and need to verify the write.
-- The file is known to have changed (e.g., you ran a command that mutates it).
-- The current skill is an explicit verification pass, such as `auto-verify`, and fresh evidence is part of the acceptance criteria.
-
-**If you cannot remember what a file said:** Summarize from your existing context rather than re-reading.
+**If you cannot remember what a file said, re-read the specific section.** Answering from a confident guess is worse than the second read.

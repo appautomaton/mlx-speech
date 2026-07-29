@@ -29,66 +29,74 @@ Before producing the recovery summary:
 
 ### Load State
 
-Read `.agent/.automaton/references/ARTIFACT-LIFECYCLE.md` for recovery order, stale-pointer handling, and stage handoffs.
-
 <STOP>
 
 Halt and report when:
 - `.agent/` does not exist or `current.json` is missing.
 
-Recommend `auto-onboard` and stop. Do not attempt recovery without a state file.
+Recommend `automaton install` to scaffold `.agent/`, then stop. Do not attempt recovery without a state file.
 </STOP>
 
 If work is complete or absent, read `.agent/steering/ROADMAP.md` only to surface pending phases as context.
 
 ### Verify Artifact Integrity
 
-Check that `canonical_spec`, `canonical_design`, and `canonical_plan` resolve when present. If any pointer is stale, report it plainly; recommend `auto-onboard` for missing steering, `auto-frame` for missing SPEC.md, or `auto-plan` for missing PLAN.md.
+Check that `canonical_spec`, `canonical_design`, and `canonical_plan` resolve when present. If any pointer is stale, report it plainly. Recommend `auto-frame` for missing SPEC.md or `auto-plan` for missing PLAN.md.
 
 ### Load Artifacts
 
-Treat `current.json` as the only source for active change, stage, and canonical artifact pointers. Load artifacts in dependency order and stop at the current stage; read `references/artifact-order.md` for the full stage table.
+Treat `current.json` as the only source for active change, stage, and canonical artifact pointers. Load artifacts in dependency order and stop at the current stage. Read `references/artifact-order.md` for the full stage table.
+
+### Reconcile Execution Ledger
+
+When stage is `execute` or `verify` and the project is a git repo, read the execution ledger before summarizing: `git log --oneline -15` and `git status --porcelain`. Per-slice commits (`slice N: ...`, `slice N gap-fix: ...`) mark verified slices; match them against `PLAN.md` slice evidence. A dirty tree on top of the last slice commit is in-flight work for the next slice, not noise: name the touched files. When commits and `PLAN.md` evidence disagree, trust the commits and report the mismatch. Also run `git worktree list`: a stray worktree is the fingerprint of an interrupted parallel dispatch. Report it. Do not remove it.
 
 ### Surface Review State
 
-If `current.json` contains `product_review` or `engineering_review`, read the corresponding `## Review:` sections from canonical artifacts and include them in the resume summary.
+If `current.json` contains `engineering_review`, read the `## Review: Engineering` section from the canonical plan and include it in the resume summary.
 
 ### Recovery Summary
 
-Produce a concise summary under 200 tokens:
+Omit any line that would report nothing. A healthy resume is five lines, not ten fields of "none".
+
+Always:
 
 ```
 **Active change:** [name]
-**Stage:** [frame|plan|execute|verify|verified|resume]
+**Stage:** [frame|plan|execute|verify|verified]
 **Artifacts loaded:** [list]
 **What was done:** [1-2 sentences]
-**What was blocked:** [1-2 sentences, or "nothing"]
-**What comes next:** [specific next action, or "none - change complete"]
-**Review verdicts:** [product: X, engineering: Y, or "none"]
-**Missing state:** [list or "none"]
-**Roadmap:** [N pending / M total, or "not tracked"]
+**What comes next:** [specific next action, or "change complete"]
+```
+
+Add only when it carries something:
+
+```
+**Blocked:** [what stopped, and on what]
+**Execution ledger:** [last slice commit, in-flight files]
+**Review verdicts:** [engineering: X]
+**Missing state:** [stale pointer or absent artifact]
+**Roadmap:** [N pending]
 ```
 
 The goal is orientation, not transcription.
 
-### Recommend Next Skill
+### Hand Off
 
-Use `references/recovery-scenarios.md` for the full routing table. The invariant: recommend the next lifecycle skill only when recovered state is incomplete or blocked. For verified completion, report no next lifecycle skill; if ROADMAP.md has pending items, surface them as optional future work, not an automatic `auto-office-hours` handoff.
+Use `references/recovery-scenarios.md` for the full routing table. The invariant: recommend the next lifecycle skill only when recovered state is incomplete or blocked.
+
+Resume orients and stops. It never starts the work it just found.
+
+After the recovery summary, end the turn with `**Next:** <skill>, <reason>` when the recovered state has incomplete or blocked work. For a verified change, report `Change status: complete` and print no `Next:` line. When ROADMAP.md has pending items, surface them as optional future work rather than an automatic `auto-frame` handoff.
 
 ## Output
 
-- Resume summary (under 200 tokens)
+- Resume summary (the template above, nothing more)
 - Artifacts loaded
 - Review verdicts (if present)
-- `.agent/.automaton/state/current.json` is read-only for auto-resume; stale pointers are reported, not silently repaired
+- `.agent/.automaton/state/current.json` is read-only for auto-resume. Stale pointers are reported, not silently repaired
 - Missing or conflicting state surfaces as a warning in the recovery summary.
-- Orient and stop (utility skill): when recovered state is incomplete or blocked, emit `Next: <skill>`; none when the active change is verified complete. The user picks the direction.
 
 ## Rules
 
-- Prefer durable artifacts over memory.
-- Do not restart discovery if the current artifacts are sufficient.
-- Escalate contradictions instead of guessing.
-- Load artifacts in dependency order: spec first, not plan first.
-- If steering is scaffold-only, report it plainly and recommend `auto-onboard`.
-- Do not turn a completed verified change into an automatic `auto-office-hours` handoff.
+- Do not restart discovery when the current artifacts are sufficient.

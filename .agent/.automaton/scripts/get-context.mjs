@@ -8,7 +8,8 @@
  *
  * Usage: node get-context.mjs [path/to/current.json]
  */
-import { readFileSync, existsSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { readFileSync, existsSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -18,7 +19,6 @@ const DEFAULT_STATE = {
   canonicalSpec: null,
   canonicalDesign: null,
   canonicalPlan: null,
-  productReview: null,
   engineeringReview: null
 }
 
@@ -76,13 +76,11 @@ function normalizeCurrentState(parsed) {
     canonical_spec: canonicalSpecSnake,
     canonical_design: canonicalDesignSnake,
     canonical_plan: canonicalPlanSnake,
-    product_review: productReviewSnake,
     engineering_review: engineeringReviewSnake,
     activeChange,
     canonicalSpec,
     canonicalDesign,
     canonicalPlan,
-    productReview,
     engineeringReview,
     ...rest
   } = state
@@ -93,7 +91,6 @@ function normalizeCurrentState(parsed) {
     canonicalSpec: canonicalSpec ?? canonicalSpecSnake ?? null,
     canonicalDesign: canonicalDesign ?? canonicalDesignSnake ?? null,
     canonicalPlan: canonicalPlan ?? canonicalPlanSnake ?? null,
-    productReview: productReview ?? productReviewSnake ?? null,
     engineeringReview: engineeringReview ?? engineeringReviewSnake ?? null,
     ...Object.fromEntries(
       Object.entries(rest).filter(
@@ -103,7 +100,6 @@ function normalizeCurrentState(parsed) {
           'canonical_spec',
           'canonical_design',
           'canonical_plan',
-          'product_review',
           'engineering_review'
         ].includes(key)
       )
@@ -114,7 +110,6 @@ function normalizeCurrentState(parsed) {
 function diagnose(state, projectRoot, manifest) {
   const diagnostics = []
   const validStages = new Set(manifest.stages ?? [])
-  const productVerdicts = new Set(manifest.reviewVerdicts?.product ?? [])
   const engineeringVerdicts = new Set(manifest.reviewVerdicts?.engineering ?? [])
   let invalidStage = false
   let stageIsValid = false
@@ -140,12 +135,6 @@ function diagnose(state, projectRoot, manifest) {
       }
     }
 
-    if (state.productReview !== undefined && state.productReview !== null) {
-      if (!productVerdicts.has(state.productReview)) {
-        diagnostics.push(diagnostic('error', 'invalid_product_review', `unrecognized product_review verdict: ${state.productReview}`))
-      }
-    }
-
     if (state.engineeringReview !== undefined && state.engineeringReview !== null) {
       if (!engineeringVerdicts.has(state.engineeringReview)) {
         diagnostics.push(diagnostic('error', 'invalid_engineering_review', `unrecognized engineering_review verdict: ${state.engineeringReview}`))
@@ -164,6 +153,117 @@ function diagnose(state, projectRoot, manifest) {
   return diagnostics
 }
 
+// L2 artifact-shape lint. Warning-level only: it surfaces gaps for the reading
+// skill to judge, it never blocks. L1 stage/pointer checks above stay the only
+// error-level gate.
+function lintArtifacts(state, projectRoot, manifest) {
+  const lint = manifest.artifactLint
+  if (!lint || projectRoot === null) {
+    return []
+  }
+
+  const diagnostics = []
+
+  if (state.canonicalSpec) {
+    const specPath = join(projectRoot, state.canonicalSpec)
+    if (existsSync(specPath)) {
+      const spec = readFileSync(specPath, 'utf8')
+      for (const check of lint.spec ?? []) {
+        if (!new RegExp(check.pattern, 'i').test(spec)) {
+          diagnostics.push(diagnostic('warning', check.code, check.message))
+        }
+      }
+    }
+  }
+
+  // A review verdict in state with no matching section on the canonical
+  // artifact means the two surfaces drifted: the verdict was synced but the
+  // rationale never landed, or the artifact was rewritten over it.
+  for (const check of lint.reviewSections ?? []) {
+    if (!state[check.verdictField] || !state[check.artifactField]) {
+      continue
+    }
+    const artifactPath = join(projectRoot, state[check.artifactField])
+    if (existsSync(artifactPath) && !readFileSync(artifactPath, 'utf8').includes(check.heading)) {
+      diagnostics.push(diagnostic('warning', check.code, check.message))
+    }
+  }
+
+  if (state.canonicalPlan && lint.planSliceHeading) {
+    const planPath = join(projectRoot, state.canonicalPlan)
+    if (existsSync(planPath)) {
+      const plan = readFileSync(planPath, 'utf8')
+      const headings = [...plan.matchAll(new RegExp(lint.planSliceHeading, 'gm'))]
+
+      if (headings.length === 0 && lint.planMissingSlices) {
+        diagnostics.push(diagnostic('warning', lint.planMissingSlices.code, lint.planMissingSlices.message))
+      }
+
+      for (let i = 0; i < headings.length; i += 1) {
+        const end = i + 1 < headings.length ? headings[i + 1].index : plan.length
+        const body = plan.slice(headings[i].index, end)
+        for (const field of lint.planSliceFields ?? []) {
+          if (!body.includes(field.label)) {
+            const fieldName = field.label.replaceAll('*', '').replace(':', '')
+            diagnostics.push(diagnostic('warning', field.code, `slice ${headings[i][1]} lacks ${fieldName}`))
+          }
+        }
+      }
+    }
+  }
+
+  return diagnostics
+}
+
+// L2 drift hints. The state cursor can silently lag the repository when work
+// happens outside the harness. These warnings surface the lag for the reading
+// skill to judge; they never block, and they degrade silently to nothing in
+// projects without git.
+function gitLines(projectRoot, args) {
+  const result = spawnSync('git', args, { cwd: projectRoot, encoding: 'utf8' })
+  if (result.status !== 0 || typeof result.stdout !== 'string') {
+    return null
+  }
+  return result.stdout.split('\n').filter(Boolean)
+}
+
+function driftDiagnostics(target, state, projectRoot) {
+  if (projectRoot === null) {
+    return []
+  }
+
+  const diagnostics = []
+  const stateMtime = statSync(target).mtime.toISOString()
+  const commitsSince = gitLines(projectRoot, ['log', '--oneline', `--since=${stateMtime}`, '-20'])
+  // Per-slice rhythm commits are the harness's own execution ledger: state syncs
+  // once at execute entry, then slices commit without touching current.json, so
+  // only out-of-band commits count as drift.
+  const outOfBand = commitsSince === null
+    ? null
+    : commitsSince.filter((line) => !/^\S+ slice \S+(?: gap-fix)?: /.test(line))
+
+  if (outOfBand !== null && outOfBand.length >= 3) {
+    diagnostics.push(diagnostic(
+      'warning',
+      'state_drift',
+      `${outOfBand.length}${commitsSince.length === 20 ? '+' : ''} out-of-band commits since current.json last changed; harness state may lag the repo. Refresh state through the lifecycle.`
+    ))
+  }
+
+  if (state.stage === 'verified') {
+    const dirty = gitLines(projectRoot, ['status', '--porcelain'])
+    if (dirty !== null && dirty.length >= 5) {
+      diagnostics.push(diagnostic(
+        'warning',
+        'dirty_tree_at_verified',
+        `stage is verified but the working tree has ${dirty.length} changed paths; work may be happening outside a tracked change`
+      ))
+    }
+  }
+
+  return diagnostics
+}
+
 function diagnosticsFor(target, state, stateExists) {
   const manifest = loadContractManifest(target)
   if (manifest === null) {
@@ -174,7 +274,12 @@ function diagnosticsFor(target, state, stateExists) {
     return []
   }
 
-  return diagnose(state, deriveProjectRoot(target), manifest)
+  const projectRoot = deriveProjectRoot(target)
+  return [
+    ...diagnose(state, projectRoot, manifest),
+    ...lintArtifacts(state, projectRoot, manifest),
+    ...driftDiagnostics(target, state, projectRoot)
+  ]
 }
 
 const target = process.argv[2] ?? join('.agent', '.automaton', 'state', 'current.json')

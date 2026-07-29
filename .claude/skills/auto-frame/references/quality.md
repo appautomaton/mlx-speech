@@ -1,38 +1,27 @@
 # Frame Quality
 
-Load this reference only before finalizing or refreshing `SPEC.md`.
+Load this reference only before presenting alternatives, and again before finalizing `SPEC.md`. The skill has two output moments and they fail differently.
 
-## SPEC Anti-Patterns
+**The conversation test:** if a response sounds encouraging but would not change the user's next decision, revise it.
 
-- Vague objective: "improve", "streamline", or "harden" without observable behavior.
-- Inflated importance: broad claims that do not change scope or acceptance criteria.
-- Hidden assumptions: unresolved decisions smuggled into the goal.
-- Solution leakage: implementation details that belong in PLAN.md unless they constrain scope.
-- Missing anti-goals: no clear statement of what the change must not do.
-- Scope amputation: artificially reducing a coherent capability to hit a line-count target, producing a spec that solves part of the problem and leaves the rest unframed.
+**The spec test:** four scans, because the user reading `SPEC.md` is the product review and the spec must be clean enough to judge.
 
-## Better Shape
+- Ambiguity scan: if two engineers could implement materially different changes from the same SPEC, revise it.
+- Contradiction scan: the bet, the bounded goal, and the acceptance criteria must describe the same change.
+- Placeholder scan: no TBD, empty section, or unresolved blank. Resolve it or name it as an assumption.
+- Bundling scan: if the acceptance criteria test unrelated outcomes, the spec bundles independent work. Split it and defer the rest for a stated reason.
 
-- State one bounded outcome in plain language.
-- Convert broad goals into acceptance criteria or risks.
-- Put uncertain claims under assumptions, not facts.
-- Use anti-goals to prevent scope creep.
-- For capability-sized goals, confirm that all acceptance criteria point at one behavioral outcome. If they test unrelated outcomes, the spec bundles independent work and should be split.
+Failures that pass both tests but still sink the frame:
 
-## Prose Hygiene
+- Sycophantic validation: praise that names no evidence.
+- Generic alternatives: options that differ by tone rather than by tradeoff.
+- Premature solutioning: architecture before the problem, stakeholder, or wedge is concrete.
+- Category thinking: "users", "teams", or "enterprises" where the workflow needs a named role or an observable behavior.
+- Soft uncertainty: "could work" without naming the evidence that is missing.
+- Solution leakage: implementation detail that belongs in PLAN.md and does not constrain scope.
+- Missing anti-goals: no statement of what the change must not do.
+- Scope amputation: shrinking a coherent capability to hit a length target, leaving part of the problem unframed.
 
-Specs attract significance inflation and promotional language. The bounded goal should state what changes, not why it matters to the universe.
+Name the evidence the user gave, say what it does and does not establish, and write the bounded goal in terms someone could verify.
 
-Scan for:
-- "crucial", "vital", "pivotal", "key": replace with the observable constraint or drop
-- "serves as", "stands as": use "is"
-- "streamline", "enhance", "leverage": name the specific operation
-- Forced rule-of-three in constraints or anti-goals
-- Em dashes where commas work
-
-Before: "This crucial change serves as a pivotal step in streamlining the authentication flow — enhancing security, improving UX, and reducing latency."
-After: "Add JWT validation to protected API routes. Users without a valid token get a 401."
-
-## Final Check
-
-If two engineers could implement materially different changes from the same SPEC, revise it.
+Prose patterns: `.agent/.automaton/references/ANTI-SLOP.md`.
