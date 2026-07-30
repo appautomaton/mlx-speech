@@ -4,7 +4,10 @@ import mlx.core as mx
 import numpy as np
 import pytest
 
-from mlx_speech.models.dots_tts.audio_vae import AudioVAE
+from mlx_speech.models.dots_tts.audio_vae import (
+    AudioVAE,
+    encoder_logical_workspace_bytes,
+)
 from mlx_speech.models.dots_tts.config import DotsTTSVocoderConfig
 
 
@@ -70,3 +73,37 @@ def test_audio_vae_rejects_invalid_shapes() -> None:
 def test_official_vocoder_hop_size_is_1920() -> None:
     rates = (2, 2, 2, 4, 6, 10)
     assert int(np.prod(rates)) == 1_920
+
+
+def test_high_precision_reductions_are_bounded_to_encode() -> None:
+    model = _model()
+    assert model.audio_encoder.pre_conv.high_precision
+    assert all(layer.high_precision for layer in model.audio_encoder.down_convs)
+    assert model.audio_encoder.post_conv.high_precision
+    assert model.enc_mi_layer.high_precision
+    assert model.enc_mi_layer.recurrent.high_precision
+    assert model.pre_proj.high_precision
+    assert not model.post_proj.high_precision
+    assert not model.dec_mi_layer.high_precision
+    assert not model.dec_mi_layer.recurrent.high_precision
+    assert not model.decoder.conv_pre.high_precision
+
+
+def test_representative_encoder_logical_workspace_is_bounded() -> None:
+    payload = _config().to_dict()
+    payload.update(
+        {
+            "downsample_rates": [2, 2, 2, 4, 6, 10],
+            "downsample_channels": [12, 24, 48, 96, 192, 384, 768],
+            "latent_dim": 128,
+            "mi_num_layers": 4,
+        }
+    )
+    config = DotsTTSVocoderConfig.from_dict(payload)
+    workspace = encoder_logical_workspace_bytes(
+        config, sample_count=round(3.2 * config.sample_rate)
+    )
+    assert workspace == 25_165_824
+    assert workspace < 32 * 1024 * 1024
+    with pytest.raises(ValueError, match="dimensions must be positive"):
+        encoder_logical_workspace_bytes(config, sample_count=0)

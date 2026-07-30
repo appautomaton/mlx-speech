@@ -48,7 +48,7 @@ models/dots_tts/{soar,mf}/original/
 Converted artifacts are self-contained and MLX-native:
 
 ```text
-models/dots_tts/{soar,mf}/{mlx-bf16,mlx-int8}/
+models/dots_tts/{soar,mf}/{mlx-base,mlx-int8}/
   config.json
   llm_config.json
   mlx_config.json
@@ -65,13 +65,18 @@ Conversion performs key remapping, MLX convolution transposes, vocoder weight-no
 
 Why: source immutability preserves the oracle; native artifacts keep runtime logic explicit; a restricted reader avoids making one tiny metadata file a Torch dependency.
 
-## Decision 4 — BF16-first parity, then selective int8
+## Decision 4 — Source-faithful base, then selective int8
 
-BF16 is the correctness baseline. Source FP32 vocoder and speaker tensors are converted to BF16 only after their component parity gates pass.
+The correctness baseline is named `mlx-base`, not `mlx-bf16`, because its validated storage policy is intentionally mixed:
 
-The required int8 predicate is affine int8, group size 64, on the Qwen2.5 Linear/Embedding trunk with BF16 activations. Other components remain BF16 unless the same component and end-to-end gates prove a broader predicate safe. Quantization metadata names the exact paths and is applied before strict weight binding.
+- BF16: Qwen, EOS, semantic encoder, DiT/solver projections, small conditioning projections, AudioVAE decoder, and BigVGAN;
+- FP32: CAM++, AudioVAE encoder, encoder bridge, distribution projection, and latent statistics.
 
-Why: blanket int8 would put continuous flow and waveform fidelity at risk. Qwen holds most parameters and gives the dominant storage reduction without making an unsupported quality claim.
+The split inside `vocoder.safetensors` is path-defined: `audio_encoder.*`, `enc_mi_layer.*`, and `pre_proj.*` remain FP32; `post_proj.*`, `dec_mi_layer.*`, and `decoder.*` are BF16. `speaker.safetensors` remains FP32. `core.safetensors` remains BF16. Metadata serializes these predicates, and strict loading rejects any tensor whose dtype disagrees with its path.
+
+The required int8 predicate is affine int8, group size 64, on eligible Qwen2.5 Linear/Embedding paths with BF16 activations. Every non-selected tensor retains its `mlx-base` dtype. No additional component is reduced without component fixture parity and end-to-end quality evidence.
+
+Why: converted-weight testing disproved blanket BF16 for CAM++ and AudioVAE reference encoding, while confirming BF16 waveform decoding. Qwen still provides the dominant storage reduction, so selective int8 preserves the useful size win without misrepresenting sensitive components.
 
 ## Decision 5 — Verification ladder
 
@@ -83,8 +88,8 @@ Correctness advances in this order:
 
 1. source manifest and tensor inventory;
 2. generated and provenance-verified deterministic component fixtures against the official oracle;
-3. strict BF16 load and component checkpoint tests;
-4. BF16 end-to-end waveform generation;
+3. strict `mlx-base` mixed-dtype load and component checkpoint tests;
+4. `mlx-base` end-to-end waveform generation;
 5. int8 strict load and end-to-end generation;
 6. fixed-corpus WER, speaker-similarity, size, and memory gates;
 7. local release-layout smoke;
@@ -97,15 +102,15 @@ No downstream gate substitutes for an earlier one. Generated evaluation audio an
 Publish one authoritative model card at `appautomaton/dots-tts-mlx` and four independently loadable runtime subdirectories:
 
 ```text
-soar/mlx-bf16/
+soar/mlx-base/
 soar/mlx-int8/
-mf/mlx-bf16/
+mf/mlx-base/
 mf/mlx-int8/
 ```
 
 Upload targets address only these converted directories and the card. They never upload the local family root, so `original/` cannot be included accidentally.
 
-The internal hub alias record gains an optional artifact subdirectory. All four dots aliases point to the same repository plus an explicit relative path (`soar/mlx-bf16`, `soar/mlx-int8`, `mf/mlx-bf16`, or `mf/mlx-int8`). Existing aliases without a subdirectory retain their current behavior; the resolver does not guess a dots variant from directory names.
+The internal hub alias record gains an optional artifact subdirectory. All four dots aliases point to the same repository plus an explicit relative path (`soar/mlx-base`, `soar/mlx-int8`, `mf/mlx-base`, or `mf/mlx-int8`). Existing aliases without a subdirectory retain their current behavior; the resolver does not guess a dots variant from directory names.
 
 For remote aliases, the resolver passes an exact subdirectory allow-list to `snapshot_download` and returns that subdirectory. A clean-cache test must show that selecting one alias materializes its configs/tokenizer/weights and the root README only, with no safetensors from the other three variants. Local direct artifact paths continue to resolve without Hub logic.
 
@@ -122,5 +127,7 @@ Why: streaming requires a cross-family protocol decision and is explicitly defer
 - Import or vendor the community MLX runtime: rejects repository ownership and dependency rules.
 - Use the official PyTorch package behind an MLX wrapper: not MLX inference.
 - Preserve PyTorch tensor layout and transpose opportunistically at load: makes runtime loading the conversion layer.
+- Publish an all-BF16 baseline: converted-weight parity disproved it for CAM++ and AudioVAE reference encoding.
+- Keep the `mlx-bf16` name with FP32 exceptions: the name would misstate the artifact contract.
 - Publish only int8: removes the parity and quality baseline.
 - Publish four unrelated repositories: duplicates the authoritative model-card story and increases release drift.

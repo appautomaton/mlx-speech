@@ -8,31 +8,143 @@ import mlx.core as mx
 import mlx.nn as nn
 
 from .config import DotsTTSVocoderConfig
-from .vocoder import BigVGANDecoder, Conv1d
+from .vocoder import (
+    HIGH_PRECISION_OUTPUT_TILE,
+    HIGH_PRECISION_TIME_TILE,
+    BigVGANDecoder,
+    Conv1d,
+)
 
 
 def _leaky_relu(value: mx.array, slope: float) -> mx.array:
     return mx.where(value >= 0, value, value * slope)
 
 
+def _high_precision_matmul(value: mx.array, right: mx.array) -> mx.array:
+    """Contract a 2-D right operand with true FP32 reduction."""
+
+    value = value.astype(mx.float32)
+    right = right.astype(mx.float32)
+    input_features = int(value.shape[-1])
+    output_features = int(right.shape[-1])
+    leading_shape = tuple(int(size) for size in value.shape[:-1])
+    rows = value.reshape(-1, input_features)
+    row_tiles = []
+    for row_start in range(0, int(rows.shape[0]), HIGH_PRECISION_TIME_TILE):
+        row_end = min(row_start + HIGH_PRECISION_TIME_TILE, int(rows.shape[0]))
+        output_tiles = []
+        for output_start in range(
+            0, output_features, HIGH_PRECISION_OUTPUT_TILE
+        ):
+            output_end = min(
+                output_start + HIGH_PRECISION_OUTPUT_TILE, output_features
+            )
+            output_tiles.append(
+                mx.sum(
+                    rows[row_start:row_end, :, None]
+                    * right[:, output_start:output_end],
+                    axis=-2,
+                )
+            )
+        row_tile = mx.concatenate(output_tiles, axis=-1)
+        mx.eval(row_tile)
+        row_tiles.append(row_tile)
+    result = mx.concatenate(row_tiles, axis=0).reshape(
+        (*leading_shape, output_features)
+    )
+    mx.eval(result)
+    return result
+
+
+def _linear(value: mx.array, layer: nn.Linear, *, high_precision: bool) -> mx.array:
+    if not high_precision:
+        return layer(value)
+    output = _high_precision_matmul(value, layer.weight.T)
+    return output if layer.bias is None else output + layer.bias.astype(mx.float32)
+
+
+def encoder_logical_workspace_bytes(
+    config: DotsTTSVocoderConfig,
+    *,
+    sample_count: int,
+    batch_size: int = 1,
+) -> int:
+    """Bound the largest explicit FP32 broadcast-reduction workspace."""
+
+    if sample_count <= 0 or batch_size <= 0:
+        raise ValueError("encoder workspace dimensions must be positive")
+    largest_elements = 0
+
+    def include(
+        time: int,
+        input_channels: int,
+        output_channels: int,
+        *,
+        flattened_rows: bool = False,
+    ) -> None:
+        nonlocal largest_elements
+        rows = (
+            min(batch_size * time, HIGH_PRECISION_TIME_TILE)
+            if flattened_rows
+            else batch_size * min(time, HIGH_PRECISION_TIME_TILE)
+        )
+        largest_elements = max(
+            largest_elements,
+            rows * input_channels * min(output_channels, HIGH_PRECISION_OUTPUT_TILE),
+        )
+
+    time = sample_count
+    include(time, 1, config.downsample_channels[0])
+    for input_channels, output_channels, rate in zip(
+        config.downsample_channels[:-1],
+        config.downsample_channels[1:],
+        config.downsample_rates,
+        strict=True,
+    ):
+        time = (time + rate - 1) // rate
+        include(time, input_channels, output_channels)
+        include(time, output_channels, output_channels)
+    include(time, config.downsample_channels[-1], config.latent_dim)
+
+    intermediate = 4 * config.latent_dim
+    include(time, config.latent_dim, intermediate, flattened_rows=True)
+    include(time, intermediate, 4 * intermediate, flattened_rows=True)
+    include(1, intermediate, 4 * intermediate, flattened_rows=True)
+    include(time, intermediate, config.latent_dim, flattened_rows=True)
+    include(time, config.latent_dim, 2 * config.latent_dim, flattened_rows=True)
+    return largest_elements * 4  # FP32 bytes
+
+
 class SLSTM(nn.Module):
     """Residual batch-first LSTM with explicit PyTorch-compatible gate order."""
 
-    def __init__(self, dimension: int, num_layers: int):
+    def __init__(
+        self, dimension: int, num_layers: int, *, high_precision: bool = False
+    ):
         super().__init__()
         self.dimension = int(dimension)
         self.layers = [_LSTMWeights(dimension) for _ in range(num_layers)]
+        self.high_precision = bool(high_precision)
 
     def __call__(self, value: mx.array) -> mx.array:
         residual = value
         batch, time, hidden = value.shape
         for layer in self.layers:
-            projected = value @ layer.weight_ih.T + layer.bias_ih + layer.bias_hh
+            if self.high_precision:
+                projected = _high_precision_matmul(value, layer.weight_ih.T)
+            else:
+                projected = value @ layer.weight_ih.T
+            projected += layer.bias_ih + layer.bias_hh
             h = mx.zeros((batch, hidden), dtype=value.dtype)
             cell = mx.zeros((batch, hidden), dtype=value.dtype)
             outputs = []
             for index in range(int(time)):
-                gates = projected[:, index] + h @ layer.weight_hh.T
+                recurrent = (
+                    _high_precision_matmul(h, layer.weight_hh.T)
+                    if self.high_precision
+                    else h @ layer.weight_hh.T
+                )
+                gates = projected[:, index] + recurrent
                 input_gate, forget_gate, candidate, output_gate = mx.split(
                     gates, 4, axis=-1
                 )
@@ -58,14 +170,24 @@ class _LSTMWeights(nn.Module):
 
 
 class _ResidualStack(nn.Module):
-    def __init__(self, channels: int, layers: int):
+    def __init__(self, channels: int, layers: int, *, high_precision: bool = False):
         super().__init__()
         self.convs1 = [
-            Conv1d(channels, channels, 3, dilation=2**index, causal=True)
+            Conv1d(
+                channels,
+                channels,
+                3,
+                dilation=2**index,
+                causal=True,
+                high_precision=high_precision,
+            )
             for index in range(layers)
         ]
         self.convs2 = [
-            Conv1d(channels, channels, 3, causal=True) for _ in range(layers)
+            Conv1d(
+                channels, channels, 3, causal=True, high_precision=high_precision
+            )
+            for _ in range(layers)
         ]
 
     def __call__(self, value: mx.array) -> mx.array:
@@ -88,7 +210,9 @@ class AudioEncoder(nn.Module):
         super().__init__()
         if len(channels) != len(downsample_rates) + 1:
             raise ValueError("encoder channels must be one longer than rates")
-        self.pre_conv = Conv1d(1, channels[0], 3, causal=True)
+        self.pre_conv = Conv1d(
+            1, channels[0], 3, causal=True, high_precision=True
+        )
         self.down_convs = []
         self.residual_stacks = []
         for input_channels, output_channels, rate in zip(
@@ -101,13 +225,20 @@ class AudioEncoder(nn.Module):
                     2 * rate,
                     stride=rate,
                     causal=True,
+                    high_precision=True,
                 )
             )
             self.residual_stacks.append(
-                _ResidualStack(output_channels, residual_layers)
+                _ResidualStack(
+                    output_channels, residual_layers, high_precision=True
+                )
             )
         self.post_conv = Conv1d(
-            channels[-1], latent_dim, 2 * lookahead + 1, causal=False
+            channels[-1],
+            latent_dim,
+            2 * lookahead + 1,
+            causal=False,
+            high_precision=True,
         )
 
     def __call__(self, value: mx.array) -> mx.array:
@@ -121,15 +252,22 @@ class AudioEncoder(nn.Module):
 
 
 class _MIBridge(nn.Module):
-    def __init__(self, latent_dim: int, num_layers: int):
+    def __init__(
+        self, latent_dim: int, num_layers: int, *, high_precision: bool = False
+    ):
         super().__init__()
         intermediate = 4 * latent_dim
         self.input = nn.Linear(latent_dim, intermediate, bias=True)
-        self.recurrent = SLSTM(intermediate, num_layers)
+        self.recurrent = SLSTM(
+            intermediate, num_layers, high_precision=high_precision
+        )
         self.output = nn.Linear(intermediate, latent_dim, bias=True)
+        self.high_precision = bool(high_precision)
 
     def __call__(self, value: mx.array) -> mx.array:
-        return self.output(self.recurrent(self.input(value)))
+        value = _linear(value, self.input, high_precision=self.high_precision)
+        value = self.recurrent(value)
+        return _linear(value, self.output, high_precision=self.high_precision)
 
 
 @dataclass(frozen=True)
@@ -160,9 +298,15 @@ class AudioVAE(nn.Module):
             residual_layers=encoder_residual_layers,
             lookahead=2,
         )
-        self.enc_mi_layer = _MIBridge(config.latent_dim, config.mi_num_layers)
+        self.enc_mi_layer = _MIBridge(
+            config.latent_dim, config.mi_num_layers, high_precision=True
+        )
         self.pre_proj = Conv1d(
-            config.latent_dim, 2 * config.latent_dim, 1, causal=True
+            config.latent_dim,
+            2 * config.latent_dim,
+            1,
+            causal=True,
+            high_precision=True,
         )
         self.post_proj = Conv1d(config.latent_dim, config.latent_dim, 1, causal=True)
         self.dec_mi_layer = _MIBridge(config.latent_dim, config.mi_num_layers)
@@ -231,4 +375,10 @@ class AudioVAE(nn.Module):
         )
 
 
-__all__ = ["AudioEncoder", "AudioVAE", "SLSTM", "VocoderDecodeState"]
+__all__ = [
+    "AudioEncoder",
+    "AudioVAE",
+    "SLSTM",
+    "VocoderDecodeState",
+    "encoder_logical_workspace_bytes",
+]

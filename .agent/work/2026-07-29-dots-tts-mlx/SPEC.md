@@ -1,15 +1,17 @@
 # dots.tts MLX Inference and Release
 
-**Bet:** A clean, adapter-based MLX port of dots.tts SOAR and MeanFlow can provide high-quality local voice cloning on Apple Silicon while preserving a Torch-free runtime and a smaller int8 default artifact.
+**Supersedes:** the 2026-07-29 revision of this spec, whose all-BF16 baseline was disproved during converted-weight parity testing.
+
+**Bet:** A component-validated MLX port of dots.tts can provide high-quality local voice cloning on Apple Silicon without forcing precision-sensitive modules into a smaller dtype they cannot safely support.
 
 ## Bounded Goal
 
-Add end-to-end dots.tts SOAR and MeanFlow inference to `mlx-speech`, producing 48 kHz waveform output through the unified TTS API from both BF16 and mixed W8A-BF16 checkpoints, then publish the validated runtime artifacts and model card under the `appautomaton` Hugging Face organization.
+Add end-to-end dots.tts SOAR and MeanFlow inference to `mlx-speech`, producing 48 kHz waveform output through the unified TTS API from a source-faithful `mlx-base` artifact and a selectively quantized `mlx-int8` artifact, then publish only variants that pass their component and end-to-end quality gates under the `appautomaton` Hugging Face organization.
 
 ## Classification
 
 - Work scale: capability
-- Work shape: mixed — reference parity, model-family feature, checkpoint conversion, quantization, and release packaging
+- Work shape: mixed — reference parity, model-family feature, checkpoint conversion, selective quantization, and release packaging
 - Selected lenses: product, engineering, runtime, security
 
 ## Target Stakeholder
@@ -18,20 +20,29 @@ Apple Silicon developers using `mlx-speech` who want local multilingual dots.tts
 
 ## Broader Intent
 
-This change advances `mlx-speech` as a clean multi-family speech library rather than a collection of upstream wrappers. The public API, checkpoint format, dependency boundary, and Hugging Face release must remain maintainable after the initial dots.tts port lands.
+This change advances `mlx-speech` as a clean multi-family speech library while making precision claims evidence-based. Artifact names, metadata, model cards, and default aliases must describe the precision actually used rather than implying blanket quantization.
 
 ## Approved Approach and Evidence
 
-The approved checkpoint scope is **SOAR + MeanFlow**:
+The approved checkpoint scope remains **SOAR + MeanFlow**:
 
-- SOAR is the quality-focused, self-corrective-aligned checkpoint recommended upstream for voice cloning.
-- MeanFlow is the latency-focused distilled checkpoint and exercises a distinct four-evaluation solver without runtime classifier-free guidance.
-- The official PyTorch reference is pinned at `.references/dots.tts` commit `5ed719e3d36f5a3f6d8037ca9a7009d4fd0520ba` (`v0.2.1`).
-- The community MLX inference reference is pinned at `.references/dots-tts-mlx` commit `f64479f51a2a9d7093533732cae86e765d8fb96e` (`v0.7.0`).
-- Official SOAR weights are pinned to Hugging Face revision `e3520f75254d0020a0406db31c51a79d00d22d55`; official MeanFlow weights are pinned to `25c53fb462e57087e52237daa5ea30df1c5cc328`.
-- The official core checkpoint is BF16; the vocoder and CAM++ speaker checkpoint are FP32. The existing MLX port demonstrates end-to-end feasibility and a conservative int8 policy, but it does not establish compatibility with this repository's API, dependency policy, checkpoint contract, or quality gates.
+- Official PyTorch reference: `.references/dots.tts` commit `5ed719e3d36f5a3f6d8037ca9a7009d4fd0520ba` (`v0.2.1`).
+- Community MLX comparison: `.references/dots-tts-mlx` commit `f64479f51a2a9d7093533732cae86e765d8fb96e` (`v0.7.0`).
+- Official SOAR weights: Hugging Face revision `e3520f75254d0020a0406db31c51a79d00d22d55`.
+- Official MeanFlow weights: Hugging Face revision `25c53fb462e57087e52237daa5ea30df1c5cc328`.
+- The official core checkpoint is BF16; the official vocoder and CAM++ checkpoints are FP32.
 
-Assumption for product review: publish one family repository, `appautomaton/dots-tts-mlx`, with separate SOAR/MeanFlow and BF16/int8 runtime subdirectories. A different repository split may be selected during planning only if it preserves the same four independently loadable artifacts and one authoritative model-card story.
+Converted-weight evidence established the revised precision policy:
+
+- Both native SOAR and MeanFlow mappings strict-load with zero missing, unexpected, shape-mismatched, or source-shaped runtime tensors.
+- Qwen matches the official fixture when compared under the oracle's FP32 compute semantics; its converted storage remains BF16.
+- CAM++ matches the official oracle at FP32 with `2.1e-5` maximum error. Casting it to BF16 fails the checked-in speaker tolerance (`0.295` maximum error, cosine `0.99668`). CAM++ therefore remains FP32.
+- The AudioVAE decoder converted to BF16 passes waveform parity (`0.00136` maximum error against a `0.02` tolerance).
+- The AudioVAE reference encoder converted to BF16 fails latent-distribution parity (`2.76` maximum error against a `0.02` tolerance). Its encoder, encoder bridge, and distribution projection therefore remain FP32 unless a later, separately approved predicate passes the same gates.
+
+This evidence proves the all-BF16 policy is invalid. It does not yet prove full end-to-end quality for the revised mixed-precision artifact; that remains a required gate.
+
+The user selected `mlx-base` as the truthful name for the unquantized artifact. Exact component dtypes live in machine-readable metadata. `mlx-int8` means that the approved Qwen predicate is int8; it does not imply that every model tensor is int8.
 
 ## Required Outcome
 
@@ -42,7 +53,7 @@ Assumption for product review: publish one family repository, `appautomaton/dots
   - `models/dots_tts/mf/original/`
 - Provide a reproducible, revision-pinned acquisition command or script.
 - Keep original and converted weights gitignored; no model tensor enters Git history.
-- Produce converted artifacts under each variant's `mlx-bf16/` and `mlx-int8/` directories.
+- Produce converted artifacts under each variant's `mlx-base/` and `mlx-int8/` directories.
 
 ### REQ-002 — Complete pure-MLX waveform runtime
 
@@ -63,111 +74,133 @@ The runtime must use MLX for model computation and must not import or transitive
 
 - `mlx_speech.tts.load(...)` must recognize dots.tts checkpoints and return the existing `TTSModel` interface.
 - Required aliases:
-  - `dots-tts-soar` → int8 default
-  - `dots-tts-soar-bf16`
-  - `dots-tts-mf` → int8 default
-  - `dots-tts-mf-bf16`
+  - `dots-tts-soar` → `mlx-int8` only after the int8 quality gate passes;
+  - `dots-tts-soar-base` → source-faithful mixed-precision baseline;
+  - `dots-tts-mf` → `mlx-int8` only after the int8 quality gate passes;
+  - `dots-tts-mf-base` → source-faithful mixed-precision baseline.
+- Until int8 earns default status, the short aliases remain unpublished or resolve to `mlx-base`; they must never silently select an unvalidated int8 artifact.
 - `generate(text, reference_audio=..., reference_text=...)` must support continuation voice cloning.
 - `generate(text, reference_audio=...)` must support speaker-embedding-only cloning.
 - The no-reference path may remain callable for upstream parity, but documentation must state that random-voice generation is not a quality-supported use of the released multi-speaker checkpoints.
-- Model-specific controls must remain backend kwargs rather than expanding the shared protocol: explicit language code, solver steps, guidance scale, speaker scale, seed, and maximum audio patches.
+- Model-specific controls remain backend kwargs: explicit language code, solver steps, guidance scale, speaker scale, seed, and maximum audio patches.
 
 ### REQ-004 — Explicit MLX checkpoint conversion
 
-- Conversion must remain separate from runtime loading.
-- Convert PyTorch-shaped tensors into an explicit MLX-native layout, including convolution layouts and vocoder weight-normalization folding, instead of performing pervasive source-layout repair during inference.
-- Convert `latent_stats.pt` into a Torch-free runtime asset, preferably safetensors.
-- Preserve all required tokenizer/configuration assets and record model family, checkpoint mode, source revision, dtype, quantization predicate, group size, and component precision in machine-readable metadata.
-- Strict loading must reject missing, unexpected, shape-mismatched, or metadata-inconsistent weights.
+- Conversion remains separate from runtime loading.
+- Convert PyTorch-shaped tensors into explicit MLX-native layouts, including convolution transposes and one-time vocoder weight-normalization folding.
+- Convert `latent_stats.pt` into a Torch-free safetensors asset using a restricted reader that permits only the pinned NumPy structure.
+- Preserve required tokenizer/configuration assets and record model family, checkpoint mode, source revision, artifact class, component dtype policy, quantization predicate, group size, and exact quantized paths in machine-readable metadata.
+- Strict loading rejects missing, unexpected, duplicate, shape-mismatched, source-shaped, wrong-dtype, or metadata-inconsistent tensors.
+- Conversion and alignment reports account for every source tensor; intentionally dropped training-only buffers are named explicitly.
 
-### REQ-005 — BF16 and mixed int8 artifacts
+### REQ-005 — Component-validated precision policy
 
-- BF16 is the unquantized runtime parity baseline for every component after conversion.
-- The int8 artifact uses affine 8-bit, group size 64, for the Qwen2.5 Linear/Embedding trunk at minimum; activations remain BF16.
-- The semantic encoder, DiT/MeanFlow head, AudioVAE/BigVGAN, CAM++, EOS head, and small conditioning projections remain BF16 unless component-level parity and end-to-end quality gates prove an additional int8 predicate safe.
-- The exact quantization predicate must be serialized with the artifact and reconstructed automatically by the loader.
-- Int8 is the default alias only after it passes the BF16 comparison gates.
+The `mlx-base` artifact is the source-faithful correctness baseline:
+
+| Component | Baseline storage | Rationale |
+| --- | --- | --- |
+| Qwen2.5 trunk, EOS head | BF16 | Official core source precision |
+| Semantic encoder | BF16 | Official core source precision |
+| DiT, SOAR/MeanFlow solver projections | BF16 | Official core source precision |
+| Small conditioning projections | BF16 | Official core source precision |
+| AudioVAE decoder and BigVGAN | BF16 | Converted waveform parity passed |
+| CAM++ speaker encoder | FP32 | BF16 speaker parity failed |
+| AudioVAE encoder, encoder bridge, distribution projection | FP32 | BF16 latent parity failed |
+| Latent statistics | FP32 | Official statistics precision |
+
+- The `mlx-int8` artifact applies affine 8-bit, group size 64, only to eligible Qwen Linear/Embedding paths that pass component and end-to-end gates; activations remain BF16.
+- Every component not selected by the int8 predicate retains its `mlx-base` dtype. In particular, CAM++ and AudioVAE reference encoding remain FP32.
+- Any future dtype reduction requires both component fixture parity and end-to-end waveform quality evidence. A size win alone never authorizes quantization.
+- The exact dtype and quantization predicate is serialized per component/path and reconstructed automatically by the loader.
+- Artifact names and documentation must not describe `mlx-base` as an all-BF16 model or `mlx-int8` as an all-int8 model.
 
 ### REQ-006 — Reference parity and behavioral validation
 
-- Use the pinned official PyTorch source as the behavioral oracle and the pinned community MLX port as an additional implementation comparison, never as an imported runtime dependency.
-- Add focused parity fixtures/tests for schedule construction, Qwen hidden/KV behavior, speaker features, AudioVAE encode/decode, semantic feedback, DiT/MeanFlow patch generation, weight mapping, and EOS behavior.
-- Add end-to-end integration coverage for SOAR and MeanFlow, BF16 and int8, producing finite, non-silent 48 kHz waveform output.
-- Evaluate int8 against BF16 on a fixed multilingual voice-cloning corpus before release. Aggregate ASR WER may regress by no more than 1 absolute percentage point, and speaker-similarity cosine may regress by no more than 0.02. Any weaker result blocks the int8 default and publication claim.
-- Do not describe quantization as lossless unless the recorded evaluation supports that statement.
+- Use the pinned official PyTorch source as the behavioral oracle and the pinned community MLX port as an implementation comparison, never as an imported runtime dependency.
+- Add focused parity fixtures/tests for schedule construction, Qwen hidden/KV behavior, speaker features and embeddings, AudioVAE encode/decode, semantic feedback, DiT/MeanFlow patch generation, weight mapping, and EOS behavior.
+- The base artifact must pass checked-in component tolerances for both SOAR and MeanFlow before generation integration proceeds.
+- Add end-to-end integration coverage for SOAR and MeanFlow, `mlx-base` and `mlx-int8`, producing finite, non-silent 48 kHz waveform output.
+- Evaluate int8 against the matching base artifact on a fixed multilingual voice-cloning corpus. Aggregate ASR WER may regress by no more than 1 absolute percentage point, and speaker-similarity cosine may regress by no more than `0.02`.
+- Any weaker result blocks the int8 default and publication claim. Do not describe quantization as lossless unless recorded evaluation supports it.
 
 ### REQ-007 — Hugging Face release and model card
 
-- Publish validated artifacts under the `appautomaton` organization using the repository's resumable upload workflow.
-- The proposed family layout is:
+- Publish validated artifacts under `appautomaton/dots-tts-mlx` using the repository's resumable upload workflow.
+- The family layout is:
 
   ```text
   appautomaton/dots-tts-mlx/
     README.md
-    soar/mlx-bf16/
+    soar/mlx-base/
     soar/mlx-int8/
-    mf/mlx-bf16/
+    mf/mlx-base/
     mf/mlx-int8/
   ```
 
 - Original upstream checkpoints must not be included in the MLX release repository.
-- Register explicit upload targets so publication can resume and cannot accidentally upload `original/` directories.
-- The model card must include upstream sources and revisions, Apache-2.0 terms, architecture and supported languages, variant/precision matrix, exact quantization scope, memory and quality measurements, local/Hugging Face usage, known limitations, and voice-cloning consent/misuse guidance.
-- Each published subdirectory must load by Hugging Face repo plus subdirectory resolution and complete an end-to-end waveform smoke test after upload.
+- Upload targets address only the four converted directories and the card; `original/` must be structurally unreachable.
+- The model card includes upstream sources and revisions, Apache-2.0 terms, architecture, supported languages, exact component precision matrix, exact int8 scope, measured memory and quality, usage, known limitations, and voice-cloning consent/misuse guidance.
+- Each published subdirectory loads by Hugging Face repo plus explicit subdirectory and completes an end-to-end waveform smoke test after upload.
 
 ### REQ-008 — Documentation and verification integration
 
-- Add a dots.tts model-family guide covering checkpoint choice, cloning modes, generation controls, local layout, conversion, quantization, expected memory, and limitations.
+- Add a dots.tts guide covering checkpoint choice, cloning modes, controls, layout, conversion, selective quantization, component precision, memory, and limitations.
 - Update the model registry and Hugging Face release documentation without introducing dots-specific parameters into unrelated adapters.
 - Add unit, checkpoint, runtime, and opt-in integration tests at the repository's established tiers.
 
 ## Acceptance Criteria
 
-1. A revision-pinned acquisition workflow reconstructs both `original/` directories, and a four-way conversion matrix reconstructs SOAR/MF × BF16/int8 without modifying the originals.
-2. All four converted directories are self-contained, strict-load successfully by local path, contain only Torch-free runtime assets, and record their source revision and precision policy.
-3. Every converted tensor is either consumed by a named MLX module or explicitly rejected; conversion and load reports contain no unexplained missing, unexpected, or shape-mismatched keys.
-4. Each of the four artifacts completes continuation cloning and speaker-only cloning and returns a finite, non-silent mono `mx.array` at 48,000 Hz through `mlx_speech.tts.load(...).generate(...)`.
-5. Fixed-seed generation is repeatable for the same artifact and inputs, and SOAR and MeanFlow use their intended solver semantics and defaults.
-6. Runtime dependency guards demonstrate that importing and generating with dots.tts does not import PyTorch, torchaudio, Transformers, `mlx-lm`, or either `.references/` checkout.
-7. Component parity tests pass their checked-in numerical tolerances against pinned oracle fixtures; end-to-end BF16 output passes the fixed intelligibility and speaker-conditioning smoke corpus.
-8. Int8 checkpoint bytes are at least 25% smaller than BF16 for each checkpoint, and the fixed corpus meets the WER and speaker-similarity regression limits in REQ-006.
-9. The four aliases resolve to the intended artifact, with int8 as the default only after criterion 8 passes.
-10. `pytest tests/unit/`, the relevant checkpoint/runtime tiers, and opt-in four-artifact waveform integration tests pass before publication.
-11. The Hugging Face repository contains the four runtime subdirectories and authoritative model card, excludes original checkpoints, loads remotely by variant, and passes a post-upload waveform smoke test.
+1. Revision-pinned acquisition reconstructs both unchanged `original/` directories, and conversion reconstructs SOAR/MF × `mlx-base`/`mlx-int8` without modifying them.
+2. All four converted directories are self-contained, strict-load by local path, contain only Torch-free runtime assets, and record source revision plus exact component/path precision.
+3. Every source tensor is consumed by a named MLX module or explicitly rejected; conversion and load reports contain no unexplained gaps.
+4. Both `mlx-base` artifacts pass the checked-in component fixture tolerances, including FP32 CAM++, FP32 AudioVAE reference encoding, and BF16 AudioVAE waveform decoding.
+5. Each of the four artifacts completes continuation and speaker-only cloning and returns a finite, non-silent mono `mx.array` at 48,000 Hz through `mlx_speech.tts.load(...).generate(...)`.
+6. Fixed-seed generation is repeatable for the same artifact and inputs, and SOAR and MeanFlow use their intended solver semantics and defaults.
+7. Runtime dependency guards show that importing and generating with dots.tts does not import PyTorch, torchaudio, Transformers, `mlx-lm`, or either `.references/` checkout.
+8. Each `mlx-int8` artifact is at least 25% smaller than its matching `mlx-base` artifact and meets the WER and speaker-similarity regression limits in REQ-006.
+9. Short aliases select int8 only after criterion 8 passes; base aliases always resolve to the source-faithful artifacts.
+10. `pytest tests/unit/`, relevant checkpoint/runtime tiers, and opt-in four-artifact waveform integration tests pass before publication.
+11. The Hugging Face repository contains the four approved runtime subdirectories and authoritative model card, excludes originals, resolves each artifact selectively, and passes post-upload waveform smokes.
 
 ## Constraints and Risks
 
-- dots.tts is a continuous autoregressive model; memory grows with prompt and generated length even when the Qwen trunk is quantized.
+- dots.tts is continuously autoregressive; memory grows with prompt and generated length even when Qwen is quantized.
+- Mixed component dtypes increase metadata and strict-loading complexity. Wrong-dtype tensors must fail before inference.
+- CAM++ and AudioVAE reference encoding are precision-sensitive. Their FP32 policy increases artifact size but protects speaker identity and continuation fidelity.
 - The upstream and community runtimes contain optimization and caching choices that require independent parity proof before adoption.
-- Flow-matching and vocoder components are precision-sensitive; blanket int8 quantization is prohibited without evidence.
-- Reference audio processing, convolution layout, weight normalization, and latent scaling are high-risk parity boundaries.
-- High-fidelity voice cloning creates impersonation and consent risks. Documentation and model cards must make authorized-use expectations and synthetic-audio disclosure explicit.
-- Publishing to Hugging Face is an external state change authorized by this spec, but execution must stop at a human-action checkpoint if credentials or organization permissions are unavailable.
+- Reference audio processing, convolution layout, weight normalization, latent scaling, and per-path dtype assignment are high-risk parity boundaries.
+- High-fidelity voice cloning creates impersonation and consent risks. Documentation and model cards must require authorized use and synthetic-audio disclosure.
+- Publishing is an authorized external state change, but execution stops at a human-action checkpoint if credentials or organization permissions are unavailable.
 
 ## Scope Coverage
 
 ### Included
 
 - SOAR and MeanFlow inference.
-- BF16 and mixed W8A-BF16 runtime artifacts.
+- Source-faithful `mlx-base` and selectively quantized `mlx-int8` artifacts.
 - Continuation and speaker-only voice cloning with 48 kHz waveform output.
-- Local conversion, quantization, parity, integration tests, aliases, documentation, Hugging Face packaging, model card, upload, and remote smoke validation.
+- Local conversion, strict dtype validation, quantization, parity, integration tests, aliases, documentation, Hugging Face packaging, model card, upload, and remote smoke validation.
 
 ### Deferred / Not in Scope
 
-- `dots.tts-base`: deferred because SOAR supersedes it for the quality-focused released use case and the user selected SOAR + MeanFlow.
-- MLX training, fine-tuning, SOAR alignment, or MeanFlow distillation: the MLX target is inference-only; official PyTorch remains the training reference.
-- A new public streaming TTS protocol: the current unified interface is non-streaming; internal incremental state may be implemented where needed, while public streaming requires a separate cross-family API decision.
-- Persistent enrolled-speaker profiles and long-text sentence stitching: useful follow-on runtime features, not required for first family parity.
-- Swift/iOS runtime support.
-- Dependency-heavy automatic text normalization or language detection; explicit language codes and already-normalized text are sufficient for this change.
+- `dots.tts-base`: SOAR supersedes it for the quality-focused released use case.
+- Additional int8 components: deferred until a separately recorded predicate passes both component and end-to-end gates.
+- MLX training, fine-tuning, SOAR alignment, or MeanFlow distillation: the MLX target is inference-only.
+- A new public streaming TTS protocol: internal incremental state may be implemented, but the first public surface remains non-streaming.
+- Persistent enrolled-speaker profiles, long-text sentence stitching, Swift/iOS support, automatic language detection, and dependency-heavy text normalization.
+
+### Resolved Decision
+
+- The source-faithful unquantized artifact is named `mlx-base`, not `mlx-bf16` or `mlx-mixed`. Exact component dtypes are authoritative in metadata and documentation.
 
 ## Anti-Goals
 
-- Do not vendor, import, or package code from `.references/` as the runtime.
-- Do not label a Torch-backed, Transformers-backed, or `mlx-lm`-backed path as MLX support.
+- Do not vendor, import, or package code from `.references/` as runtime code.
+- Do not label a Torch-, Transformers-, or `mlx-lm`-backed path as MLX support.
 - Do not stop at latent/token generation; end-to-end means waveform output.
-- Do not mutate or republish official source checkpoints as if they were MLX artifacts.
-- Do not commit model weights, reference audio, or generated evaluation audio to Git.
+- Do not force FP32 source components into BF16 or int8 after they fail their parity gate.
+- Do not call `mlx-base` an all-BF16 artifact or `mlx-int8` an all-int8 artifact.
+- Do not mutate or republish official source checkpoints as MLX artifacts.
+- Do not commit model weights, reference audio, or generated evaluation audio.
 - Do not broaden the shared TTS protocol with dots-specific controls.
 - Do not claim upstream benchmark parity, lossless quantization, or real-time performance without reproduced evidence.

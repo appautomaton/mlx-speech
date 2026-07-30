@@ -2,11 +2,11 @@
 
 ## Goal
 
-Implement the approved [dots.tts MLX capability](./SPEC.md) for SOAR and MeanFlow, validate BF16 and mixed int8 waveform inference, and publish the four runtime artifacts with one authoritative Hugging Face model card.
+Implement the approved [dots.tts MLX capability](./SPEC.md) for SOAR and MeanFlow, validate source-faithful `mlx-base` and selective `mlx-int8` waveform inference, and publish the four runtime artifacts with one authoritative Hugging Face model card.
 
 ## Architecture Approach
 
-The hard-to-reverse decisions are recorded in [DESIGN.md](./DESIGN.md): extract a shared internal Qwen2 trunk rather than depend on `mlx-lm`; convert once into an explicit MLX-native artifact contract; establish BF16 parity before selective Qwen int8; keep generation behind the existing non-streaming TTS adapter; and publish one family repository with four independently loadable subdirectories.
+The hard-to-reverse decisions are recorded in [DESIGN.md](./DESIGN.md): extract a shared internal Qwen2 trunk rather than depend on `mlx-lm`; convert once into an explicit MLX-native artifact contract; preserve FP32 for parity-sensitive CAM++ and AudioVAE encoding while using BF16 for the validated core/decoder paths; quantize only eligible Qwen weights; keep generation behind the existing non-streaming TTS adapter; and publish one family repository with four independently loadable subdirectories.
 
 ## Execution Routing and Topology
 
@@ -15,9 +15,10 @@ Default: direct, serial, and continue automatically after each slice verifies. E
 Overrides:
 
 - Slice 4: subagent recommended because extracting the Qwen2 trunk crosses the existing VibeVoice family and introduces a shared internal interface.
+- Slice 9: subagent recommended because the revised per-path dtype schema crosses conversion, metadata, strict loading, and full-checkpoint parity.
 - Slice 10: subagent recommended because the autoregressive runtime composes every model component and the unified TTS registry/API.
 
-**Parallel-safe groups:** none. Component fixtures, checkpoint naming, BF16 loading, int8 packaging, and release claims form one dependency chain.
+**Parallel-safe groups:** none. Component fixtures, `mlx-base` naming and dtype predicates, int8 packaging, and release claims form one dependency chain.
 
 Checkpoints: none planned. Slice 14 proceeds under the publication authority in the approved spec; if Hugging Face credentials or `appautomaton` permissions are unavailable, execution must stop and report the required human action rather than weakening the release outcome.
 
@@ -29,7 +30,7 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 | REQ-002 — complete pure-MLX waveform runtime | 4–10 |
 | REQ-003 — unified public API | 10 |
 | REQ-004 — explicit MLX conversion | 3, 9 |
-| REQ-005 — BF16 and mixed int8 artifacts | 9, 11, 12 |
+| REQ-005 — component-validated base and int8 artifacts | 9, 11, 12 |
 | REQ-006 — parity and behavioral validation | 2–12 |
 | REQ-007 — Hugging Face release and card | 13, 14 |
 | REQ-008 — documentation and verification integration | 1–14 |
@@ -230,41 +231,52 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 **Evidence:** Added a shared pure-MLX DiT with official cos-first timestep embeddings, optional MeanFlow duration embedding, affine-free adaLN blocks, RMS-normalized rotary attention, mask/position handling, speaker conditioning, and tail output extraction. Added separate SOAR and MeanFlow solvers: SOAR performs 10-step Euler integration by default with batched CFG at guidance 1.2; MeanFlow performs four single-branch duration-conditioned evaluations by default with no runtime CFG. Focused deterministic tests cover causality, positions, conditioning, prefix splicing, solver schedules/equations, seed repeatability, and validation; `10 passed`; Ruff passed.
 **Risks / next:** Official full-size `dit.npz` and `solver.npz` parity requires converted DiT/core weights and remains a blocking Slice 9 load gate for both variants.
 
-### Slice 9: Build BF16 conversion and strict component loading
+### Slice 9: Build `mlx-base` conversion and strict mixed-precision loading
 
-**Objective:** Convert both official checkpoints into self-contained MLX-native BF16 artifacts and strict-load every component.
+**Objective:** Convert both official checkpoints into self-contained MLX-native `mlx-base` artifacts whose path-specific dtypes match the revised source-faithful contract, then strict-load and parity-check every component.
 
 **Acceptance criteria:**
 
-- Conversion remaps keys, transposes convolutions, folds all expected vocoder weight-normalization pairs, casts runtime tensors to BF16, and writes the DESIGN-defined file layout.
-- The restricted latent-statistics reader accepts only the pinned NumPy pickle structure and emits `latent_stats.safetensors` without Torch.
-- Alignment reports account for every source tensor and reject duplicate, missing, unexpected, mismatched, or source-shaped runtime tensors.
-- Both SOAR and MeanFlow BF16 directories strict-load all components.
+- Conversion remaps keys, transposes convolutions, folds all 80 vocoder weight-normalization pairs, and writes only MLX-native layouts.
+- `core.safetensors` is BF16; `speaker.safetensors` is FP32; `latent_stats.safetensors` is FP32; `vocoder.safetensors` stores `audio_encoder.*`, `enc_mi_layer.*`, and `pre_proj.*` as FP32 and its decode paths as BF16.
+- `mlx_config.json` names artifact class `base` and serializes exact component/path dtype predicates; strict loading rejects wrong-dtype tensors as well as duplicate, missing, unexpected, mismatched, or source-shaped tensors.
+- The restricted latent-statistics reader accepts only the pinned NumPy pickle structure and emits Torch-free safetensors.
+- Alignment reports account for every source tensor and explicitly name dropped training-only buffers.
+- SOAR and MeanFlow `mlx-base` directories strict-load and pass all checked-in Qwen, semantic, speaker, AudioVAE encode/decode, DiT, and solver fixture tolerances. The audit documents the official oracle's FP32 comparison semantics separately from stored runtime dtype.
+- Obsolete local `mlx-bf16` directories are never accepted as `mlx-base` inputs or release targets.
 
-**Verification:** `pytest tests/unit/test_dots_tts_convert.py tests/unit/test_dots_tts_checkpoint.py && pytest tests/checkpoint/test_dots_tts_bf16_load.py && uv run python scripts/audit/dots_tts_checkpoint.py --variant all --precision bf16`
+**Verification:** `pytest tests/unit/test_dots_tts_convert.py tests/unit/test_dots_tts_checkpoint.py tests/unit/test_dots_tts_speaker.py tests/unit/test_dots_tts_audio_vae.py && pytest tests/checkpoint/test_dots_tts_base_load.py && uv run python scripts/audit/dots_tts_checkpoint.py --variant all --precision base`
+
+**Execution:** subagent recommended
 
 **Depends on:** Slices 4–8
 
-**Touches:** `scripts/convert/dots_tts.py`, `scripts/audit/dots_tts_checkpoint.py`, dots.tts checkpoint/loading modules, unit and checkpoint tests, gitignored BF16 artifacts
+**Touches:** `scripts/convert/dots_tts.py`, `scripts/audit/dots_tts_checkpoint.py`, dots.tts checkpoint/loading/precision metadata, focused unit and checkpoint tests, gitignored `mlx-base` artifacts
 
-**Produces:** Strict-loadable SOAR and MeanFlow `mlx-bf16` artifacts and conversion/alignment reports.
+**Produces:** Strict-loadable, fixture-verified SOAR and MeanFlow `mlx-base` artifacts plus conversion/alignment reports.
+
+**Replan context:** The first Slice 9 attempt proved native mapping and strict shape alignment, corrected CAM++ length-aware statistics, and empirically rejected all-BF16 storage. Execution resumes from that work; it must replace the old dtype schema and finish the mixed-precision parity gate rather than redo Slices 1–8.
+
+**Status:** complete
+**Evidence:** Added transactional, source-integrity-verified `mlx-base` conversion and strict mixed-precision loading for SOAR and MeanFlow, with exact path dtype predicates, Torch-free latent-stat conversion, complete source accounting, and encoder-only tiled FP32 reductions. Full unit tier `675 passed`; real checkpoint tier `2 passed`; exact all-variant audit passed with AudioVAE encode max error `0.000179`, waveform `0.001367`, SOAR solver `0.015291`, and MeanFlow solver `0.007935`. A representative 3.2-second SOAR encode completed in `1.995 s` with `1,640,644,608` incremental Metal bytes and a `25,165,824`-byte largest logical reduction tile. Scoped Ruff, forbidden-import scan, and `git diff --check` passed; spec and quality reviewers `APPROVED` after one bounded integrity, rollback, latent-shape, and memory correction round. See `orchestration/slice-009-summary.md`.
+**Risks / next:** Host- and workload-specific end-to-end peak memory remains a Slice 10 generation/integration concern; Slice 10 must compose waveform generation without weakening the strict `mlx-base` dtype and loader contract.
 
 ### Slice 10: Compose autoregressive generation and the unified TTS adapter
 
-**Objective:** Connect prompt conditioning, Qwen, both solvers, semantic feedback, EOS, and AudioVAE decoding into BF16 waveform generation exposed through `mlx_speech.tts`.
+**Objective:** Connect prompt conditioning, Qwen, both solvers, semantic feedback, EOS, and AudioVAE decoding into `mlx-base` waveform generation exposed through `mlx_speech.tts`.
 
 **Acceptance criteria:**
 
 - Continuation cloning, speaker-only cloning, and documented no-reference parity behavior follow the official schedule semantics.
 - SOAR and MeanFlow generate finite, non-silent mono 48 kHz waveform through `TTSOutput` with deterministic seeds and bounded patch generation.
-- `dots-tts-soar-bf16` and `dots-tts-mf-bf16` aliases resolve correctly; int8 default aliases remain unpublished until the quant gate passes.
+- `dots-tts-soar-base` and `dots-tts-mf-base` aliases resolve correctly; short int8 aliases remain unpublished or resolve to base until the quant gate passes.
 - Hub alias metadata supports an explicit nested artifact subdirectory while preserving every existing flat-repository alias unchanged.
 - Each remote dots alias passes exactly `["<artifact-subdir>/**", "README.md"]` as its download allow-list and returns that explicit subdirectory; it never falls back to quantization-directory guessing.
 - A mocked resolver test and an isolated-cache integration probe prove that resolving one alias materializes no `.safetensors` from the other three variants.
 - Language, solver, guidance, speaker, seed, and patch-budget controls stay adapter kwargs.
 - Dependency guards prove the runtime does not import forbidden packages or `.references/` code.
 
-**Verification:** `pytest tests/unit/test_dots_tts_generation.py tests/unit/test_dots_tts_adapter.py tests/unit/test_dots_tts_dependency_guard.py tests/unit/test_dots_tts_hub_selective.py tests/unit/test_hub_snapshot_resolve.py && pytest tests/runtime/test_dots_tts_bf16.py && RUN_LOCAL_INTEGRATION=1 pytest tests/integration/test_dots_tts_bf16.py`
+**Verification:** `pytest tests/unit/test_dots_tts_generation.py tests/unit/test_dots_tts_adapter.py tests/unit/test_dots_tts_dependency_guard.py tests/unit/test_dots_tts_hub_selective.py tests/unit/test_hub_snapshot_resolve.py && pytest tests/runtime/test_dots_tts_base.py && RUN_LOCAL_INTEGRATION=1 pytest tests/integration/test_dots_tts_base.py`
 
 **Execution:** subagent recommended
 
@@ -272,17 +284,17 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 
 **Touches:** `src/mlx_speech/generation/dots_tts.py`, `src/mlx_speech/tts/_adapters/dots_tts.py`, TTS registry/hub aliases, model composition, tests
 
-**Produces:** End-to-end BF16 dots.tts generation through the unified public API.
+**Produces:** End-to-end `mlx-base` dots.tts generation through the unified public API.
 
 ### Slice 11: Produce and load selective int8 artifacts
 
-**Objective:** Quantize the approved Qwen2.5 predicate for both checkpoints, serialize exact metadata, and strict-load the resulting mixed W8A-BF16 artifacts.
+**Objective:** Quantize the approved Qwen2.5 predicate for both checkpoints, serialize exact metadata, and strict-load `mlx-int8` while preserving every non-selected `mlx-base` dtype.
 
 **Acceptance criteria:**
 
 - Affine int8 group-size 64 is applied to eligible Qwen Linear/Embedding paths and reconstructed from serialized path-aware metadata.
-- Precision-sensitive model, flow, speaker, and waveform components remain BF16 unless an explicitly recorded extension passes the same gates.
-- SOAR and MeanFlow int8 directories are self-contained and at least 25% smaller than their BF16 counterparts.
+- CAM++, AudioVAE encoding, latent statistics, semantic/flow paths, conditioning projections, and waveform decoding retain their exact `mlx-base` dtypes; no non-Qwen path is quantized.
+- SOAR and MeanFlow int8 directories are self-contained and at least 25% smaller than their matching `mlx-base` artifacts.
 - Quantized alignment reports and checkpoint tests have no unexplained gaps.
 
 **Verification:** `pytest tests/unit/test_dots_tts_quantization.py tests/unit/test_dots_tts_checkpoint.py && pytest tests/checkpoint/test_dots_tts_int8_load.py && uv run python scripts/audit/dots_tts_checkpoint.py --variant all --precision int8`
@@ -295,13 +307,13 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 
 ### Slice 12: Run the four-artifact quality and integration gate
 
-**Objective:** Prove BF16 correctness and decide whether int8 may become the default using the fixed multilingual cloning corpus and all four runtime artifacts.
+**Objective:** Prove `mlx-base` correctness and decide whether int8 may become the default using the fixed multilingual cloning corpus and all four runtime artifacts.
 
 **Acceptance criteria:**
 
 - The eval corpus acquisition/manifest is reproducible and keeps source/generated audio gitignored.
-- SOAR/MF × BF16/int8 each pass continuation and speaker-only waveform integration.
-- Aggregate int8 WER regresses by no more than 1 absolute point and speaker cosine by no more than 0.02 against matching BF16; size and peak-memory measurements are recorded.
+- SOAR/MF × base/int8 each pass continuation and speaker-only waveform integration.
+- Aggregate int8 WER regresses by no more than 1 absolute point and speaker cosine by no more than 0.02 against matching base; size and peak-memory measurements are recorded.
 - A checked-in benchmark report records prompts, source revisions, artifact hashes, host, commands, metrics, failures, and whether int8 earned default status.
 - Default int8 aliases are enabled only on PASS.
 
@@ -321,7 +333,7 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 
 - `docs/dots-tts.md` covers checkpoint selection, clone modes, controls, layout, conversion, quantization, memory, limitations, and safety.
 - The model card covers the four variants, exact upstream revisions, Apache-2.0 attribution, reproduced metrics only, usage examples, limitations, consent, disclosure, and misuse risk.
-- Release tooling stages only `soar/mf × mlx-bf16/mlx-int8` plus the card; `original/` is structurally unreachable from upload targets.
+- Release tooling stages only `soar/mf × mlx-base/mlx-int8` plus the card; `original/` and obsolete `mlx-bf16/` directories are structurally unreachable from upload targets.
 - A dry run shows the intended remote paths under `appautomaton/dots-tts-mlx` and fails if any required artifact or benchmark evidence is missing.
 
 **Verification:** `uv run python scripts/hugging_face/upload.py dots-tts --dry-run && pytest tests/unit/test_dots_tts_release.py && git diff --check`
@@ -370,8 +382,10 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 ## Review: Engineering
 
 - Verdict: approved_with_risks
-- Strength: The revised plan makes oracle provenance and selective Hub downloads explicit, testable prerequisites while preserving clean runtime and artifact boundaries.
-- Concern: Slice 2 may be slow or fail on Apple Silicon because regenerating official PyTorch fixtures requires a heavy isolated oracle environment and full-model resources.
-- Concern: Slice 14 uploads four large subdirectories sequentially, so an interrupted publication may temporarily leave the public Hugging Face repository incomplete even though the workflow is resumable.
-- Action: Execute serially, require Slice 2's regeneration gate before component work, and in Slice 14 verify the complete remote file list and all four isolated-cache smokes before declaring publication finished.
-- Verified: Traced the revised dependency graph, oracle fixture coverage and isolation, current Hub allow-pattern plumbing, clean-cache exclusion gates, BF16-to-int8 validation order, and resumable release path.
+- Strength: The revised plan makes each precision reduction evidence-gated and keeps conversion, native storage, strict loading, runtime composition, quantization, and publication in one traceable dependency chain.
+- Concern: Slice 9 currently writes multi-gigabyte files directly into the final artifact directory, so interruption can leave a non-empty partial `mlx-base` directory that the converter refuses to resume or replace.
+- Concern: Slice 9 may still fail FP32 AudioVAE encoder parity because preserving FP32 weights does not prevent reduced-precision MLX convolution accumulation, although the full encoder fixture gate will expose this before generation.
+- Concern: Slice 9's oracle-comparison audit currently casts whole modules to FP32, which can hide a wrong runtime dtype or a BF16 decoder regression unless stored-dtype validation and runtime-dtype execution are tested separately.
+- Concern: Slice 11 must serialize converted native `qwen.*` quantization paths and inherit every non-Qwen base dtype, while the current checkpoint schema still assumes the stale upstream `llm.*` prefix and uniform per-component dtypes.
+- Action: In Slice 9, stage and atomically promote complete artifacts, implement a total native-path dtype predicate, and separate oracle-comparison from runtime-dtype gates; in Slice 11, assert that only native Qwen paths are quantized and all other tensor dtypes equal `mlx-base`.
+- Verified: Traced the revised PLAN/DESIGN critical path against the current converter, checkpoint loader, audit implementation, native parameter namespaces, partial-output behavior, mixed-dtype binding, and specified unit/checkpoint/runtime gates.

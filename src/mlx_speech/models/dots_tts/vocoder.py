@@ -9,6 +9,10 @@ import mlx.nn as nn
 import numpy as np
 
 
+HIGH_PRECISION_OUTPUT_TILE = 32
+HIGH_PRECISION_TIME_TILE = 512
+
+
 class Conv1d(nn.Module):
     """Channels-last Conv1d with explicit causal or symmetric padding."""
 
@@ -22,12 +26,14 @@ class Conv1d(nn.Module):
         dilation: int = 1,
         causal: bool = True,
         bias: bool = True,
+        high_precision: bool = False,
     ):
         super().__init__()
         self.stride = int(stride)
         self.dilation = int(dilation)
         self.causal = bool(causal)
         self.kernel_size = int(kernel_size)
+        self.high_precision = bool(high_precision)
         self.left_padding = self.dilation * (self.kernel_size - 1) if causal else 0
         self.padding = (
             0
@@ -41,6 +47,8 @@ class Conv1d(nn.Module):
         self.bias = mx.zeros((output_channels,)) if bias else None
 
     def __call__(self, value: mx.array) -> mx.array:
+        if self.high_precision:
+            return self._call_high_precision(value)
         if self.causal and self.left_padding:
             value = mx.pad(value, ((0, 0), (self.left_padding, 0), (0, 0)))
         output = mx.conv1d(
@@ -51,6 +59,65 @@ class Conv1d(nn.Module):
             dilation=self.dilation,
         )
         return output if self.bias is None else output + self.bias
+
+    def _call_high_precision(self, value: mx.array) -> mx.array:
+        """Run an encoder-only convolution with true FP32 reductions."""
+
+        value = value.astype(mx.float32)
+        if self.causal and self.left_padding:
+            value = mx.pad(value, ((0, 0), (self.left_padding, 0), (0, 0)))
+        elif self.padding:
+            value = mx.pad(value, ((0, 0), (self.padding, self.padding), (0, 0)))
+        weight = self.weight.astype(mx.float32)
+        kernel = int(weight.shape[1])
+        padded_time = int(value.shape[1])
+        output_time = (
+            padded_time - self.dilation * (kernel - 1) - 1
+        ) // self.stride + 1
+        time_tiles = []
+        output_channels = int(weight.shape[0])
+        for time_start in range(0, output_time, HIGH_PRECISION_TIME_TILE):
+            time_end = min(time_start + HIGH_PRECISION_TIME_TILE, output_time)
+            channel_tiles = []
+            for channel_start in range(
+                0, output_channels, HIGH_PRECISION_OUTPUT_TILE
+            ):
+                channel_end = min(
+                    channel_start + HIGH_PRECISION_OUTPUT_TILE, output_channels
+                )
+                output = None
+                for tap in range(kernel):
+                    start = tap * self.dilation + time_start * self.stride
+                    frames = value[
+                        :,
+                        start : start + self.stride * (time_end - time_start) : self.stride,
+                        :,
+                    ]
+                    contribution = mx.sum(
+                        frames[:, :, None, :]
+                        * weight[
+                            None,
+                            None,
+                            channel_start:channel_end,
+                            tap,
+                            :,
+                        ],
+                        axis=-1,
+                    )
+                    output = (
+                        contribution if output is None else output + contribution
+                    )
+                if output is None:
+                    raise ValueError("high-precision convolution has an empty kernel")
+                if self.bias is not None:
+                    output += self.bias[channel_start:channel_end].astype(mx.float32)
+                channel_tiles.append(output)
+            time_tile = mx.concatenate(channel_tiles, axis=-1)
+            mx.eval(time_tile)
+            time_tiles.append(time_tile)
+        result = mx.concatenate(time_tiles, axis=1)
+        mx.eval(result)
+        return result
 
 
 class CausalConvTranspose1d(nn.Module):
@@ -253,4 +320,6 @@ __all__ = [
     "BigVGANDecoder",
     "CausalConvTranspose1d",
     "Conv1d",
+    "HIGH_PRECISION_OUTPUT_TILE",
+    "HIGH_PRECISION_TIME_TILE",
 ]

@@ -411,23 +411,49 @@ class CAMPPlus(nn.Module):
         self.dense = _Conv1d(channels * 2, config.embedding_size, 1)
         self.dense_norm = FrozenBatchNorm(config.embedding_size, affine=False)
 
-    def __call__(self, features: mx.array) -> mx.array:
+    @staticmethod
+    def _masked_statistics(
+        value: mx.array, lengths: mx.array, *, eps: float = 1e-2
+    ) -> mx.array:
+        time = int(value.shape[1])
+        lengths = mx.clip(lengths.astype(mx.int32), 1, time)
+        mask = mx.arange(time, dtype=mx.int32)[None, :] < lengths[:, None]
+        mask = mask.astype(value.dtype)[..., None]
+        denominator = lengths.astype(value.dtype)[:, None]
+        mean = mx.sum(value * mask, axis=1) / denominator
+        centered = (value - mean[:, None]) * mask
+        variance_denominator = mx.maximum(lengths - 1, 1).astype(value.dtype)[:, None]
+        variance = mx.sum(centered * centered, axis=1) / variance_denominator
+        standard_deviation = mx.sqrt(mx.maximum(variance, eps))
+        return mx.concatenate((mean, standard_deviation), axis=-1)
+
+    def __call__(
+        self, features: mx.array, *, lengths: mx.array | None = None
+    ) -> mx.array:
         if features.ndim != 3 or int(features.shape[-1]) != self.config.feature_dim:
             raise ValueError(
                 f"CAM++ expects (batch, time, {self.config.feature_dim}), "
                 f"got {features.shape}"
             )
         value = self.tdnn(self.head(features))
+        if lengths is not None:
+            lengths = (
+                mx.floor_divide(lengths.astype(mx.int32) - 1, 2) + 1
+            )
         for block, transit in zip(self.blocks, self.transits, strict=True):
             value = transit(block(value))
         value = nn.relu(self.out_nonlinear(value))
-        mean = value.mean(axis=1)
-        centered = value - mean[:, None]
-        denominator = max(int(value.shape[1]) - 1, 1)
-        standard_deviation = mx.sqrt(
-            mx.sum(centered * centered, axis=1) / denominator
-        )
-        pooled = mx.concatenate((mean, standard_deviation), axis=-1)[:, None]
+        if lengths is None:
+            mean = value.mean(axis=1)
+            centered = value - mean[:, None]
+            denominator = max(int(value.shape[1]) - 1, 1)
+            standard_deviation = mx.sqrt(
+                mx.sum(centered * centered, axis=1) / denominator
+            )
+            pooled = mx.concatenate((mean, standard_deviation), axis=-1)
+        else:
+            pooled = self._masked_statistics(value, lengths)
+        pooled = pooled[:, None]
         return self.dense_norm(self.dense(pooled))[:, 0]
 
 
@@ -464,9 +490,11 @@ class SpeakerConditioner(nn.Module):
     ) -> SpeakerConditioning:
         if not np.isfinite(speaker_scale):
             raise ValueError("speaker_scale must be finite")
-        features, _length = self.frontend.features(audio, sample_rate=sample_rate)
+        features, length = self.frontend.features(audio, sample_rate=sample_rate)
         feature_array = mx.array(features[None], dtype=mx.float32)
-        embedding = self.encoder(feature_array)
+        embedding = self.encoder(
+            feature_array, lengths=mx.array([length], dtype=mx.int32)
+        )
         scaled_embedding = embedding * float(speaker_scale)
         projected = self.projection_norm(
             self.projection(scaled_embedding)
