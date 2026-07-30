@@ -286,6 +286,10 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 
 **Produces:** End-to-end `mlx-base` dots.tts generation through the unified public API.
 
+**Status:** complete
+**Evidence:** Added pure-MLX autoregressive generation and the unified dots.tts adapter, explicit nested Hugging Face artifact aliases, dependency/isolation guards, and focused runtime/integration coverage. Replaced dense all-phase resampling with a source-faithful output-centered Kaiser-sinc implementation bounded to a 32 MiB workspace and 256 MiB output, with early continuation-budget rejection and speaker-only prefix limiting. Focused suite `50 passed`; full unit tier `717 passed`; real SOAR/MF runtime and unified-API integration passed independently; SOAR 44.1 kHz speaker-only and continuation conditioning passed. Peak observed RSS was about 4.85 GiB and peak MLX allocation about 5.24 GiB under explicit stop guards. Ruff and scoped diff checks passed; spec and quality reviewers `APPROVED`. See `orchestration/slice-010-summary.md`.
+**Risks / next:** Long multi-patch real-checkpoint trajectories remain a Slice 12 quality/integration concern; Slice 11 may now build selective Qwen-only int8 artifacts without changing the verified base runtime.
+
 ### Slice 11: Produce and load selective int8 artifacts
 
 **Objective:** Quantize the approved Qwen2.5 predicate for both checkpoints, serialize exact metadata, and strict-load `mlx-int8` while preserving every non-selected `mlx-base` dtype.

@@ -1,267 +1,22 @@
 {
   "schema": 1,
-  "automaton_version": "0.4.0",
-  "installed_at": "2026-07-29T02:31:35.862Z",
+  "automaton_version": "0.4.1",
+  "installed_at": "2026-07-30T19:52:16.568Z",
   "owners": {
     "project": {
-      "automaton_version": "0.4.0",
-      "installed_at": "2026-07-29T02:31:35.841Z"
+      "automaton_version": "0.4.1",
+      "installed_at": "2026-07-30T19:52:16.548Z"
     },
     "claude": {
-      "automaton_version": "0.4.0",
-      "installed_at": "2026-07-29T02:31:31.454Z"
+      "automaton_version": "0.4.1",
+      "installed_at": "2026-07-30T19:52:16.568Z"
     },
     "codex": {
-      "automaton_version": "0.4.0",
-      "installed_at": "2026-07-29T02:31:35.862Z"
+      "automaton_version": "0.4.1",
+      "installed_at": "2026-07-30T19:52:13.227Z"
     }
   },
   "files": [
-    {
-      "path": ".claude/skills/auto-eng-review/SKILL.md",
-      "hash": "f4328ab5c82ef04054ad93f2510e90fe90846e844e4787c2405901ae6810fe6c",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-eng-review/references/engineering-sections.md",
-      "hash": "c8be8f3e1b15209c1d7b5a8b77ff1e89731bb77a193969ae58a7ff13bfaafcec",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-eng-review/references/implementation-alternatives.md",
-      "hash": "61a06fc27d6eaf8f6f4ac9f77af9583056643a1972c138d6d9a21e9f3914de0c",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-eng-review/references/outside-voice.md",
-      "hash": "abdfd246d4f0114098c097b32bab437286feab550757a436de1b8f590d9c83c6",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-eng-review/references/prime-directives.md",
-      "hash": "6ee2e7483a02ffb2b67a9eed96e09086223b7b7d14092cf2aa5b492d12e7bdbb",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-eng-review/references/quality.md",
-      "hash": "5de43a0c3eacba28254f0fce7d918f92b4593e16ccf94a414789ae29ba371e58",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-eng-review/references/review-template.md",
-      "hash": "d36bb48e1dd6eca6e3d45109da93a8120d380ef9f13c81cc37dad5f1b3012b89",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-execute/SKILL.md",
-      "hash": "7105cbb5cc8c0736c0b8680869f055f3634089f63e34b694464cc2a147b41002",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-execute/references/content-execution.md",
-      "hash": "63b71447497f22aad11da991d20a2bff3b93eedaf9d70dca48a4f71411282484",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-execute/references/debug-protocol.md",
-      "hash": "0296e16c0c92a5598b0aefc306c04afd957f23d943e2d00022ae713b44ddfc48",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-execute/references/git-rhythm.md",
-      "hash": "dc930749e5e4b9aced3c4f0f6b8e1f53396fce23ae2d5b52b93f0520efdc193d",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-execute/references/implementer-prompt.md",
-      "hash": "d056e98e0c87397a9e32bb4459c661bfa1d017d65bea55bcd77c4ac275fd05e4",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-execute/references/quality-reviewer-prompt.md",
-      "hash": "8d9dd6c1d6be6fe789aaab30220f120f1cbb27ec688741eee61e9ae2295e45f5",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-execute/references/quality.md",
-      "hash": "17b491b19c76cbb1ca2e17a09824709563466c45812b970703930b167790f039",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-execute/references/spec-reviewer-prompt.md",
-      "hash": "54dc0227ffd8d457d0d54ebe75623c436e344edb84ba376092d7f472781935b8",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-execute/references/stop-examples.md",
-      "hash": "5a9dcf0e5a15eb84fdfb32ec2938fd34ec3cd444afd27201797cc495db57d8de",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/SKILL.md",
-      "hash": "8542cabbc8bff32826f360332c05c3676bc26f6f10bb762194669f02a2eeddad",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/alternatives-format.md",
-      "hash": "4b7277d027f66d417712cf496e4910d9a6a7b1eaf4ac2b3495310ca3381b8883",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/builder-diagnostic.md",
-      "hash": "117f9c03cbd18a4d2e4dcfda1bcd6dddfb4c04a4c792f623473ab4a6ffa113e8",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/content-framing.md",
-      "hash": "85f24c91f4f25ce58ec7d2254765fe04fb21b25f5b8af370c0de7719046b7477",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/content-intake.md",
-      "hash": "acc062dbbb31c8a931b1bfa011a05c42ac1b85c7049426721e90ba3cb579a7a7",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/diagnostic-calibration.md",
-      "hash": "b95b87c92705cda123e4f4771b4287267d7e348ae3fb883fc549c8abd264a337",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/diagnostic.md",
-      "hash": "cf3cea819c6b3fe1a569f993e213dfdfd6a5ba92903e9013f696df0f3690df28",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/landscape-awareness.md",
-      "hash": "1206af22cc423f0d806a24816d8b7029bde6a64b77c731ce0e8bb7e0afd90137",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/operating-principles.md",
-      "hash": "9876b363260a6f6567ab06fd031efccbcb0c6b3fec25f9251cdda8ce50a057de",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/quality.md",
-      "hash": "f751b7d5867ec7c5904b65a8fe072b7a9604ad1a2ba3bf25914f62ebe77e63bb",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/shape-questions.md",
-      "hash": "7fcec38e4bdddb95fa47d0e7f53e04a59baacd8caae2bc3057de22a44ba60c7a",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/spec-shape.md",
-      "hash": "d6102ed4acbd3ca712152878952d4486240386003ad83944c01e10a75d780fb9",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/startup-diagnostic.md",
-      "hash": "ca2b81b07a781b9997de4a182c3ad307e980bf02affbf7c974cb9e0b8e3898a0",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-plan/SKILL.md",
-      "hash": "e45eddc7ddd2755c138b94c55103d20d460e65108d274dd468c363f74b3e03af",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-plan/references/content-planning.md",
-      "hash": "992099e374e4970a9ebebeb4e2eb652a6aa717bfc76c827ca843aa31cecf1971",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-plan/references/quality.md",
-      "hash": "1d71d106981f96cd071d685620613a8c681b38c508c389d8df738cce9301b948",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-plan/references/slice-examples.md",
-      "hash": "41ee3a2d46ab64617d36d919a2b3c3c40ba986f994bff3e713da25b42a01c168",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-resume/SKILL.md",
-      "hash": "5c14213efb6376b0959109579eeeecce84d37e9742de169d0e6f3b190671e82c",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-resume/references/artifact-order.md",
-      "hash": "a2f7ba5e7dd861bf8b3e5a53512f162ee8df6eb67b88412864f5f09e3505ad54",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-resume/references/quality.md",
-      "hash": "6aee8a5b47355e5b2937a9645305d17b430bc5b8abc19f2a1946beb3fe549cb1",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-resume/references/recovery-scenarios.md",
-      "hash": "9ab7668b4031c75838119b802c76aa4125b35948e2bc97b9b0827717e429774f",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-verify/SKILL.md",
-      "hash": "b9fdafefe77a3e62ffad6c2a7e0a146604234fc1e6be74a49b356971945a7013",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-verify/references/content-verification.md",
-      "hash": "621a85e0392c2139a2f8da7260ef33c0d8395c6c170ebd269921e08619bf4ef0",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-verify/references/quality.md",
-      "hash": "e88a96329aa485178a1bb8ee1daa53800329f823df77aa12e0f7aab782cb6517",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-verify/references/verification-template.md",
-      "hash": "105b0355c1dba214f44aa026e75afbfd11397603f25deca207213f6b4a2b3b59",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-execute/references/HOST-TOOLS.md",
-      "hash": "375658cefbefdf89aeaeefe66ebc73bf438bd3c7f67bc0a2bd62aef2f0817133",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/HOST-TOOLS.md",
-      "hash": "375658cefbefdf89aeaeefe66ebc73bf438bd3c7f67bc0a2bd62aef2f0817133",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-plan/references/HOST-TOOLS.md",
-      "hash": "375658cefbefdf89aeaeefe66ebc73bf438bd3c7f67bc0a2bd62aef2f0817133",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/agents/automaton-implementer.md",
-      "hash": "39c499304d4dc344524deca84907d2f41a2d8275d2854ed96434e2d541ca3a83",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/agents/automaton-spec-reviewer.md",
-      "hash": "37d86d6c3355304d064963183dc4c50cb72e606cc111df850e7104d25d86d7e8",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/agents/automaton-quality-reviewer.md",
-      "hash": "9b56fd821a0cbfde9acf28a297f18f9ceb0b9f98fe94e1b3693bf9b448e61f63",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/agents/automaton-librarian.md",
-      "hash": "ab6473e9021824722883414bd26075857fa64c10802acca2836cf41554f24b1f",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/hooks/session-start.mjs",
-      "hash": "b34f2143e87396acadf4e6424a4989fc25ff3c8ee2e11eccd40740c6c17923d2",
-      "owner": "claude"
-    },
     {
       "path": ".codex/skills/auto-eng-review/SKILL.md",
       "hash": "f4328ab5c82ef04054ad93f2510e90fe90846e844e4787c2405901ae6810fe6c",
@@ -344,7 +99,7 @@
     },
     {
       "path": ".codex/skills/auto-frame/SKILL.md",
-      "hash": "8542cabbc8bff32826f360332c05c3676bc26f6f10bb762194669f02a2eeddad",
+      "hash": "d3c2e0ac0c0e6e270a17966dc5556235d733a6725ceb33952b45c71d78cd66c6",
       "owner": "codex"
     },
     {
@@ -353,38 +108,23 @@
       "owner": "codex"
     },
     {
-      "path": ".codex/skills/auto-frame/references/builder-diagnostic.md",
-      "hash": "117f9c03cbd18a4d2e4dcfda1bcd6dddfb4c04a4c792f623473ab4a6ffa113e8",
-      "owner": "codex"
-    },
-    {
       "path": ".codex/skills/auto-frame/references/content-framing.md",
-      "hash": "85f24c91f4f25ce58ec7d2254765fe04fb21b25f5b8af370c0de7719046b7477",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/content-intake.md",
-      "hash": "acc062dbbb31c8a931b1bfa011a05c42ac1b85c7049426721e90ba3cb579a7a7",
+      "hash": "33114658c2959e8075c9f90c784c9c3ddd3b6cefeef3946c592ac90276e4a7da",
       "owner": "codex"
     },
     {
       "path": ".codex/skills/auto-frame/references/diagnostic-calibration.md",
-      "hash": "b95b87c92705cda123e4f4771b4287267d7e348ae3fb883fc549c8abd264a337",
+      "hash": "76e320d9851d45f8c408fa4d342788888dc37285cc7d21ef7d273d049c877544",
       "owner": "codex"
     },
     {
       "path": ".codex/skills/auto-frame/references/diagnostic.md",
-      "hash": "cf3cea819c6b3fe1a569f993e213dfdfd6a5ba92903e9013f696df0f3690df28",
+      "hash": "7df9d7cae2efd93ff43950682ab9caae427b18b0ed8eda1392e61608cca19f52",
       "owner": "codex"
     },
     {
       "path": ".codex/skills/auto-frame/references/landscape-awareness.md",
-      "hash": "1206af22cc423f0d806a24816d8b7029bde6a64b77c731ce0e8bb7e0afd90137",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/operating-principles.md",
-      "hash": "9876b363260a6f6567ab06fd031efccbcb0c6b3fec25f9251cdda8ce50a057de",
+      "hash": "e1b7b91e430edf2bfc1ddd420ae9768a605398a0c0ce0a16ded91333ce049283",
       "owner": "codex"
     },
     {
@@ -400,11 +140,6 @@
     {
       "path": ".codex/skills/auto-frame/references/spec-shape.md",
       "hash": "d6102ed4acbd3ca712152878952d4486240386003ad83944c01e10a75d780fb9",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/startup-diagnostic.md",
-      "hash": "ca2b81b07a781b9997de4a182c3ad307e980bf02affbf7c974cb9e0b8e3898a0",
       "owner": "codex"
     },
     {
@@ -506,77 +241,234 @@
       "path": ".codex/hooks/session-start.mjs",
       "hash": "b34f2143e87396acadf4e6424a4989fc25ff3c8ee2e11eccd40740c6c17923d2",
       "owner": "codex"
+    },
+    {
+      "path": ".claude/skills/auto-eng-review/SKILL.md",
+      "hash": "f4328ab5c82ef04054ad93f2510e90fe90846e844e4787c2405901ae6810fe6c",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-eng-review/references/engineering-sections.md",
+      "hash": "c8be8f3e1b15209c1d7b5a8b77ff1e89731bb77a193969ae58a7ff13bfaafcec",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-eng-review/references/implementation-alternatives.md",
+      "hash": "61a06fc27d6eaf8f6f4ac9f77af9583056643a1972c138d6d9a21e9f3914de0c",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-eng-review/references/outside-voice.md",
+      "hash": "abdfd246d4f0114098c097b32bab437286feab550757a436de1b8f590d9c83c6",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-eng-review/references/prime-directives.md",
+      "hash": "6ee2e7483a02ffb2b67a9eed96e09086223b7b7d14092cf2aa5b492d12e7bdbb",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-eng-review/references/quality.md",
+      "hash": "5de43a0c3eacba28254f0fce7d918f92b4593e16ccf94a414789ae29ba371e58",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-eng-review/references/review-template.md",
+      "hash": "d36bb48e1dd6eca6e3d45109da93a8120d380ef9f13c81cc37dad5f1b3012b89",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-execute/SKILL.md",
+      "hash": "7105cbb5cc8c0736c0b8680869f055f3634089f63e34b694464cc2a147b41002",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-execute/references/content-execution.md",
+      "hash": "63b71447497f22aad11da991d20a2bff3b93eedaf9d70dca48a4f71411282484",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-execute/references/debug-protocol.md",
+      "hash": "0296e16c0c92a5598b0aefc306c04afd957f23d943e2d00022ae713b44ddfc48",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-execute/references/git-rhythm.md",
+      "hash": "dc930749e5e4b9aced3c4f0f6b8e1f53396fce23ae2d5b52b93f0520efdc193d",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-execute/references/implementer-prompt.md",
+      "hash": "d056e98e0c87397a9e32bb4459c661bfa1d017d65bea55bcd77c4ac275fd05e4",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-execute/references/quality-reviewer-prompt.md",
+      "hash": "8d9dd6c1d6be6fe789aaab30220f120f1cbb27ec688741eee61e9ae2295e45f5",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-execute/references/quality.md",
+      "hash": "17b491b19c76cbb1ca2e17a09824709563466c45812b970703930b167790f039",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-execute/references/spec-reviewer-prompt.md",
+      "hash": "54dc0227ffd8d457d0d54ebe75623c436e344edb84ba376092d7f472781935b8",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-execute/references/stop-examples.md",
+      "hash": "5a9dcf0e5a15eb84fdfb32ec2938fd34ec3cd444afd27201797cc495db57d8de",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-frame/SKILL.md",
+      "hash": "d3c2e0ac0c0e6e270a17966dc5556235d733a6725ceb33952b45c71d78cd66c6",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-frame/references/alternatives-format.md",
+      "hash": "4b7277d027f66d417712cf496e4910d9a6a7b1eaf4ac2b3495310ca3381b8883",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-frame/references/content-framing.md",
+      "hash": "33114658c2959e8075c9f90c784c9c3ddd3b6cefeef3946c592ac90276e4a7da",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-frame/references/diagnostic-calibration.md",
+      "hash": "76e320d9851d45f8c408fa4d342788888dc37285cc7d21ef7d273d049c877544",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-frame/references/diagnostic.md",
+      "hash": "7df9d7cae2efd93ff43950682ab9caae427b18b0ed8eda1392e61608cca19f52",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-frame/references/landscape-awareness.md",
+      "hash": "e1b7b91e430edf2bfc1ddd420ae9768a605398a0c0ce0a16ded91333ce049283",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-frame/references/quality.md",
+      "hash": "f751b7d5867ec7c5904b65a8fe072b7a9604ad1a2ba3bf25914f62ebe77e63bb",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-frame/references/shape-questions.md",
+      "hash": "7fcec38e4bdddb95fa47d0e7f53e04a59baacd8caae2bc3057de22a44ba60c7a",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-frame/references/spec-shape.md",
+      "hash": "d6102ed4acbd3ca712152878952d4486240386003ad83944c01e10a75d780fb9",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-plan/SKILL.md",
+      "hash": "e45eddc7ddd2755c138b94c55103d20d460e65108d274dd468c363f74b3e03af",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-plan/references/content-planning.md",
+      "hash": "992099e374e4970a9ebebeb4e2eb652a6aa717bfc76c827ca843aa31cecf1971",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-plan/references/quality.md",
+      "hash": "1d71d106981f96cd071d685620613a8c681b38c508c389d8df738cce9301b948",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-plan/references/slice-examples.md",
+      "hash": "41ee3a2d46ab64617d36d919a2b3c3c40ba986f994bff3e713da25b42a01c168",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-resume/SKILL.md",
+      "hash": "5c14213efb6376b0959109579eeeecce84d37e9742de169d0e6f3b190671e82c",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-resume/references/artifact-order.md",
+      "hash": "a2f7ba5e7dd861bf8b3e5a53512f162ee8df6eb67b88412864f5f09e3505ad54",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-resume/references/quality.md",
+      "hash": "6aee8a5b47355e5b2937a9645305d17b430bc5b8abc19f2a1946beb3fe549cb1",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-resume/references/recovery-scenarios.md",
+      "hash": "9ab7668b4031c75838119b802c76aa4125b35948e2bc97b9b0827717e429774f",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-verify/SKILL.md",
+      "hash": "b9fdafefe77a3e62ffad6c2a7e0a146604234fc1e6be74a49b356971945a7013",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-verify/references/content-verification.md",
+      "hash": "621a85e0392c2139a2f8da7260ef33c0d8395c6c170ebd269921e08619bf4ef0",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-verify/references/quality.md",
+      "hash": "e88a96329aa485178a1bb8ee1daa53800329f823df77aa12e0f7aab782cb6517",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-verify/references/verification-template.md",
+      "hash": "105b0355c1dba214f44aa026e75afbfd11397603f25deca207213f6b4a2b3b59",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-execute/references/HOST-TOOLS.md",
+      "hash": "375658cefbefdf89aeaeefe66ebc73bf438bd3c7f67bc0a2bd62aef2f0817133",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-frame/references/HOST-TOOLS.md",
+      "hash": "375658cefbefdf89aeaeefe66ebc73bf438bd3c7f67bc0a2bd62aef2f0817133",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-plan/references/HOST-TOOLS.md",
+      "hash": "375658cefbefdf89aeaeefe66ebc73bf438bd3c7f67bc0a2bd62aef2f0817133",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/agents/automaton-implementer.md",
+      "hash": "39c499304d4dc344524deca84907d2f41a2d8275d2854ed96434e2d541ca3a83",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/agents/automaton-spec-reviewer.md",
+      "hash": "37d86d6c3355304d064963183dc4c50cb72e606cc111df850e7104d25d86d7e8",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/agents/automaton-quality-reviewer.md",
+      "hash": "9b56fd821a0cbfde9acf28a297f18f9ceb0b9f98fe94e1b3693bf9b448e61f63",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/agents/automaton-librarian.md",
+      "hash": "ab6473e9021824722883414bd26075857fa64c10802acca2836cf41554f24b1f",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/hooks/session-start.mjs",
+      "hash": "b34f2143e87396acadf4e6424a4989fc25ff3c8ee2e11eccd40740c6c17923d2",
+      "owner": "claude"
     }
   ],
   "created_dirs": [
-    {
-      "path": ".claude/skills/auto-eng-review",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-eng-review/references",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-execute",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-execute/references",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-plan",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-plan/references",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-resume",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-resume/references",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-verify",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-verify/references",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/.claude",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/.claude/.cc-writes",
-      "owner": "claude"
-    },
-    {
-      "path": ".agent/.automaton/lib",
-      "owner": "project"
-    },
-    {
-      "path": ".agent/.automaton/references",
-      "owner": "project"
-    },
-    {
-      "path": ".agent/.automaton/scripts",
-      "owner": "project"
-    },
     {
       "path": ".codex/skills/auto-eng-review",
       "owner": "codex"
@@ -632,17 +524,77 @@
     {
       "path": ".codex/skills/.claude/.cc-writes",
       "owner": "codex"
+    },
+    {
+      "path": ".agent/.automaton/lib",
+      "owner": "project"
+    },
+    {
+      "path": ".agent/.automaton/references",
+      "owner": "project"
+    },
+    {
+      "path": ".agent/.automaton/scripts",
+      "owner": "project"
+    },
+    {
+      "path": ".claude/skills/auto-eng-review",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-eng-review/references",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-execute",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-execute/references",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-frame",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-frame/references",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-plan",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-plan/references",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-resume",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-resume/references",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-verify",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/auto-verify/references",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/.claude",
+      "owner": "claude"
+    },
+    {
+      "path": ".claude/skills/.claude/.cc-writes",
+      "owner": "claude"
     }
   ],
   "merges": [
-    {
-      "path": ".claude/settings.json",
-      "owner": "claude",
-      "fragments": [
-        ".claude/hooks/session-start.mjs"
-      ],
-      "added_lines": []
-    },
     {
       "path": ".codex/config.toml",
       "owner": "codex",
@@ -654,6 +606,14 @@
       "owner": "codex",
       "fragments": [
         ".codex/hooks/session-start.mjs"
+      ],
+      "added_lines": []
+    },
+    {
+      "path": ".claude/settings.json",
+      "owner": "claude",
+      "fragments": [
+        ".claude/hooks/session-start.mjs"
       ],
       "added_lines": []
     }

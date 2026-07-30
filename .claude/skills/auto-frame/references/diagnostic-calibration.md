@@ -13,11 +13,9 @@ Avoid blocklist thinking. The issue is not a phrase. It is validation without ev
 
 ## Soft To Sharp
 
-A sharp question names the behavior that would count as evidence, so the answer cannot be a feeling. Two recurring cases, at the depth to aim for:
+A sharp question names the behavior that would count as evidence, so the answer cannot be a feeling. This is the depth to aim for:
 
-**Social proof:** "Liking an idea is free. Has anyone offered to pay, asked when it ships, changed a workflow around it, or complained when the prototype broke?"
-
-**Undefined terms:** "'Seamless' is not a feature. What exact step fails today, how often, and what would be measurably different after this work?"
+"Liking an idea is free. Has anyone offered to pay, asked when it ships, changed a workflow around it, or complained when the prototype broke?"
 
 ## Grill Depth
 
@@ -31,10 +29,4 @@ In grill mode the diagnostic runs to resolution, not to minimum. Hold these mech
 
 ## Framing Check
 
-When the first answer is imprecise:
-- Identify one undefined term.
-- Name one hidden assumption.
-- Separate real evidence from hypothetical belief.
-- Offer a plain-language reframe and ask if it captures the intent.
-
-Example: "Let me restate what I think you are actually trying to change: [reframe]. Does that capture it, or is the real target different?"
+When the first answer is imprecise, name one undefined term and one hidden assumption, separate real evidence from hypothetical belief, then offer a plain-language reframe and ask whether it captures the intent.

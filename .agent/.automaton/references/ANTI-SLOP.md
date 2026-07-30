@@ -6,19 +6,22 @@ Detect structure, not vocabulary: a word list dates, and any synonym evades it.
 
 ## Patterns
 
-| Pattern | Check for |
-| --- | --- |
-| Significance inflation | Stakes the evidence does not support. |
-| Promotional language | Adjectives that praise rather than describe. |
-| Superficial `-ing` padding | A trailing clause restating the main clause instead of adding a fact. |
-| Vague attribution | An authority claim with no nameable source. |
-| Em-dash overuse | Em-dashes where a comma, period, or colon carries the clause. |
-| Forced rule of three | A three-part list whose third item exists for cadence. Delete it and test. |
-| Sycophantic artifacts | Residue addressed to the reader rather than content: openers, sign-offs, self-praise. |
-| Generic conclusions | An ending that would sit unchanged under a different document. |
-| Copula padding | A verb phrase where "is," "are," or "has" says the same thing. |
-| Signposting | Prose announcing what it will do instead of doing it. |
-| Unsupported specificity | A number, ranking, or date with no source, including a ratio or threshold invented to dramatize a rule. |
+Flag these by name. Most need no gloss: naming the pattern is what puts your attention on it.
+
+- Significance inflation
+- Promotional language
+- Superficial `-ing` padding
+- Vague attribution
+- Em-dash overuse
+- Sycophantic artifacts
+- Signposting
+
+Four carry a test instead, because the name alone does not settle the marginal case:
+
+- **Forced rule of three:** delete the third item and check whether the sentence lost information.
+- **Generic conclusions:** an ending that would sit unchanged under a different document.
+- **Copula padding:** a verb phrase where "is," "are," or "has" says the same thing.
+- **Unsupported specificity:** a number with no source, and also a ratio or threshold invented to dramatize a rule.
 
 ## What Not To Flag
 

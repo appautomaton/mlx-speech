@@ -55,8 +55,7 @@ def load(
     # since both have the same model_type).
     hint_family: str | None = None
     if path_or_hf_repo in _TTS_MODELS:
-        repo, _desc, hint_family = _TTS_MODELS[path_or_hf_repo]
-        path_or_hf_repo = repo
+        hint_family = _TTS_MODELS[path_or_hf_repo].family_hint
 
     model_dir = _get_model_path(path_or_hf_repo, revision=revision)
     family = hint_family or _resolve_tts_family(model_dir)
@@ -86,6 +85,11 @@ def load(
 
         gemma_dir = _resolve_gemma_backbone_path(gemma_path_or_repo, revision=revision)
         return DramaBoxAdapter.from_dir(model_dir, gemma_dir=gemma_dir)
+
+    if family == "dots_tts":
+        from ._adapters.dots_tts import DotsTTSAdapter
+
+        return DotsTTSAdapter.from_dir(model_dir)
 
     if family in ("moss_local", "moss_delay", "moss_sound_effect"):
         codec_dir = _resolve_codec_path(codec_path_or_repo, revision=revision)

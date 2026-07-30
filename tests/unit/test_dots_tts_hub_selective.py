@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+from mlx_speech._hub import _DEFAULT_ALLOW_PATTERNS, get_model_path, list_models
+
+
+def test_dots_aliases_select_explicit_base_subdirs(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+
+    def snapshot_download(repo_id, **kwargs):
+        calls.append((repo_id, kwargs))
+        return str(tmp_path)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "huggingface_hub",
+        SimpleNamespace(snapshot_download=snapshot_download),
+    )
+    assert get_model_path("dots-tts-soar") == tmp_path / "soar/mlx-base"
+    assert calls[-1][1]["allow_patterns"] == ["soar/mlx-base/**", "README.md"]
+    assert get_model_path("dots-tts-soar-base") == tmp_path / "soar/mlx-base"
+    assert get_model_path("dots-tts-mf") == tmp_path / "mf/mlx-base"
+    assert calls[-1][1]["allow_patterns"] == ["mf/mlx-base/**", "README.md"]
+    assert get_model_path("dots-tts-mf-base") == tmp_path / "mf/mlx-base"
+    models = list_models("tts")
+    assert models["dots-tts-soar"][0] == "appautomaton/dots-tts-mlx"
+    assert models["dots-tts-mf-base"][0] == "appautomaton/dots-tts-mlx"
+
+
+def test_flat_alias_keeps_default_download_and_resolution(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "config.json").write_text("{}")
+    calls = []
+
+    def snapshot_download(repo_id, **kwargs):
+        calls.append((repo_id, kwargs))
+        return str(tmp_path)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "huggingface_hub",
+        SimpleNamespace(snapshot_download=snapshot_download),
+    )
+    assert get_model_path("fish-s2-pro") == tmp_path
+    assert calls[0][1]["allow_patterns"] == _DEFAULT_ALLOW_PATTERNS
+
+
+def test_isolated_cache_materializes_no_sibling_safetensors(monkeypatch, tmp_path: Path) -> None:
+    cache = tmp_path / "isolated-cache"
+    repository_files = {
+        "README.md",
+        "soar/mlx-base/core.safetensors",
+        "soar/mlx-base/config.json",
+        "soar/mlx-base/tokenizer/tokenizer.json",
+        "soar/mlx-int8/core.safetensors",
+        "mf/mlx-base/core.safetensors",
+        "mf/mlx-base/config.json",
+        "mf/mlx-base/tokenizer/tokenizer.json",
+        "mf/mlx-int8/core.safetensors",
+    }
+
+    def snapshot_download(repo_id, **kwargs):
+        assert repo_id == "appautomaton/dots-tts-mlx"
+        selected = kwargs["allow_patterns"][0].removesuffix("/**")
+        for relative in repository_files:
+            if relative == "README.md" or relative.startswith(f"{selected}/"):
+                target = cache / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"selected")
+        return str(cache)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "huggingface_hub",
+        SimpleNamespace(snapshot_download=snapshot_download),
+    )
+    selected = get_model_path("dots-tts-mf-base")
+    assert selected == cache / "mf/mlx-base"
+    materialized = {
+        path.relative_to(cache).as_posix() for path in cache.rglob("*") if path.is_file()
+    }
+    assert materialized == {
+        "README.md",
+        "mf/mlx-base/config.json",
+        "mf/mlx-base/core.safetensors",
+        "mf/mlx-base/tokenizer/tokenizer.json",
+    }

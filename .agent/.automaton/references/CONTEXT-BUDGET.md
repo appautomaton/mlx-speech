@@ -51,3 +51,4 @@ Default: a file read this session stays usable from memory. Re-read it when any 
 - The session was compacted, or you are no longer sure what it said.
 
 **If you cannot remember what a file said, re-read the specific section.** Answering from a confident guess is worse than the second read.
+

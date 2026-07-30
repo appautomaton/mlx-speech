@@ -38,7 +38,7 @@ Interaction: keep chat plain, in the user's words. Do not expose the internal la
 Read the request, the conversation, and enough repo evidence to know what is already true. If a `SPEC.md` exists for this change, read it and preserve every `## Review:` section.
 
 Classify three axes and hold them internally:
-- **Mode:** Startup mode for customers, revenue, market, competition, fundraising, or company-building. Builder mode for side project, hackathon, learning, open source, personal use, or just-for-fun. Content mode for writing, article, brief, deck, blog post, newsletter, documentation, or any prose where audience and voice matter.
+- **Mode:** Startup mode for customers, revenue, or market. Builder mode for side projects, learning, or open source. Content mode for writing, article, brief, deck, newsletter, documentation, or any prose where audience and voice matter.
 - **Work scale:** bug, feature, capability, or roadmap. Large is not roadmap. Capability-sized work stays one spec when it serves one coherent outcome. Roadmap-sized means multiple independently valuable outcomes that need decomposition.
 - **Work shape:** feature, refactor, parity, audit, migration, coverage, content, or mixed.
 
@@ -121,15 +121,11 @@ Report what the spec bounds, what it excludes, and any assumption worth rejectin
 
 ## Output
 
-- **SPEC.md** written to `.agent/work/<change>/SPEC.md`, with `canonical_spec` and frame state recorded through `sync-status.mjs`.
-- Scope coverage recorded in the spec: included, deferred, anti-goals, and how each needs-decision item resolved. Omit empty groups.
-- `.agent/steering/ROADMAP.md` is updated only when the user approves a phased decomposition.
-
-Halted without an approved approach, nothing is written: report the discussion, why no approach was selected, and any deferred scope worth preserving.
+- `SPEC.md`, with `canonical_spec` and `stage: frame` recorded in `current.json`. Plus `ROADMAP.md` when the user approved a decomposition.
+- Halted without an approved approach, nothing is written. Report the discussion, why no approach was selected, and any deferred scope worth preserving.
 
 ## Rules
 
-- If the user's language shifts from exploration to urgency, or from technical to business framing, reclassify and state the change in plain language.
+- If the user's framing shifts, reclassify and say so in plain language rather than re-routing silently.
 - If the user expresses impatience, ask the two most critical unresolved questions. If they push back again, present alternatives with explicit assumptions.
 - If the user tries to skip spec writing, write the smallest useful SPEC and ask them to confirm or edit it.
-- Match SPEC shape to the work shape rather than one feature template.
