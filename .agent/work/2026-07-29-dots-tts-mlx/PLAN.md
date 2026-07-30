@@ -99,6 +99,10 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 
 **Produces:** A tested dots.tts config/schedule layer and an enforceable native checkpoint schema.
 
+**Status:** complete
+**Evidence:** Added `src/mlx_speech/models/dots_tts/{config,text,checkpoint}.py` and package exports; SOAR/MeanFlow mode parsing, Qwen/GQA validation, unknown-field preservation, official tts/interleave schedule parity, language tagging, exact artifact/tokenizer layout, provenance, dtype, quantization, and latent-statistics validation are covered; `15 passed`; Ruff passed.
+**Risks / next:** The schema intentionally requires exact tokenizer assets and explicit int8 path metadata; Slice 4 must preserve VibeVoice behavior while moving Qwen2 math behind the new family-neutral contract.
+
 ### Slice 4: Extract and extend the shared Qwen2 trunk
 
 **Objective:** Move the existing VibeVoice Qwen2 math into a family-neutral internal module and add the token/embed, KV-cache, tied-embedding, hidden-state, and EOS behavior required by dots.tts.
