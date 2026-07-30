@@ -224,6 +224,12 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 
 **Produces:** A shared DiT with separately verified SOAR and MeanFlow next-patch solvers.
 
+**Execution correction:** Slice 8 validates the shared DiT architecture, attention/mask/position behavior, adaptive conditioning, prefix-tail coordinate splicing, and both solver equations/defaults with deterministic tiny weights. Converted-weight comparisons against `dit.npz` and `solver.npz` move to Slice 9 because those fixtures contain no DiT weights.
+
+**Status:** complete
+**Evidence:** Added a shared pure-MLX DiT with official cos-first timestep embeddings, optional MeanFlow duration embedding, affine-free adaLN blocks, RMS-normalized rotary attention, mask/position handling, speaker conditioning, and tail output extraction. Added separate SOAR and MeanFlow solvers: SOAR performs 10-step Euler integration by default with batched CFG at guidance 1.2; MeanFlow performs four single-branch duration-conditioned evaluations by default with no runtime CFG. Focused deterministic tests cover causality, positions, conditioning, prefix splicing, solver schedules/equations, seed repeatability, and validation; `10 passed`; Ruff passed.
+**Risks / next:** Official full-size `dit.npz` and `solver.npz` parity requires converted DiT/core weights and remains a blocking Slice 9 load gate for both variants.
+
 ### Slice 9: Build BF16 conversion and strict component loading
 
 **Objective:** Convert both official checkpoints into self-contained MLX-native BF16 artifacts and strict-load every component.
