@@ -12,7 +12,7 @@ from mlx_speech import tts
 
 
 ROOT = Path(__file__).parents[2]
-REMOTE_REVISION = "0af7ad2f837278b364902500d086553f1586ce9a"
+REMOTE_REVISION = "5dde9ded6c577a84a71b5ee9dafebfa53188d6d6"
 REMOTE_CASES = (
     ("dots-tts-soar-base", "soar/mlx-base"),
     ("dots-tts-soar", "soar/mlx-int8"),

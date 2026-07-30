@@ -100,9 +100,10 @@ result = model.generate(
 
 Important generation controls are `max_audio_patches`, `solver_steps`,
 `guidance_scale` (SOAR only), `speaker_scale`, `language`, `seed`, and
-`eos_threshold`. See the
-[`mlx-speech` dots.tts guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md)
-for the full control and conversion reference.
+`eos_threshold`. Runtime and conversion code are maintained in the live
+[`mlx-speech` source repository](https://github.com/appautomaton/mlx-speech);
+the sections below record the released artifacts' measured behavior and
+limitations.
 
 ## Locally reproduced release gate
 

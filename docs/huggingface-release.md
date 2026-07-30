@@ -156,8 +156,11 @@ After upload:
 
 ## dots.tts Release Record — 2026-07-30
 
-Published `appautomaton/dots-tts-mlx` at revision
-`0af7ad2f837278b364902500d086553f1586ce9a`.
+Published the four artifacts to `appautomaton/dots-tts-mlx` at revision
+`0af7ad2f837278b364902500d086553f1586ce9a`. A README-only link correction
+advanced the repository to revision
+`5dde9ded6c577a84a71b5ee9dafebfa53188d6d6`; all 16 safetensors LFS SHA-256
+values are unchanged between those revisions.
 
 The authenticated remote inventory contained the Hub-generated
 `.gitattributes`, the authoritative root `README.md`, and 56 runtime files under
@@ -187,3 +190,8 @@ produced finite, non-silent mono 48 kHz continuation-clone waveform output.
 Peak MLX allocation was `6,521,655,508` bytes; macOS process peak RSS was
 `5,784,944,640` bytes. Generated/reference audio and downloaded caches remain
 outside Git.
+
+After the README-only correction, the same four isolated-cache cases passed
+against revision `5dde9ded6c577a84a71b5ee9dafebfa53188d6d6` in `262.11 s`.
+Peak MLX allocation was `6,521,655,508` bytes and macOS process peak RSS was
+`6,423,871,488` bytes.
