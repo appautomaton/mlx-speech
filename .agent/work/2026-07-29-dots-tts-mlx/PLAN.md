@@ -174,6 +174,12 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 
 **Produces:** A pure-MLX reference-audio-to-speaker-conditioning pipeline.
 
+**Execution correction:** Slice 6 reproduces the deterministic synthetic-audio resampling/fbank fixture now and validates CAM++ architecture, frozen batch normalization, cropping, scaling, and projection with deterministic tiny weights. Converted-weight comparison against the oracle speaker embedding/projected output moves to Slice 9 because `speaker.npz` contains no CAM++ weights.
+
+**Status:** complete
+**Evidence:** Added `speaker.py` with deterministic mono/cap handling, torchaudio-compatible default sinc resampling, Kaldi/Povey fbank + CMN, explicit frozen BatchNorm CAM++ layers, speaker scale, and projection; synthetic 48 kHz input matches the official 62×80 fbank fixture; tiny-model tests cover BatchNorm, embedding/projection shapes, scaling, determinism, and invalid inputs; `7 passed`; Ruff passed.
+**Risks / next:** Full 512-dimensional CAM++ and projected numeric parity remains a Slice 9 converted-weight gate; the fbank/front-end path is already oracle-matched.
+
 ### Slice 7: Implement AudioVAE and causal BigVGAN waveform paths
 
 **Objective:** Implement reference-audio latent encoding and 48 kHz causal waveform decoding, including alias-free activations and state needed for correct patch boundaries.

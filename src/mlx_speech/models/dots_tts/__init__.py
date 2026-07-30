@@ -9,6 +9,7 @@ from .checkpoint import (
 from .config import DotsTTSConfig, DotsTTSQwenConfig
 from .latent import LatentIO, LatentStatistics
 from .semantic_encoder import SemanticEncoderState, VAESemanticEncoder
+from .speaker import CAMPPlus, CAMPPlusConfig, SpeakerConditioner, SpeakerFrontend
 from .text import DotsTTSSchedule, DotsTTSTokenizer, build_generation_schedule
 
 __all__ = [
@@ -19,9 +20,13 @@ __all__ = [
     "DotsTTSQwenConfig",
     "DotsTTSSchedule",
     "DotsTTSTokenizer",
+    "CAMPPlus",
+    "CAMPPlusConfig",
     "LatentIO",
     "LatentStatistics",
     "SemanticEncoderState",
+    "SpeakerConditioner",
+    "SpeakerFrontend",
     "VAESemanticEncoder",
     "build_generation_schedule",
     "validate_artifact_dir",
