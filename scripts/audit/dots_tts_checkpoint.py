@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Audit strict base loading and official-fixture parity for dots.tts artifacts."""
+"""Audit strict loading and official-fixture parity for dots.tts artifacts."""
 
 from __future__ import annotations
 
 import argparse
 import gc
+import hashlib
 import json
 import time
 from dataclasses import asdict, dataclass
@@ -34,6 +35,8 @@ class TensorMetric:
     cosine_similarity: float
     atol: float
     rtol: float
+    minimum_cosine: float | None
+    within_tolerance: bool
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,9 @@ class VariantAudit:
     artifact_dir: str
     strict_components: tuple[str, ...]
     metrics: tuple[TensorMetric, ...]
+    base_bytes: int
+    artifact_bytes: int
+    size_reduction: float
 
 
 @dataclass(frozen=True)
@@ -70,6 +76,7 @@ def _metric(
     *,
     atol: float,
     rtol: float,
+    minimum_cosine: float | None = None,
 ) -> TensorMetric:
     actual_array = _array(actual)
     expected_array = np.asarray(expected, dtype=np.float32)
@@ -87,12 +94,19 @@ def _metric(
         if denominator == 0.0 and np.array_equal(actual_array, expected_array)
         else float(np.dot(actual_flat, expected_flat) / max(denominator, 1e-30))
     )
-    if not np.allclose(actual_array, expected_array, atol=atol, rtol=rtol):
-        raise AssertionError(
-            f"{name} parity failed: max_abs={maximum:.7g}, cosine={cosine:.9f}, "
-            f"atol={atol}, rtol={rtol}"
-        )
-    return TensorMetric(name, maximum, cosine, atol, rtol)
+    within_tolerance = bool(
+        np.allclose(actual_array, expected_array, atol=atol, rtol=rtol)
+        and (minimum_cosine is None or cosine >= minimum_cosine)
+    )
+    return TensorMetric(
+        name,
+        maximum,
+        cosine,
+        atol,
+        rtol,
+        minimum_cosine,
+        within_tolerance,
+    )
 
 
 def _synthetic_audio(seconds: float = 0.64) -> np.ndarray:
@@ -111,23 +125,80 @@ def _fixture(root: Path, variant: str, name: str) -> dict[str, np.ndarray]:
         return {key: payload[key] for key in payload.files}
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _artifact_bytes(path: Path) -> int:
+    return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())
+
+
+def _validate_int8_inheritance(artifact: Path) -> tuple[int, int, float]:
+    base = artifact.parent / "mlx-base"
+    if not base.is_dir():
+        raise FileNotFoundError(f"matching dots.tts base artifact is missing: {base}")
+    for name in (
+        "config.json",
+        "llm_config.json",
+        "vocoder.safetensors",
+        "speaker.safetensors",
+        "latent_stats.safetensors",
+    ):
+        if _sha256(base / name) != _sha256(artifact / name):
+            raise AssertionError(f"int8 artifact changed inherited base file: {name}")
+    base_tokenizer = base / "tokenizer"
+    int8_tokenizer = artifact / "tokenizer"
+    base_files = {
+        path.relative_to(base_tokenizer): _sha256(path)
+        for path in base_tokenizer.rglob("*")
+        if path.is_file()
+    }
+    int8_files = {
+        path.relative_to(int8_tokenizer): _sha256(path)
+        for path in int8_tokenizer.rglob("*")
+        if path.is_file()
+    }
+    if int8_files != base_files:
+        raise AssertionError("int8 artifact tokenizer differs from matching base")
+    base_bytes = _artifact_bytes(base)
+    artifact_bytes = _artifact_bytes(artifact)
+    if artifact_bytes * 4 > base_bytes * 3:
+        raise AssertionError(
+            "int8 artifact is not at least 25% smaller than matching base: "
+            f"base_bytes={base_bytes}, int8_bytes={artifact_bytes}"
+        )
+    return base_bytes, artifact_bytes, 1.0 - artifact_bytes / base_bytes
+
+
 def audit_variant(
     artifact_dir: str | Path,
     *,
     variant: str,
     fixture_root: str | Path = "tests/fixtures/dots_tts",
 ) -> VariantAudit:
-    loaded = load_dots_tts_components(artifact_dir)
+    artifact = Path(artifact_dir)
+    loaded = load_dots_tts_components(artifact)
     if loaded.layout.artifact_config.variant != variant:
         raise ValueError("artifact variant does not match requested audit")
     core = loaded.core
     if not all(report.is_exact_match for report in loaded.reports):
         raise AssertionError("artifact storage/runtime dtype validation did not pass")
-    # The official worker materializes the source BF16 core checkpoint with FP32
-    # compute. Strict loading above independently validates both stored and loaded
-    # parameter dtypes before this parity-only cast. Speaker and AudioVAE stay at
-    # their released mixed runtime dtypes, so decoder BF16 regressions remain visible.
-    core.set_dtype(mx.float32)
+    if loaded.layout.artifact_config.artifact_class == "base":
+        # The official worker materializes the source BF16 core checkpoint with FP32
+        # compute. Strict loading above independently validates both stored and loaded
+        # parameter dtypes before this parity-only cast. Speaker and AudioVAE stay at
+        # their released mixed runtime dtypes, so decoder regressions remain visible.
+        core.set_dtype(mx.float32)
+        base_bytes = artifact_bytes = _artifact_bytes(artifact)
+        size_reduction = 0.0
+    else:
+        base_bytes, artifact_bytes, size_reduction = _validate_int8_inheritance(
+            artifact
+        )
     fixtures = Path(fixture_root)
     metrics: list[TensorMetric] = []
 
@@ -152,16 +223,76 @@ def audit_variant(
         request_logits=False,
     )
     decoded_key, decoded_value = decoded.cache[0]
+
+    # Weight-only int8 affects Qwen and no other component. The relaxed entries
+    # below are shared by both pinned variants and retain a >=0.999 cosine gate;
+    # Qwen embeddings and value caches must still pass the base 0.01 tolerance.
+    int8_qwen_tolerances = {
+        "qwen.hidden_prefill": (0.2, 0.03, 0.999),
+        "qwen.eos_logits": (0.3, 0.03, 0.999),
+        "qwen.cache_key_prefill": (0.25, 0.02, 0.999),
+        "qwen.hidden_decode": (0.03, 0.02, 0.999),
+        "qwen.cache_key_decode": (0.25, 0.02, 0.999),
+    }
+
+    def qwen_metric(
+        name: str,
+        actual: mx.array,
+        expected: np.ndarray,
+    ) -> TensorMetric:
+        tolerance = (
+            int8_qwen_tolerances.get(name)
+            if loaded.layout.artifact_config.artifact_class == "int8"
+            else None
+        )
+        atol, rtol, minimum_cosine = tolerance or (0.01, 0.01, None)
+        return _metric(
+            name,
+            actual,
+            expected,
+            atol=atol,
+            rtol=rtol,
+            minimum_cosine=minimum_cosine,
+        )
+
     metrics.extend(
         (
-            _metric("qwen.embeddings", embeddings, qwen["embeddings"], atol=0.01, rtol=0.01),
-            _metric("qwen.hidden_prefill", prefill.last_hidden_state, qwen["hidden_prefill"], atol=0.01, rtol=0.01),
-            _metric("qwen.eos_logits", prefill.eos_logits, qwen["eos_logits"], atol=0.01, rtol=0.01),
-            _metric("qwen.cache_key_prefill", first_key.transpose(0, 2, 1, 3), qwen["cache_key_prefill"], atol=0.01, rtol=0.01),
-            _metric("qwen.cache_value_prefill", first_value.transpose(0, 2, 1, 3), qwen["cache_value_prefill"], atol=0.01, rtol=0.01),
-            _metric("qwen.hidden_decode", decoded.last_hidden_state, qwen["hidden_decode"], atol=0.01, rtol=0.01),
-            _metric("qwen.cache_key_decode", decoded_key.transpose(0, 2, 1, 3), qwen["cache_key_decode"], atol=0.01, rtol=0.01),
-            _metric("qwen.cache_value_decode", decoded_value.transpose(0, 2, 1, 3), qwen["cache_value_decode"], atol=0.01, rtol=0.01),
+            qwen_metric("qwen.embeddings", embeddings, qwen["embeddings"]),
+            qwen_metric(
+                "qwen.hidden_prefill",
+                prefill.last_hidden_state,
+                qwen["hidden_prefill"],
+            ),
+            qwen_metric(
+                "qwen.eos_logits",
+                prefill.eos_logits,
+                qwen["eos_logits"],
+            ),
+            qwen_metric(
+                "qwen.cache_key_prefill",
+                first_key.transpose(0, 2, 1, 3),
+                qwen["cache_key_prefill"],
+            ),
+            qwen_metric(
+                "qwen.cache_value_prefill",
+                first_value.transpose(0, 2, 1, 3),
+                qwen["cache_value_prefill"],
+            ),
+            qwen_metric(
+                "qwen.hidden_decode",
+                decoded.last_hidden_state,
+                qwen["hidden_decode"],
+            ),
+            qwen_metric(
+                "qwen.cache_key_decode",
+                decoded_key.transpose(0, 2, 1, 3),
+                qwen["cache_key_decode"],
+            ),
+            qwen_metric(
+                "qwen.cache_value_decode",
+                decoded_value.transpose(0, 2, 1, 3),
+                qwen["cache_value_decode"],
+            ),
         )
     )
 
@@ -259,11 +390,24 @@ def audit_variant(
     metrics.append(
         _metric("solver.result", solver_result, solver["result"], atol=0.03, rtol=0.03)
     )
+    failures = [metric for metric in metrics if not metric.within_tolerance]
+    if failures:
+        details = "; ".join(
+            f"{metric.name}: max_abs={metric.max_absolute_error:.7g}, "
+            f"cosine={metric.cosine_similarity:.9f}, "
+            f"atol={metric.atol}, rtol={metric.rtol}, "
+            f"minimum_cosine={metric.minimum_cosine}"
+            for metric in failures
+        )
+        raise AssertionError(f"dots.tts component parity failed: {details}")
     return VariantAudit(
         variant=variant,
         artifact_dir=str(artifact_dir),
         strict_components=tuple(report.component for report in loaded.reports),
         metrics=tuple(metrics),
+        base_bytes=base_bytes,
+        artifact_bytes=artifact_bytes,
+        size_reduction=size_reduction,
     )
 
 
@@ -328,7 +472,7 @@ def benchmark_encoder(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--variant", choices=("soar", "mf", "all"), default="all")
-    parser.add_argument("--precision", choices=("base",), default="base")
+    parser.add_argument("--precision", choices=("base", "int8"), default="base")
     parser.add_argument("--root", type=Path, default=Path("models/dots_tts"))
     parser.add_argument("--benchmark-encoder-seconds", type=float)
     parser.add_argument("--encoder-logical-limit-mib", type=float, default=32.0)

@@ -350,3 +350,19 @@ def test_converter_never_overwrites_nonempty_final_artifact(tmp_path: Path) -> N
     with pytest.raises(FileExistsError, match="existing artifact"):
         converter.convert_variant(tmp_path / "source", output, variant="soar")
     assert marker.read_text(encoding="utf-8") == "owned"
+
+
+def test_int8_converter_never_overwrites_nonempty_final_artifact(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "mlx-int8"
+    output.mkdir()
+    marker = output / "keep"
+    marker.write_text("owned", encoding="utf-8")
+    with pytest.raises(FileExistsError, match="existing artifact"):
+        converter.quantize_variant(
+            tmp_path / "mlx-base",
+            output,
+            variant="soar",
+        )
+    assert marker.read_text(encoding="utf-8") == "owned"

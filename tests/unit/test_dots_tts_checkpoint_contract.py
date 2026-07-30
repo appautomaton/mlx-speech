@@ -27,8 +27,8 @@ def _metadata(*, variant: str = "soar", artifact_class: str = "base") -> dict:
             "group_size": 64,
             "mode": "affine",
             "module_types": ["Linear", "Embedding"],
-            "path_prefixes": ["llm."],
-            "quantized_paths": ["llm.layers.0.self_attn.q_proj"],
+            "path_prefixes": ["qwen.model."],
+            "quantized_paths": ["qwen.model.embed_tokens"],
         }
     return {
         "schema_version": 1,
@@ -67,28 +67,36 @@ def _write_artifact(
             str(root / "core.safetensors"),
             {"weight": mx.ones((2, 2), dtype=mx.bfloat16)},
         )
+    else:
         mx.save_safetensors(
-            str(root / "vocoder.safetensors"),
+            str(root / "core.safetensors"),
             {
-                "audio_encoder.weight": mx.ones((1,), dtype=mx.float32),
-                "enc_mi_layer.weight": mx.ones((1,), dtype=mx.float32),
-                "pre_proj.weight": mx.ones((1,), dtype=mx.float32),
-                "post_proj.weight": mx.ones((1,), dtype=mx.bfloat16),
-                "dec_mi_layer.weight": mx.ones((1,), dtype=mx.bfloat16),
-                "decoder.weight": mx.ones((1,), dtype=mx.bfloat16),
+                "qwen.model.embed_tokens.weight": mx.ones(
+                    (2, 1), dtype=mx.uint32
+                ),
+                "qwen.model.embed_tokens.scales": mx.ones(
+                    (2, 1), dtype=mx.bfloat16
+                ),
+                "qwen.model.embed_tokens.biases": mx.zeros(
+                    (2, 1), dtype=mx.bfloat16
+                ),
             },
         )
-        save_file(
-            {"weight": np.ones((2, 2), dtype=np.float32)},
-            root / "speaker.safetensors",
-        )
-    else:
-        for name in (
-            "core.safetensors",
-            "vocoder.safetensors",
-            "speaker.safetensors",
-        ):
-            save_file({"weight": np.ones((2, 2), dtype=np.float32)}, root / name)
+    mx.save_safetensors(
+        str(root / "vocoder.safetensors"),
+        {
+            "audio_encoder.weight": mx.ones((1,), dtype=mx.float32),
+            "enc_mi_layer.weight": mx.ones((1,), dtype=mx.float32),
+            "pre_proj.weight": mx.ones((1,), dtype=mx.float32),
+            "post_proj.weight": mx.ones((1,), dtype=mx.bfloat16),
+            "dec_mi_layer.weight": mx.ones((1,), dtype=mx.bfloat16),
+            "decoder.weight": mx.ones((1,), dtype=mx.bfloat16),
+        },
+    )
+    save_file(
+        {"weight": np.ones((2, 2), dtype=np.float32)},
+        root / "speaker.safetensors",
+    )
     save_file(
         {
             "mean": np.zeros(128, dtype=np.float32),
@@ -149,6 +157,32 @@ def test_contract_rejects_metadata_mode_and_quantization_mismatches(
     metadata["quantization"] = None
     (artifact / "mlx_config.json").write_text(json.dumps(metadata), encoding="utf-8")
     with pytest.raises(ValueError, match="require quantization"):
+        validate_artifact_dir(artifact)
+
+
+def test_int8_contract_rejects_incomplete_quantization_and_base_dtype_drift(
+    tmp_path: Path,
+) -> None:
+    artifact = _write_artifact(
+        tmp_path / "incomplete-int8",
+        artifact_class="int8",
+    )
+    core = mx.load(str(artifact / "core.safetensors"))
+    del core["qwen.model.embed_tokens.scales"]
+    mx.save_safetensors(str(artifact / "core.safetensors"), core)
+    with pytest.raises(ValueError, match="missing quantized tensors"):
+        validate_artifact_dir(artifact)
+
+    artifact = _write_artifact(
+        tmp_path / "wrong-int8-base-dtype",
+        artifact_class="int8",
+    )
+    vocoder = mx.load(str(artifact / "vocoder.safetensors"))
+    vocoder["audio_encoder.weight"] = vocoder["audio_encoder.weight"].astype(
+        mx.bfloat16
+    )
+    mx.save_safetensors(str(artifact / "vocoder.safetensors"), vocoder)
+    with pytest.raises(ValueError, match="must be float32"):
         validate_artifact_dir(artifact)
 
 

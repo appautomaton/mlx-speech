@@ -309,6 +309,10 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 
 **Produces:** Strict-loadable SOAR and MeanFlow `mlx-int8` artifacts with serialized selective-quantization metadata.
 
+**Status:** complete
+**Evidence:** Added exact native `qwen.model.*` affine-int8 reconstruction for every eligible Qwen Linear/Embedding module, strict packed-weight/scale/bias dtype and path validation, transactional base-to-int8 conversion, inherited-file hash checks, size enforcement, and int8 audit support. Both variants quantize 197 Qwen modules; SOAR is `4,893,076,106 → 3,446,414,994` bytes (`29.565%` smaller) and MeanFlow is `4,895,702,230 → 3,449,041,102` bytes (`29.550%` smaller). Focused suite `36 passed`, final full unit tier `722 passed`, real int8 checkpoint tier `2 passed`, and the all-variant component audit passed with Qwen minimum cosine `0.999023`; every non-Qwen metric retained its base tolerance. Peak observed conversion MLX allocation was about 4.60 GiB and strict-load peak about 3.20 GiB under explicit stop guards. Ruff and `git diff --check` passed.
+**Risks / next:** Component parity does not authorize default aliases or release claims. Slice 12 must run continuation and speaker-only waveform integration plus the fixed-corpus WER, speaker-similarity, size, and peak-memory gate before int8 may become the default.
+
 ### Slice 12: Run the four-artifact quality and integration gate
 
 **Objective:** Prove `mlx-base` correctness and decide whether int8 may become the default using the fixed multilingual cloning corpus and all four runtime artifacts.

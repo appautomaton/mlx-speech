@@ -19,13 +19,21 @@ from typing import Mapping
 
 import mlx.core as mx
 import numpy as np
+from mlx.utils import tree_flatten
 from numpy._core.multiarray import _reconstruct as _numpy_reconstruct
+from safetensors import safe_open
 from safetensors.numpy import save_file as save_numpy_safetensors
 
 from mlx_speech.models.dots_tts.checkpoint import (
     BASE_DTYPE_POLICY,
+    INT8_DTYPE_POLICY,
     SOURCE_REVISIONS,
     TOKENIZER_FILES,
+    DotsTTSCoreComponents,
+    DotsTTSQuantizationConfig,
+    _strict_load,
+    eligible_qwen_quantization_paths,
+    quantize_dots_tts_core,
     storage_dtype,
     validate_artifact_dir,
 )
@@ -50,6 +58,9 @@ class ConversionReport:
     output_dir: str
     source_manifest_sha256: str
     files: tuple[FileConversionReport, ...]
+    quantized_paths: tuple[str, ...] = ()
+    source_bytes: int | None = None
+    output_bytes: int | None = None
 
 
 class _RestrictedNumpyUnpickler(pickle.Unpickler):
@@ -487,6 +498,15 @@ def _save(path: Path, weights: dict[str, mx.array]) -> None:
     mx.save_safetensors(str(path), weights)
 
 
+def _tensor_count(path: Path) -> int:
+    with safe_open(path, framework="numpy") as handle:
+        return len(handle.keys())
+
+
+def _artifact_bytes(path: Path) -> int:
+    return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())
+
+
 def _validate_source_accounting(report: ConversionReport) -> None:
     for file_report in report.files:
         accounted = (
@@ -646,18 +666,171 @@ def convert_variant(
             report_staging.unlink(missing_ok=True)
 
 
+def quantize_variant(
+    base_dir: str | Path,
+    output_dir: str | Path,
+    *,
+    variant: str,
+) -> ConversionReport:
+    """Build a self-contained selective-int8 artifact from a verified base."""
+
+    if variant not in SOURCE_REVISIONS:
+        raise ValueError(f"unsupported dots.tts variant: {variant}")
+    base = Path(base_dir)
+    output = Path(output_dir)
+    if base.name != "mlx-base":
+        raise ValueError("dots.tts int8 input must be named mlx-base")
+    if output.name != "mlx-int8":
+        raise ValueError("int8 dots.tts conversion output must be named mlx-int8")
+    if output.exists() and (not output.is_dir() or any(output.iterdir())):
+        raise FileExistsError(f"refusing to overwrite existing artifact: {output}")
+
+    layout = validate_artifact_dir(base)
+    if layout.artifact_config.artifact_class != "base":
+        raise ValueError("dots.tts int8 conversion requires a base artifact")
+    if layout.artifact_config.variant != variant:
+        raise ValueError("base artifact variant does not match requested int8 variant")
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(
+        tempfile.mkdtemp(prefix=f".{output.name}-staging-", dir=output.parent)
+    )
+    report_staging: Path | None = None
+    try:
+        core = DotsTTSCoreComponents(layout.config, layout.qwen_config)
+        _strict_load(
+            "core",
+            core,
+            base / "core.safetensors",
+            expected_dtype=lambda path: storage_dtype(
+                layout.artifact_config.dtype_policy,
+                "core",
+                path,
+            ),
+        )
+        quantized_paths = eligible_qwen_quantization_paths(core, group_size=64)
+        quantization = DotsTTSQuantizationConfig(
+            bits=8,
+            group_size=64,
+            mode="affine",
+            module_types=("Linear", "Embedding"),
+            path_prefixes=("qwen.model.",),
+            quantized_paths=quantized_paths,
+        )
+        quantization.validate()
+        quantize_dots_tts_core(core, quantization)
+        core_weights = tree_flatten(core.parameters(), destination={})
+        mx.eval(list(core_weights.values()))
+        _save(staging / "core.safetensors", core_weights)
+
+        copied_files = (
+            "config.json",
+            "llm_config.json",
+            "vocoder.safetensors",
+            "speaker.safetensors",
+            "latent_stats.safetensors",
+        )
+        for name in copied_files:
+            shutil.copy2(base / name, staging / name)
+            if _sha256(base / name) != _sha256(staging / name):
+                raise RuntimeError(f"dots.tts int8 copy verification failed: {name}")
+        shutil.copytree(base / "tokenizer", staging / "tokenizer")
+
+        metadata = layout.artifact_config.to_dict()
+        metadata.update(
+            {
+                "artifact_class": "int8",
+                "dtype_policy": INT8_DTYPE_POLICY,
+                "quantization": quantization.to_dict(),
+            }
+        )
+        (staging / "mlx_config.json").write_text(
+            json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        validate_artifact_dir(staging)
+
+        source_bytes = _artifact_bytes(base)
+        output_bytes = _artifact_bytes(staging)
+        if output_bytes * 4 > source_bytes * 3:
+            raise ValueError(
+                "dots.tts int8 artifact must be at least 25% smaller than base: "
+                f"base_bytes={source_bytes}, int8_bytes={output_bytes}"
+            )
+        report = ConversionReport(
+            variant=variant,
+            artifact_class="int8",
+            source_dir=str(base),
+            output_dir=str(output),
+            source_manifest_sha256=layout.artifact_config.source_manifest_sha256,
+            files=(
+                FileConversionReport(
+                    "core.safetensors",
+                    "core.safetensors",
+                    _tensor_count(base / "core.safetensors"),
+                    len(core_weights),
+                ),
+                *(
+                    FileConversionReport(
+                        name,
+                        name,
+                        _tensor_count(base / name),
+                        _tensor_count(staging / name),
+                    )
+                    for name in (
+                        "vocoder.safetensors",
+                        "speaker.safetensors",
+                        "latent_stats.safetensors",
+                    )
+                ),
+            ),
+            quantized_paths=quantized_paths,
+            source_bytes=source_bytes,
+            output_bytes=output_bytes,
+        )
+        report_path = output.parent / f"{output.name}-conversion.json"
+        report_staging = _stage_report(report_path, report)
+
+        if output.exists():
+            if any(output.iterdir()):
+                raise FileExistsError(
+                    f"refusing to overwrite non-empty artifact: {output}"
+                )
+            output.rmdir()
+        os.replace(staging, output)
+        try:
+            os.replace(report_staging, report_path)
+        except BaseException:
+            os.replace(output, staging)
+            raise
+        return report
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+        if report_staging is not None:
+            report_staging.unlink(missing_ok=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--variant", choices=("soar", "mf", "all"), default="all")
+    parser.add_argument("--precision", choices=("base", "int8"), default="base")
     parser.add_argument("--root", type=Path, default=Path("models/dots_tts"))
     args = parser.parse_args()
     variants = ("soar", "mf") if args.variant == "all" else (args.variant,)
     for variant in variants:
-        report = convert_variant(
-            args.root / variant / "original",
-            args.root / variant / "mlx-base",
-            variant=variant,
-        )
+        if args.precision == "base":
+            report = convert_variant(
+                args.root / variant / "original",
+                args.root / variant / "mlx-base",
+                variant=variant,
+            )
+        else:
+            report = quantize_variant(
+                args.root / variant / "mlx-base",
+                args.root / variant / "mlx-int8",
+                variant=variant,
+            )
         print(json.dumps(asdict(report), indent=2))
 
 

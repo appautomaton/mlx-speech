@@ -70,6 +70,7 @@ _MLX_DTYPES = {
 _SAFETENSORS_DTYPES = {
     "bfloat16": "BF16",
     "float32": "F32",
+    "uint32": "U32",
 }
 
 
@@ -114,23 +115,35 @@ class DotsTTSQuantizationConfig:
             bits=int(payload.get("bits", 0)),
             group_size=int(payload.get("group_size", 0)),
             mode=str(payload.get("mode", "")),
-            module_types=tuple(str(value) for value in payload.get("module_types", ())),
-            path_prefixes=tuple(str(value) for value in payload.get("path_prefixes", ())),
-            quantized_paths=tuple(str(value) for value in payload.get("quantized_paths", ())),
+            module_types=tuple(
+                str(value) for value in payload.get("module_types", ())
+            ),
+            path_prefixes=tuple(
+                str(value) for value in payload.get("path_prefixes", ())
+            ),
+            quantized_paths=tuple(
+                str(value) for value in payload.get("quantized_paths", ())
+            ),
         )
-        if config.bits != 8 or config.group_size != 64 or config.mode != "affine":
-            raise ValueError("dots.tts int8 requires affine 8-bit groups of 64")
-        if config.module_types != ("Linear", "Embedding"):
-            raise ValueError("dots.tts int8 may target only Linear and Embedding modules")
-        if config.path_prefixes != ("llm.",):
-            raise ValueError("dots.tts int8 may target only the Qwen llm.* trunk")
-        if not config.quantized_paths:
-            raise ValueError("dots.tts int8 metadata must name every quantized path")
-        if any(not path.startswith("llm.") for path in config.quantized_paths):
-            raise ValueError("dots.tts quantized paths must stay under llm.*")
-        if len(set(config.quantized_paths)) != len(config.quantized_paths):
-            raise ValueError("dots.tts quantized paths must be unique")
+        config.validate()
         return config
+
+    def validate(self) -> None:
+        if self.bits != 8 or self.group_size != 64 or self.mode != "affine":
+            raise ValueError("dots.tts int8 requires affine 8-bit groups of 64")
+        if self.module_types != ("Linear", "Embedding"):
+            raise ValueError("dots.tts int8 may target only Linear and Embedding modules")
+        if self.path_prefixes != ("qwen.model.",):
+            raise ValueError("dots.tts int8 may target only the native qwen.model.* trunk")
+        if not self.quantized_paths:
+            raise ValueError("dots.tts int8 metadata must name every quantized path")
+        if any(
+            not path.startswith("qwen.model.") or path.endswith(".")
+            for path in self.quantized_paths
+        ):
+            raise ValueError("dots.tts quantized paths must stay under qwen.model.*")
+        if tuple(sorted(set(self.quantized_paths))) != self.quantized_paths:
+            raise ValueError("dots.tts quantized paths must be unique and sorted")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -141,6 +154,42 @@ class DotsTTSQuantizationConfig:
             "path_prefixes": list(self.path_prefixes),
             "quantized_paths": list(self.quantized_paths),
         }
+
+
+def artifact_tensor_dtype_name(
+    artifact_config: "DotsTTSArtifactConfig",
+    component: str,
+    path: str,
+) -> str:
+    """Resolve stored dtype, including exact affine-quantized tensor fields."""
+
+    quantization = artifact_config.quantization
+    if component == "core" and quantization is not None:
+        for module_path in quantization.quantized_paths:
+            prefix = f"{module_path}."
+            if not path.startswith(prefix):
+                continue
+            field = path.removeprefix(prefix)
+            if field == "weight":
+                return "uint32"
+            if field in {"scales", "biases"}:
+                return storage_dtype_name(
+                    artifact_config.dtype_policy,
+                    component,
+                    f"{module_path}.weight",
+                )
+    return storage_dtype_name(artifact_config.dtype_policy, component, path)
+
+
+def artifact_tensor_dtype(
+    artifact_config: "DotsTTSArtifactConfig",
+    component: str,
+    path: str,
+) -> mx.Dtype:
+    dtype_name = artifact_tensor_dtype_name(artifact_config, component, path)
+    if dtype_name == "uint32":
+        return mx.uint32
+    return _MLX_DTYPES[dtype_name]
 
 
 @dataclass(frozen=True)
@@ -245,6 +294,8 @@ class DotsTTSArtifactConfig:
             raise ValueError("base dots.tts artifacts cannot carry quantization metadata")
         if self.artifact_class == "int8" and self.quantization is None:
             raise ValueError("int8 dots.tts artifacts require quantization metadata")
+        if self.quantization is not None:
+            self.quantization.validate()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -350,6 +401,53 @@ class DotsTTSCoreComponents(nn.Module):
         self.speaker_projection_norm = nn.LayerNorm(hidden_size)
 
 
+def eligible_qwen_quantization_paths(
+    core: DotsTTSCoreComponents,
+    *,
+    group_size: int = 64,
+) -> tuple[str, ...]:
+    """Return the complete native Qwen Linear/Embedding quantization predicate."""
+
+    paths = []
+    for path, module in core.named_modules():
+        if not path.startswith("qwen.model."):
+            continue
+        if not isinstance(module, (nn.Linear, nn.Embedding)):
+            continue
+        if int(module.weight.shape[-1]) % group_size == 0:
+            paths.append(path)
+    return tuple(sorted(paths))
+
+
+def quantize_dots_tts_core(
+    core: DotsTTSCoreComponents,
+    quantization: DotsTTSQuantizationConfig,
+) -> DotsTTSCoreComponents:
+    """Reconstruct and apply the exact serialized Qwen-only predicate."""
+
+    quantization.validate()
+    eligible = eligible_qwen_quantization_paths(
+        core,
+        group_size=quantization.group_size,
+    )
+    if quantization.quantized_paths != eligible:
+        missing = tuple(sorted(set(eligible) - set(quantization.quantized_paths)))
+        unexpected = tuple(sorted(set(quantization.quantized_paths) - set(eligible)))
+        raise ValueError(
+            "dots.tts quantized path predicate differs from eligible native Qwen "
+            f"modules: missing={missing}, unexpected={unexpected}"
+        )
+    selected = set(quantization.quantized_paths)
+    nn.quantize(
+        core,
+        group_size=quantization.group_size,
+        bits=quantization.bits,
+        mode=quantization.mode,
+        class_predicate=lambda path, module: path in selected,
+    )
+    return core
+
+
 @dataclass(frozen=True)
 class LoadedDotsTTSComponents:
     layout: DotsTTSArtifactLayout
@@ -427,20 +525,24 @@ def _strict_load(
 
 
 def load_dots_tts_components(model_dir: str | Path) -> LoadedDotsTTSComponents:
-    """Instantiate and strict-bind every mixed-precision base component."""
+    """Instantiate and strict-bind a base or selective-int8 artifact."""
 
     from .audio_vae import AudioVAE
     from .latent import LatentIO, LatentStatistics
     from .speaker import CAMPPlus, CAMPPlusConfig
 
     layout = validate_artifact_dir(model_dir)
-    if layout.artifact_config.artifact_class != "base":
-        raise ValueError("base component loader cannot load a quantized artifact")
-    policy = layout.artifact_config.dtype_policy
 
     def expected(component: str) -> Callable[[str], mx.Dtype]:
-        return lambda path: storage_dtype(policy, component, path)
+        return lambda path: artifact_tensor_dtype(
+            layout.artifact_config,
+            component,
+            path,
+        )
+
     core = DotsTTSCoreComponents(layout.config, layout.qwen_config)
+    if layout.artifact_config.quantization is not None:
+        quantize_dots_tts_core(core, layout.artifact_config.quantization)
     audio_vae = AudioVAE(layout.config.vocoder)
     speaker_encoder = CAMPPlus(
         CAMPPlusConfig(embedding_size=layout.config.campplus_embedding_size)
@@ -486,7 +588,7 @@ def _validate_safetensors(
     *,
     expected_keys: set[str] | None = None,
     component: str | None = None,
-    dtype_policy: Mapping[str, Mapping[str, str]] | None = None,
+    artifact_config: DotsTTSArtifactConfig | None = None,
     expected_shape: tuple[int, ...] | None = None,
 ) -> None:
     try:
@@ -499,9 +601,41 @@ def _validate_safetensors(
                     f"{path.name} keys mismatch: expected={sorted(expected_keys)}, "
                     f"actual={sorted(keys)}"
                 )
-            if component is not None and dtype_policy is not None:
+            if component == "core" and artifact_config is not None:
+                quantization = artifact_config.quantization
+                if quantization is not None:
+                    expected_modules = set(quantization.quantized_paths)
+                    marker_modules = {
+                        key.rsplit(".", 1)[0]
+                        for key in keys
+                        if key.startswith("qwen.model.")
+                        and key.rsplit(".", 1)[-1] in {"scales", "biases"}
+                    }
+                    if marker_modules != expected_modules:
+                        raise ValueError(
+                            "core.safetensors quantized paths differ from metadata: "
+                            f"missing={sorted(expected_modules - marker_modules)}, "
+                            f"unexpected={sorted(marker_modules - expected_modules)}"
+                        )
+                    for module_path in sorted(expected_modules):
+                        required = {
+                            f"{module_path}.weight",
+                            f"{module_path}.scales",
+                            f"{module_path}.biases",
+                        }
+                        missing_quantized = required - keys
+                        if missing_quantized:
+                            raise ValueError(
+                                "core.safetensors is missing quantized tensors: "
+                                f"{sorted(missing_quantized)}"
+                            )
+            if component is not None and artifact_config is not None:
                 for key in sorted(keys):
-                    expected_name = storage_dtype_name(dtype_policy, component, key)
+                    expected_name = artifact_tensor_dtype_name(
+                        artifact_config,
+                        component,
+                        key,
+                    )
                     actual_name = str(handle.get_slice(key).get_dtype())
                     if actual_name != _SAFETENSORS_DTYPES[expected_name]:
                         raise ValueError(
@@ -583,30 +717,21 @@ def validate_artifact_dir(model_dir: str | Path) -> DotsTTSArtifactLayout:
             "latent_stats.safetensors",
         )
     )
-    if artifact_config.artifact_class == "base":
-        for component, path in zip(
-            ("core", "vocoder", "speaker"), weight_files[:-1], strict=True
-        ):
-            _validate_safetensors(
-                path,
-                component=component,
-                dtype_policy=artifact_config.dtype_policy,
-            )
+    for component, path in zip(
+        ("core", "vocoder", "speaker"), weight_files[:-1], strict=True
+    ):
         _validate_safetensors(
-            weight_files[-1],
-            expected_keys={"mean", "var"},
-            component="latent_stats",
-            dtype_policy=artifact_config.dtype_policy,
-            expected_shape=(config.latent_dim,),
+            path,
+            component=component,
+            artifact_config=artifact_config,
         )
-    else:
-        for path in weight_files[:-1]:
-            _validate_safetensors(path)
-        _validate_safetensors(
-            weight_files[-1],
-            expected_keys={"mean", "var"},
-            expected_shape=(config.latent_dim,),
-        )
+    _validate_safetensors(
+        weight_files[-1],
+        expected_keys={"mean", "var"},
+        component="latent_stats",
+        artifact_config=artifact_config,
+        expected_shape=(config.latent_dim,),
+    )
     return DotsTTSArtifactLayout(
         model_dir=root,
         config=config,
@@ -620,6 +745,8 @@ def validate_artifact_dir(model_dir: str | Path) -> DotsTTSArtifactLayout:
 __all__ = [
     "ARTIFACT_FILES",
     "BASE_DTYPE_POLICY",
+    "artifact_tensor_dtype",
+    "artifact_tensor_dtype_name",
     "DotsTTSArtifactConfig",
     "DotsTTSArtifactLayout",
     "DotsTTSAlignmentReport",
@@ -630,7 +757,9 @@ __all__ = [
     "TOKENIZER_FILES",
     "LoadedDotsTTSComponents",
     "align_state_dict",
+    "eligible_qwen_quantization_paths",
     "load_dots_tts_components",
+    "quantize_dots_tts_core",
     "storage_dtype",
     "storage_dtype_name",
     "validate_artifact_dir",
