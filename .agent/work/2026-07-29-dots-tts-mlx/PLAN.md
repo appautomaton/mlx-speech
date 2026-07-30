@@ -76,6 +76,10 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 
 **Produces:** A reproducible, source-pinned official-oracle fixture pack that every component parity slice can consume without inventing its own oracle procedure.
 
+**Status:** complete
+**Evidence:** Added the isolated Python 3.12 oracle wrapper/worker and pinned dependency metadata under `scripts/audit/`, plus `tests/unit/test_dots_tts_oracle_fixtures.py`; captured 16 bounded NPZ fixtures and `tests/fixtures/dots_tts/manifest.json` for SOAR/MF; `uv run python scripts/audit/dots_tts_oracle.py regenerate --variant all --compare tests/fixtures/dots_tts` matched; `5 passed`; Ruff passed.
+**Risks / next:** The project-local `.venv-torch` is intentionally unused because Python 3.13/Torch 2.11/Transformers 5 do not match the pinned official oracle; subsequent slices consume the checked-in arrays without Torch.
+
 ### Slice 3: Define config, text schedule, and checkpoint contract
 
 **Objective:** Establish the dots.tts configuration, tokenizer/schedule behavior, native artifact schema, and strict metadata validation before model modules consume weights.

@@ -1,0 +1,12 @@
+torch==2.8.0
+torchaudio==2.8.0
+transformers==4.57.0
+torchdiffeq==0.2.5
+safetensors==0.8.0rc0
+numpy==2.2.6
+pydantic==2.12.5
+PyYAML==6.0.3
+einops==0.8.1
+loguru==0.7.3
+librosa==0.11.0
+soundfile==0.13.1
