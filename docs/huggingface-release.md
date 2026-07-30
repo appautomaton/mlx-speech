@@ -153,3 +153,37 @@ After upload:
   reference material, stage only the publishable subfolder.
 - Record meaningful artifact changes in the repo card or release notes when
   contents change.
+
+## dots.tts Release Record — 2026-07-30
+
+Published `appautomaton/dots-tts-mlx` at revision
+`0af7ad2f837278b364902500d086553f1586ce9a`.
+
+The authenticated remote inventory contained the Hub-generated
+`.gitattributes`, the authoritative root `README.md`, and 56 runtime files under
+exactly these prefixes:
+
+- `soar/mlx-base/`
+- `soar/mlx-int8/`
+- `mf/mlx-base/`
+- `mf/mlx-int8/`
+
+No `original/`, `mlx-bf16/`, or sibling artifact path was present. The large
+folder upload reported `56/56` files committed, 16.7 GB processed, and zero
+ignored candidates.
+
+Remote verification ran:
+
+```bash
+RUN_LOCAL_INTEGRATION=1 MLX_SPEECH_REQUIRE_CHECKPOINTS=1 \
+  .venv/bin/python -m pytest -s tests/integration/test_dots_tts_hf.py
+```
+
+The runner additionally set a 16 GiB MLX memory limit. All four cases passed in
+`988.95 s`: `dots-tts-soar-base`, `dots-tts-soar`, `dots-tts-mf-base`, and
+`dots-tts-mf`. Each case used a new Hugging Face cache, materialized only its
+selected artifact subtree and root README, strict-loaded the checkpoint, and
+produced finite, non-silent mono 48 kHz continuation-clone waveform output.
+Peak MLX allocation was `6,521,655,508` bytes; macOS process peak RSS was
+`5,784,944,640` bytes. Generated/reference audio and downloaded caches remain
+outside Git.

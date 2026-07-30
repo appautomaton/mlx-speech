@@ -382,6 +382,10 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 
 **Produces:** The published four-variant Hugging Face family repository and recorded remote smoke evidence.
 
+**Status:** complete
+**Evidence:** Published the authoritative card and four validated runtime subdirectories to public repository `appautomaton/dots-tts-mlx` at revision `0af7ad2f837278b364902500d086553f1586ce9a`. The resumable upload committed `56/56` selected runtime files (`16.7 GB` processed, zero ignored); the authenticated remote inventory contained only Hub-generated `.gitattributes`, root `README.md`, and the four approved `soar/mf × mlx-base/mlx-int8` subtrees, with no `original/`, `mlx-bf16/`, or sibling artifact path. Added `tests/integration/test_dots_tts_hf.py`; four independent-cache alias cases passed in `988.95 s`, strict-loaded only the selected subtree, and each produced finite, non-silent mono 48 kHz continuation-clone waveform output. Peak MLX allocation was `6,521,655,508` bytes and macOS process peak RSS was `5,784,944,640` bytes under a 16 GiB Metal limit. Added the release record and public SOAR/MeanFlow aliases to the repository documentation; final unit tier `737 passed`, Ruff and `git diff --check` passed, and weights, caches, and audio remain outside Git.
+**Risks / next:** No execution slice remains. Independent Automaton verification must audit the implementation and published revision against the approved acceptance criteria.
+
 ## Aggregate Verification Commands
 
 | Gate | Command |
