@@ -149,6 +149,12 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 
 **Produces:** A cache-aware semantic feedback path with verified latent normalization.
 
+**Execution correction:** Slice 5 compares latent normalization directly with `latent_io.npz` and validates semantic equations plus full/incremental cache equivalence with deterministic tiny weights. Full converted-weight semantic comparison against `semantic.npz` moves to Slice 9 alongside the already-recorded Qwen parity gate because the fixture pack contains no model weights.
+
+**Status:** complete
+**Evidence:** Added strict `LatentStatistics`/`LatentIO`, MLX-native causal convolution/semantic attention layers, and `VAESemanticEncoder` full, prefill, and patch-decode paths; latent normalization matches `latent_io.npz`, deterministic semantic tests cover causal full/cache equivalence, state shape, and invalid boundaries; `8 passed`; Ruff passed.
+**Risks / next:** Fused full versus cached SDPA differs numerically by about 1.6e-3 but passes the recorded 0.02 semantic tolerance; Slice 9 retains the converted-weight `semantic.npz` gate.
+
 ### Slice 6: Implement CAM++ speaker conditioning
 
 **Objective:** Implement the dots.tts audio front end and 512-dimensional CAM++ speaker encoder as a pure-MLX conditioning path.

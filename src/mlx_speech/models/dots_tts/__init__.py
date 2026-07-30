@@ -7,6 +7,8 @@ from .checkpoint import (
     validate_artifact_dir,
 )
 from .config import DotsTTSConfig, DotsTTSQwenConfig
+from .latent import LatentIO, LatentStatistics
+from .semantic_encoder import SemanticEncoderState, VAESemanticEncoder
 from .text import DotsTTSSchedule, DotsTTSTokenizer, build_generation_schedule
 
 __all__ = [
@@ -17,6 +19,10 @@ __all__ = [
     "DotsTTSQwenConfig",
     "DotsTTSSchedule",
     "DotsTTSTokenizer",
+    "LatentIO",
+    "LatentStatistics",
+    "SemanticEncoderState",
+    "VAESemanticEncoder",
     "build_generation_schedule",
     "validate_artifact_dir",
 ]
