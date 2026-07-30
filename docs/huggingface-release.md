@@ -20,6 +20,7 @@ Each model family gets its own Hugging Face repo.
 | `models/vibevoice/` | `appautomaton/vibevoice-mlx` | `mlx-int8` |
 | `models/cohere/cohere_transcribe/` | `appautomaton/cohere-asr-mlx` | `mlx-int8` |
 | `models/Qwen3-ASR-1.7B-MLX-BF16/` | `appautomaton/qwen3-asr-1.7b-bf16-mlx` | bf16, repo root |
+| `models/dots_tts/` | `appautomaton/dots-tts-mlx` | SOAR/MF × `mlx-base`/`mlx-int8` |
 
 Quantization variants live as subfolders inside the model repo rather than as
 separate repos. Unquantized single-variant repos (Qwen3-ASR BF16) publish the
@@ -72,6 +73,32 @@ appautomaton/qwen3-asr-1.7b-bf16-mlx/
   merges.txt
 ```
 
+dots.tts uses one family repository with four self-contained artifacts:
+
+```text
+appautomaton/dots-tts-mlx/
+  README.md
+  soar/
+    mlx-base/
+    mlx-int8/
+  mf/
+    mlx-base/
+    mlx-int8/
+```
+
+The dots.tts upload target constructs only these four explicit include
+patterns. It cannot select local `original/` checkpoints or obsolete
+`mlx-bf16/` directories. Before publishing, validate hashes, required runtime
+files, the model card, and the checked benchmark verdict without network access:
+
+```bash
+uv run python scripts/hugging_face/upload.py dots-tts --dry-run
+```
+
+The dry-run manifest must list exactly `soar/mlx-base`, `soar/mlx-int8`,
+`mf/mlx-base`, and `mf/mlx-int8` under `appautomaton/dots-tts-mlx`. It fails if
+an artifact digest no longer matches the passed quantization report.
+
 When the local converted directory contains an upstream model card, exclude it
 from the upload and publish this repo's own card instead.
 
@@ -99,6 +126,8 @@ Before uploading:
 2. Run one short end-to-end inference or decode pass on that path.
 3. Confirm the folder contains only the files intended for publication.
 4. Confirm the Hugging Face repo card is present and accurate.
+5. For dots.tts, run the required `--dry-run` gate and inspect all four remote
+   paths before starting the resumable upload.
 
 During upload:
 

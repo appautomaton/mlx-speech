@@ -358,6 +358,10 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 
 **Produces:** The user guide, authoritative model card, safe release registry, and verified dry-run manifest.
 
+**Status:** complete
+**Evidence:** Added the evidence-backed dots.tts guide and authoritative four-variant Hugging Face card, including exact source revisions, mixed-precision/selective-int8 policy, reproduced quality and peak-memory measurements, non-streaming limitations, and consent/disclosure/misuse guidance. Added a dedicated resumable release target whose only artifact selectors are `soar/mlx-base/**`, `soar/mlx-int8/**`, `mf/mlx-base/**`, and `mf/mlx-int8/**`; exact-layout validation rejects extra content, and the dry run requires the passed benchmark plus matching artifact digests before constructing upload commands. The real dry run validated all four local artifacts and their recorded digests without network access. Focused release suite `9 passed`; full unit tier `737 passed`; peak MLX allocation was `24,253,814` bytes and macOS process peak RSS was `5,504,958,464` bytes under a 20 GiB Metal limit. Ruff and `git diff --check` passed.
+**Risks / next:** Slice 14 is the first external publication step. It must use the working Hugging Face CLI outside the sandbox, upload only the dry-run selectors plus the card, and stop if authentication, organization permission, remote layout, isolated-cache selection, or waveform smoke verification fails.
+
 ### Slice 14: Publish and verify the Hugging Face release
 
 **Objective:** Upload the four validated artifacts and authoritative card, then prove remote resolution and waveform generation.
