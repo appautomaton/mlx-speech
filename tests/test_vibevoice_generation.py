@@ -102,16 +102,16 @@ class TestSamplingHelpers:
 
 
 class TestPromptFormatting:
-    def test_plain_text_defaults_to_speaker_one(self):
-        assert _format_text_input("Hello there.") == "Speaker 1: Hello there."
+    def test_plain_text_defaults_to_speaker_zero(self):
+        assert _format_text_input("Hello there.") == "Speaker 0: Hello there."
 
     def test_existing_speaker_labels_are_preserved(self):
         text = "Speaker 1: Hello.\nSpeaker 2: Hi."
         assert _format_text_input(text) == text
 
-    def test_bracket_speaker_labels_are_converted(self):
+    def test_bracket_speaker_labels_are_treated_as_plain_text(self):
         text = "[1]: Hello.\n[2]: Hi."
-        assert _format_text_input(text) == "Speaker 1: Hello.\nSpeaker 2: Hi."
+        assert _format_text_input(text) == "Speaker 0: [1]: Hello. [2]: Hi."
 
 
 @pytest.mark.skipif(not HAS_MODEL, reason="model not available")

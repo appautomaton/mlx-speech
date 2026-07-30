@@ -124,6 +124,12 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 
 **Produces:** One shared pure-MLX Qwen2 trunk used by dots.tts and VibeVoice, plus compatibility/parity coverage.
 
+**Execution correction:** The checked-in oracle pack intentionally contains no Qwen weights, so Slice 4 validates shared Qwen equations, token/embed paths, cache growth, tied output projection, EOS handling, and VibeVoice compatibility with deterministic tiny weights. Slice 9 must add the full native-BF16 Qwen comparison against `qwen.npz` after converted weights exist; this keeps unit tests checkpoint-free and does not weaken the pre-generation parity gate.
+
+**Status:** complete
+**Evidence:** Extracted `src/mlx_speech/models/_qwen2.py`, preserved VibeVoice through compatibility exports, and added `src/mlx_speech/models/dots_tts/qwen.py`; deterministic tests cover IDs/embeddings, GQA, caches, tied logits, EOS, and family-specific BF16 RoPE policy; focused suite `18 passed`, full unit suite `614 passed`, Ruff/forbidden-import/diff checks passed; spec and quality reviewers `APPROVED` after one BF16 compatibility correction. See `orchestration/slice-004-summary.md`.
+**Risks / next:** Full official-weight `qwen.npz` parity is required in Slice 9 after native BF16 conversion; no implementation risk remains for the shared interface.
+
 ### Slice 5: Implement latent IO and the causal semantic encoder
 
 **Objective:** Implement latent normalization and the causal semantic patch encoder, including incremental prefill/decode state used to feed generated patches back into Qwen.
