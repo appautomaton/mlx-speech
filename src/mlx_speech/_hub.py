@@ -57,9 +57,9 @@ _TTS_MODELS: dict[str, _ModelAlias] = {
     ),
     "dots-tts-soar": _ModelAlias(
         "appautomaton/dots-tts-mlx",
-        "dots.tts SOAR (mlx-base) — flow-matching TTS and voice cloning",
+        "dots.tts SOAR (mlx-int8) — selective-int8 TTS and voice cloning",
         "dots_tts",
-        "soar/mlx-base",
+        "soar/mlx-int8",
     ),
     "dots-tts-soar-base": _ModelAlias(
         "appautomaton/dots-tts-mlx",
@@ -67,17 +67,29 @@ _TTS_MODELS: dict[str, _ModelAlias] = {
         "dots_tts",
         "soar/mlx-base",
     ),
+    "dots-tts-soar-int8": _ModelAlias(
+        "appautomaton/dots-tts-mlx",
+        "dots.tts SOAR int8 — Qwen-selective affine int8 TTS",
+        "dots_tts",
+        "soar/mlx-int8",
+    ),
     "dots-tts-mf": _ModelAlias(
         "appautomaton/dots-tts-mlx",
-        "dots.tts MeanFlow (mlx-base) — distilled TTS and voice cloning",
+        "dots.tts MeanFlow (mlx-int8) — selective-int8 TTS and voice cloning",
         "dots_tts",
-        "mf/mlx-base",
+        "mf/mlx-int8",
     ),
     "dots-tts-mf-base": _ModelAlias(
         "appautomaton/dots-tts-mlx",
         "dots.tts MeanFlow base — source-faithful mixed-precision TTS",
         "dots_tts",
         "mf/mlx-base",
+    ),
+    "dots-tts-mf-int8": _ModelAlias(
+        "appautomaton/dots-tts-mlx",
+        "dots.tts MeanFlow int8 — Qwen-selective affine int8 TTS",
+        "dots_tts",
+        "mf/mlx-int8",
     ),
 }
 

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "name": "dots_tts_macos_multilingual_v1",
+  "description": "Fixed English and Mandarin dots.tts cloning corpus rendered from macOS built-in voices.",
+  "source": {
+    "kind": "macos_builtin_say",
+    "sample_rate": 24000,
+    "channels": 1
+  },
+  "references": [
+    {
+      "id": "samantha_en_us",
+      "voice": "Samantha",
+      "locale": "en_US",
+      "language": "en",
+      "asr_language": "English",
+      "reference_text": "My name is Samantha. I speak clearly and calmly.",
+      "target_text": "Today the weather is bright and peaceful."
+    },
+    {
+      "id": "tingting_zh_cn",
+      "voice": "Tingting",
+      "locale": "zh_CN",
+      "language": "zh",
+      "asr_language": "Chinese",
+      "reference_text": "你好，我叫婷婷。这个声音清晰平稳。",
+      "target_text": "今天的天气晴朗而平静。"
+    }
+  ],
+  "modes": [
+    "continuation",
+    "speaker_only"
+  ],
+  "generation": {
+    "max_audio_patches": 128,
+    "seed": 42,
+    "eos_threshold": 0.8
+  },
+  "quality_gate": {
+    "max_absolute_wer_regression": 0.01,
+    "max_speaker_cosine_regression": 0.02
+  }
+}

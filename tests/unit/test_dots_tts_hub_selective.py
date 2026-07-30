@@ -7,7 +7,10 @@ from types import SimpleNamespace
 from mlx_speech._hub import _DEFAULT_ALLOW_PATTERNS, get_model_path, list_models
 
 
-def test_dots_aliases_select_explicit_base_subdirs(monkeypatch, tmp_path: Path) -> None:
+def test_dots_aliases_select_gated_int8_and_explicit_base_subdirs(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     calls = []
 
     def snapshot_download(repo_id, **kwargs):
@@ -19,12 +22,14 @@ def test_dots_aliases_select_explicit_base_subdirs(monkeypatch, tmp_path: Path) 
         "huggingface_hub",
         SimpleNamespace(snapshot_download=snapshot_download),
     )
-    assert get_model_path("dots-tts-soar") == tmp_path / "soar/mlx-base"
-    assert calls[-1][1]["allow_patterns"] == ["soar/mlx-base/**", "README.md"]
+    assert get_model_path("dots-tts-soar") == tmp_path / "soar/mlx-int8"
+    assert calls[-1][1]["allow_patterns"] == ["soar/mlx-int8/**", "README.md"]
     assert get_model_path("dots-tts-soar-base") == tmp_path / "soar/mlx-base"
-    assert get_model_path("dots-tts-mf") == tmp_path / "mf/mlx-base"
-    assert calls[-1][1]["allow_patterns"] == ["mf/mlx-base/**", "README.md"]
+    assert get_model_path("dots-tts-soar-int8") == tmp_path / "soar/mlx-int8"
+    assert get_model_path("dots-tts-mf") == tmp_path / "mf/mlx-int8"
+    assert calls[-1][1]["allow_patterns"] == ["mf/mlx-int8/**", "README.md"]
     assert get_model_path("dots-tts-mf-base") == tmp_path / "mf/mlx-base"
+    assert get_model_path("dots-tts-mf-int8") == tmp_path / "mf/mlx-int8"
     models = list_models("tts")
     assert models["dots-tts-soar"][0] == "appautomaton/dots-tts-mlx"
     assert models["dots-tts-mf-base"][0] == "appautomaton/dots-tts-mlx"
@@ -59,6 +64,8 @@ def test_isolated_cache_materializes_no_sibling_safetensors(monkeypatch, tmp_pat
         "mf/mlx-base/config.json",
         "mf/mlx-base/tokenizer/tokenizer.json",
         "mf/mlx-int8/core.safetensors",
+        "mf/mlx-int8/config.json",
+        "mf/mlx-int8/tokenizer/tokenizer.json",
     }
 
     def snapshot_download(repo_id, **kwargs):
@@ -76,14 +83,14 @@ def test_isolated_cache_materializes_no_sibling_safetensors(monkeypatch, tmp_pat
         "huggingface_hub",
         SimpleNamespace(snapshot_download=snapshot_download),
     )
-    selected = get_model_path("dots-tts-mf-base")
-    assert selected == cache / "mf/mlx-base"
+    selected = get_model_path("dots-tts-mf")
+    assert selected == cache / "mf/mlx-int8"
     materialized = {
         path.relative_to(cache).as_posix() for path in cache.rglob("*") if path.is_file()
     }
     assert materialized == {
         "README.md",
-        "mf/mlx-base/config.json",
-        "mf/mlx-base/core.safetensors",
-        "mf/mlx-base/tokenizer/tokenizer.json",
+        "mf/mlx-int8/config.json",
+        "mf/mlx-int8/core.safetensors",
+        "mf/mlx-int8/tokenizer/tokenizer.json",
     }

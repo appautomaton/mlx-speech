@@ -333,6 +333,10 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 
 **Produces:** A reproducible four-artifact quality report and the evidence-backed default-alias decision.
 
+**Status:** complete
+**Evidence:** Added a reproducible macOS-built-in English/Mandarin corpus manifest and integrity-recorded materializer, a resumable four-artifact quantization gate, language-aware ASR error scoring, speaker-cosine/size/peak-memory measurements, full continuation and speaker-only integration coverage, and the checked-in report `docs/benchmarks/dots-tts-quant-gate-2026-07-30.md`. All eight `SOAR/MF × base/int8 × clone-mode` integration cases passed. Aggregate base and int8 WER were both `0.0294` (`+0.0000` regression); aggregate speaker cosine was `0.7930` base versus `0.8024` int8 (`-0.0094` regression). SOAR and MeanFlow each passed independently, so short aliases now select explicit `mlx-int8` subdirectories while `*-base` aliases remain fixed. Base generation peaked at `8.52 GiB` MLX versus `7.18 GiB` int8 in the quality run. The repository gate completed with `793 passed, 34 skipped`; the final unit tier completed with `728 passed`. Ruff and `git diff --check` passed.
+**Risks / next:** The fixed gate contains two clean macOS synthesized speakers and one target sentence per language; it is a deterministic regression surface, not a broad subjective-quality benchmark. Slice 13 must state that limitation and use only the reproduced metrics above in documentation and the model card.
+
 ### Slice 13: Prepare documentation, model card, and release staging
 
 **Objective:** Create the evidence-backed user guide, authoritative Hugging Face card, and safe resumable upload targets without publishing yet.
