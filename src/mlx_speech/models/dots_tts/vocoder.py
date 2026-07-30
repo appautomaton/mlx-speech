@@ -1,0 +1,256 @@
+"""Causal BigVGAN primitives for dots.tts waveform decoding."""
+
+from __future__ import annotations
+
+import math
+
+import mlx.core as mx
+import mlx.nn as nn
+import numpy as np
+
+
+class Conv1d(nn.Module):
+    """Channels-last Conv1d with explicit causal or symmetric padding."""
+
+    def __init__(
+        self,
+        input_channels: int,
+        output_channels: int,
+        kernel_size: int,
+        *,
+        stride: int = 1,
+        dilation: int = 1,
+        causal: bool = True,
+        bias: bool = True,
+    ):
+        super().__init__()
+        self.stride = int(stride)
+        self.dilation = int(dilation)
+        self.causal = bool(causal)
+        self.kernel_size = int(kernel_size)
+        self.left_padding = self.dilation * (self.kernel_size - 1) if causal else 0
+        self.padding = (
+            0
+            if causal
+            else (self.kernel_size * self.dilation - self.dilation) // 2
+        )
+        scale = math.sqrt(2.0 / (input_channels * kernel_size + output_channels))
+        self.weight = mx.random.normal(
+            (output_channels, kernel_size, input_channels)
+        ) * scale
+        self.bias = mx.zeros((output_channels,)) if bias else None
+
+    def __call__(self, value: mx.array) -> mx.array:
+        if self.causal and self.left_padding:
+            value = mx.pad(value, ((0, 0), (self.left_padding, 0), (0, 0)))
+        output = mx.conv1d(
+            value,
+            self.weight,
+            stride=self.stride,
+            padding=self.padding,
+            dilation=self.dilation,
+        )
+        return output if self.bias is None else output + self.bias
+
+
+class CausalConvTranspose1d(nn.Module):
+    """MLX-layout causal transposed convolution with exact stride trimming."""
+
+    def __init__(
+        self,
+        input_channels: int,
+        output_channels: int,
+        kernel_size: int,
+        *,
+        stride: int,
+        bias: bool = True,
+    ):
+        super().__init__()
+        if kernel_size != 2 * stride:
+            raise ValueError("causal transposed convolution requires kernel_size=2*stride")
+        self.stride = int(stride)
+        scale = math.sqrt(2.0 / (input_channels * kernel_size + output_channels))
+        self.weight = mx.random.normal(
+            (output_channels, kernel_size, input_channels)
+        ) * scale
+        self.bias = mx.zeros((output_channels,)) if bias else None
+
+    def __call__(self, value: mx.array) -> mx.array:
+        output = mx.conv_transpose1d(value, self.weight, stride=self.stride)
+        if self.bias is not None:
+            output += self.bias
+        return output[:, : -self.stride]
+
+
+def _default_filter(kernel_size: int, ratio: int) -> np.ndarray:
+    position = np.arange(kernel_size, dtype=np.float64) - (kernel_size - 1) / 2
+    cutoff = 0.5 / ratio
+    sinc = 2 * cutoff * np.sinc(2 * cutoff * position)
+    window = np.kaiser(kernel_size, beta=8.6)
+    taps = sinc * window
+    taps /= taps.sum()
+    return taps.astype(np.float32)
+
+
+class AliasFreeSnakeBeta(nn.Module):
+    """Upsample → SnakeBeta → low-pass downsample alias-free activation."""
+
+    def __init__(
+        self,
+        channels: int,
+        *,
+        ratio: int = 2,
+        kernel_size: int = 12,
+    ):
+        super().__init__()
+        if ratio <= 0 or kernel_size <= ratio:
+            raise ValueError("alias-free resampler dimensions are invalid")
+        self.ratio = int(ratio)
+        taps = mx.array(_default_filter(kernel_size, ratio))
+        self.up_filter = mx.broadcast_to(
+            taps[None, :, None], (channels, kernel_size, 1)
+        )
+        self.down_filter = mx.broadcast_to(
+            taps[None, :, None], (channels, kernel_size, 1)
+        )
+        self.alpha = mx.zeros((channels,))
+        self.beta = mx.zeros((channels,))
+
+    def __call__(self, value: mx.array) -> mx.array:
+        channels = int(value.shape[-1])
+        upsampled = self.ratio * mx.conv_transpose1d(
+            value.astype(mx.float32),
+            self.up_filter,
+            stride=self.ratio,
+            groups=channels,
+        )
+        trim = int(self.up_filter.shape[1]) - self.ratio
+        upsampled = upsampled[:, :-trim]
+        alpha = mx.exp(self.alpha.astype(mx.float32))[None, None]
+        beta = mx.exp(self.beta.astype(mx.float32))[None, None]
+        activated = upsampled + mx.square(mx.sin(upsampled * alpha)) / (beta + 1e-9)
+        left = int(self.down_filter.shape[1]) - 1
+        padded = mx.concatenate(
+            (
+                mx.broadcast_to(
+                    activated[:, :1],
+                    (int(activated.shape[0]), left, channels),
+                ),
+                activated,
+            ),
+            axis=1,
+        )
+        return mx.conv1d(
+            padded,
+            self.down_filter,
+            stride=self.ratio,
+            groups=channels,
+        ).astype(value.dtype)
+
+
+class AMPBlock(nn.Module):
+    def __init__(
+        self,
+        channels: int,
+        kernel_size: int,
+        dilations: tuple[int, ...],
+    ):
+        super().__init__()
+        self.convs1 = [
+            Conv1d(
+                channels,
+                channels,
+                kernel_size,
+                dilation=dilation,
+                causal=True,
+            )
+            for dilation in dilations
+        ]
+        self.convs2 = [
+            Conv1d(channels, channels, kernel_size, causal=True)
+            for _ in dilations
+        ]
+        self.activations = [
+            AliasFreeSnakeBeta(channels) for _ in range(2 * len(dilations))
+        ]
+
+    def __call__(self, value: mx.array) -> mx.array:
+        for index, (first, second) in enumerate(
+            zip(self.convs1, self.convs2, strict=True)
+        ):
+            update = self.activations[2 * index](value)
+            update = first(update)
+            update = self.activations[2 * index + 1](update)
+            value = value + second(update)
+        return value
+
+
+class BigVGANDecoder(nn.Module):
+    def __init__(
+        self,
+        *,
+        latent_dim: int,
+        initial_channels: int,
+        upsample_rates: tuple[int, ...],
+        upsample_kernel_sizes: tuple[int, ...],
+        resblock_kernel_sizes: tuple[int, ...],
+        resblock_dilation_sizes: tuple[tuple[int, ...], ...],
+        lookahead: int = 2,
+    ):
+        super().__init__()
+        if len(upsample_rates) != len(upsample_kernel_sizes):
+            raise ValueError("decoder upsample rates and kernels differ in length")
+        if len(resblock_kernel_sizes) != len(resblock_dilation_sizes):
+            raise ValueError("decoder residual kernels and dilations differ in length")
+        self.lookahead = int(lookahead)
+        self.conv_pre = Conv1d(
+            latent_dim,
+            initial_channels,
+            2 * self.lookahead + 1,
+            causal=False,
+        )
+        self.ups = []
+        self.resblocks = []
+        channels = int(initial_channels)
+        for rate, kernel in zip(
+            upsample_rates, upsample_kernel_sizes, strict=True
+        ):
+            output_channels = channels // 2
+            self.ups.append(
+                CausalConvTranspose1d(
+                    channels,
+                    output_channels,
+                    kernel,
+                    stride=rate,
+                )
+            )
+            self.resblocks.append(
+                [
+                    AMPBlock(output_channels, residual_kernel, dilations)
+                    for residual_kernel, dilations in zip(
+                        resblock_kernel_sizes,
+                        resblock_dilation_sizes,
+                        strict=True,
+                    )
+                ]
+            )
+            channels = output_channels
+        self.activation_post = AliasFreeSnakeBeta(channels)
+        self.conv_post = Conv1d(channels, 1, 7, causal=True, bias=False)
+
+    def __call__(self, value: mx.array) -> mx.array:
+        value = self.conv_pre(value)
+        for upsample, blocks in zip(self.ups, self.resblocks, strict=True):
+            value = upsample(value)
+            outputs = [block(value) for block in blocks]
+            value = sum(outputs[1:], outputs[0]) / len(outputs)
+        return mx.clip(self.conv_post(self.activation_post(value)), -1.0, 1.0)
+
+
+__all__ = [
+    "AliasFreeSnakeBeta",
+    "AMPBlock",
+    "BigVGANDecoder",
+    "CausalConvTranspose1d",
+    "Conv1d",
+]

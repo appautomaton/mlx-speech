@@ -6,6 +6,7 @@ from .checkpoint import (
     DotsTTSQuantizationConfig,
     validate_artifact_dir,
 )
+from .audio_vae import AudioVAE, VocoderDecodeState
 from .config import DotsTTSConfig, DotsTTSQwenConfig
 from .latent import LatentIO, LatentStatistics
 from .semantic_encoder import SemanticEncoderState, VAESemanticEncoder
@@ -20,6 +21,7 @@ __all__ = [
     "DotsTTSQwenConfig",
     "DotsTTSSchedule",
     "DotsTTSTokenizer",
+    "AudioVAE",
     "CAMPPlus",
     "CAMPPlusConfig",
     "LatentIO",
@@ -28,6 +30,7 @@ __all__ = [
     "SpeakerConditioner",
     "SpeakerFrontend",
     "VAESemanticEncoder",
+    "VocoderDecodeState",
     "build_generation_schedule",
     "validate_artifact_dir",
 ]

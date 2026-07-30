@@ -199,6 +199,12 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 
 **Produces:** Verified reference-latent encoding and 48 kHz waveform decoding modules.
 
+**Execution correction:** Slice 7 validates the complete AudioVAE/BigVGAN architecture, MLX tensor layouts, causality, alias-free primitives, finite/non-silent waveform output, and deterministic full/incremental behavior with tiny weights. Converted-weight comparisons against `audio_vae.npz` move to Slice 9 because the fixture contains no vocoder weights.
+
+**Status:** complete
+**Evidence:** Added pure-MLX AudioVAE encoding/decoding, residual SLSTM bridge, causal/symmetric convolutions, causal transposed convolution, alias-free SnakeBeta filtering, AMP residual blocks, and BigVGAN waveform decoding. Focused tests cover exact causal boundaries, stride-length preservation, deterministic buffered decode equivalence, latent/waveform contracts, and finite non-silent output; `8 passed`; Ruff passed.
+**Risks / next:** Full-size converted-weight AudioVAE/vocoder numeric parity remains a Slice 9 gate; runtime modules already use folded convolution weights and contain no weight-normalization parametrization.
+
 ### Slice 8: Implement the DiT, SOAR solver, and MeanFlow solver
 
 **Objective:** Implement the shared adaptive-normalization DiT and both approved next-patch solvers with their distinct guidance semantics.
