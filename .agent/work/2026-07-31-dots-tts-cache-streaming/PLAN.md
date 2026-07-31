@@ -90,6 +90,10 @@ Implement the bounded cache and streaming contract in [SPEC.md](./SPEC.md) using
 **Touches:** dots.tts SLSTM, AudioVAE decoder state, BigVGAN context calculation, unit tests
 **Produces:** true incremental waveform decoder
 
+**Status:** complete
+**Evidence:** Added explicit per-layer SLSTM recurrence, structurally derived BigVGAN context, a five-field bounded decode state, monotonic stable emission, and idempotent lookahead flush; focused MLX suite `18 passed`, full unit suite `774 passed`, Ruff and `git diff --check` passed; spec and quality reviews both `APPROVED`.
+**Risks / next:** Synthetic FP32/BF16 seam coverage passes; real-checkpoint streaming equivalence remains part of Slice 5 integration.
+
 ### Slice 4: Request state and optional public streaming API
 
 **Objective:** Integrate all bounded state into one dots.tts iterator and expose waveform chunks without changing other TTS families or the non-streaming result.

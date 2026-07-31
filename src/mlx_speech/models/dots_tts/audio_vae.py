@@ -126,17 +126,48 @@ class SLSTM(nn.Module):
         self.layers = [_LSTMWeights(dimension) for _ in range(num_layers)]
         self.high_precision = bool(high_precision)
 
-    def __call__(self, value: mx.array) -> mx.array:
+    def initial_state(
+        self, batch_size: int, *, dtype: mx.Dtype = mx.float32
+    ) -> tuple[tuple[mx.array, mx.array], ...]:
+        if batch_size <= 0:
+            raise ValueError("SLSTM batch_size must be positive")
+        return tuple(
+            (
+                mx.zeros((batch_size, self.dimension), dtype=dtype),
+                mx.zeros((batch_size, self.dimension), dtype=dtype),
+            )
+            for _ in self.layers
+        )
+
+    def execute_chunk(
+        self,
+        value: mx.array,
+        state: tuple[tuple[mx.array, mx.array], ...],
+    ) -> tuple[mx.array, tuple[tuple[mx.array, mx.array], ...]]:
+        if value.ndim != 3 or int(value.shape[-1]) != self.dimension:
+            raise ValueError(
+                f"SLSTM expects (batch, time, {self.dimension}), got {value.shape}"
+            )
+        if len(state) != len(self.layers):
+            raise ValueError("SLSTM state layer count differs from the module")
         residual = value
-        batch, time, hidden = value.shape
-        for layer in self.layers:
+        batch, time, _ = value.shape
+        if int(time) == 0:
+            return value, state
+        next_state = []
+        for layer_index, layer in enumerate(self.layers):
             if self.high_precision:
                 projected = _high_precision_matmul(value, layer.weight_ih.T)
             else:
                 projected = value @ layer.weight_ih.T
             projected += layer.bias_ih + layer.bias_hh
-            h = mx.zeros((batch, hidden), dtype=value.dtype)
-            cell = mx.zeros((batch, hidden), dtype=value.dtype)
+            h, cell = state[layer_index]
+            expected_shape = (int(batch), self.dimension)
+            if h.shape != expected_shape or cell.shape != expected_shape:
+                raise ValueError(
+                    "SLSTM hidden and cell state must have shape "
+                    f"{expected_shape}, got {h.shape} and {cell.shape}"
+                )
             outputs = []
             for index in range(int(time)):
                 recurrent = (
@@ -156,7 +187,13 @@ class SLSTM(nn.Module):
                 h = output_gate * mx.tanh(cell)
                 outputs.append(h)
             value = mx.stack(outputs, axis=1)
-        return value + residual
+            next_state.append((h, cell))
+        return value + residual, tuple(next_state)
+
+    def __call__(self, value: mx.array) -> mx.array:
+        state = self.initial_state(int(value.shape[0]), dtype=value.dtype)
+        output, _ = self.execute_chunk(value, state)
+        return output
 
 
 class _LSTMWeights(nn.Module):
@@ -269,11 +306,24 @@ class _MIBridge(nn.Module):
         value = self.recurrent(value)
         return _linear(value, self.output, high_precision=self.high_precision)
 
+    def execute_chunk(
+        self,
+        value: mx.array,
+        state: tuple[tuple[mx.array, mx.array], ...],
+    ) -> tuple[mx.array, tuple[tuple[mx.array, mx.array], ...]]:
+        value = _linear(value, self.input, high_precision=self.high_precision)
+        value, state = self.recurrent.execute_chunk(value, state)
+        value = _linear(value, self.output, high_precision=self.high_precision)
+        return value, state
+
 
 @dataclass(frozen=True)
 class VocoderDecodeState:
-    latent: mx.array
-    emitted_samples: int = 0
+    recurrent_state: tuple[tuple[mx.array, mx.array], ...]
+    decoder_input: mx.array
+    maximum_chunk_size: int
+    total_frames: int = 0
+    emitted_frames: int = 0
 
 
 class AudioVAE(nn.Module):
@@ -342,9 +392,21 @@ class AudioVAE(nn.Module):
         value = self.dec_mi_layer(value)
         return self.decoder(value).transpose(0, 2, 1)
 
-    def init_decode_state(self, *, batch_size: int = 1) -> VocoderDecodeState:
+    def init_decode_state(
+        self,
+        *,
+        batch_size: int = 1,
+        maximum_chunk_size: int,
+    ) -> VocoderDecodeState:
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        window_size = self.decoder.stream_window_size(maximum_chunk_size)
         return VocoderDecodeState(
-            latent=mx.zeros((batch_size, self.latent_dim, 0), dtype=mx.float32)
+            recurrent_state=self.dec_mi_layer.recurrent.initial_state(batch_size),
+            decoder_input=mx.zeros(
+                (batch_size, window_size, self.latent_dim), dtype=mx.float32
+            ),
+            maximum_chunk_size=int(maximum_chunk_size),
         )
 
     def decode_chunk(
@@ -356,22 +418,88 @@ class AudioVAE(nn.Module):
     ) -> tuple[mx.array, VocoderDecodeState]:
         if latent.ndim != 3 or int(latent.shape[1]) != self.latent_dim:
             raise ValueError("AudioVAE decode chunk has invalid shape")
-        if int(latent.shape[0]) != int(state.latent.shape[0]):
+        if int(latent.shape[0]) != int(state.decoder_input.shape[0]):
             raise ValueError("AudioVAE decode state batch size differs from chunk")
-        combined = mx.concatenate((state.latent, latent.astype(mx.float32)), axis=-1)
-        if int(combined.shape[-1]) == 0:
-            return mx.zeros((int(combined.shape[0]), 1, 0)), state
-        waveform = self.decode(combined)
-        stable_frames = (
-            int(combined.shape[-1])
-            if final
-            else max(0, int(combined.shape[-1]) - self.decoder_lookahead)
+        chunk_frames = int(latent.shape[-1])
+        if chunk_frames > state.maximum_chunk_size:
+            raise ValueError(
+                f"AudioVAE decode chunk has {chunk_frames} frames, exceeding "
+                f"maximum_chunk_size={state.maximum_chunk_size}"
+            )
+
+        recurrent_state = state.recurrent_state
+        decoder_chunk = mx.zeros(
+            (int(latent.shape[0]), 0, self.latent_dim), dtype=mx.float32
         )
-        stable_samples = stable_frames * self.hop_size
-        emitted = waveform[:, :, state.emitted_samples : stable_samples]
-        return emitted, VocoderDecodeState(
-            latent=combined,
-            emitted_samples=stable_samples,
+        if chunk_frames:
+            value = self.post_proj(latent.astype(mx.float32).transpose(0, 2, 1))
+            decoder_chunk, recurrent_state = self.dec_mi_layer.execute_chunk(
+                value, recurrent_state
+            )
+
+        window_size = int(state.decoder_input.shape[1])
+        valid_frames = min(state.total_frames, window_size)
+        combined = mx.concatenate(
+            (state.decoder_input[:, :valid_frames], decoder_chunk), axis=1
+        )
+        if int(combined.shape[1]) > window_size:
+            combined = combined[:, -window_size:]
+        elif int(combined.shape[1]) < window_size:
+            combined = mx.concatenate(
+                (
+                    combined,
+                    mx.zeros(
+                        (
+                            int(combined.shape[0]),
+                            window_size - int(combined.shape[1]),
+                            self.latent_dim,
+                        ),
+                        dtype=combined.dtype,
+                    ),
+                ),
+                axis=1,
+            )
+        mx.eval(
+            combined,
+            *(tensor for layer_state in recurrent_state for tensor in layer_state),
+        )
+
+        total_frames = state.total_frames + chunk_frames
+        stable_frames = (
+            total_frames
+            if final
+            else max(0, total_frames - self.decoder.stream_lookahead)
+        )
+        next_emitted_frames = max(state.emitted_frames, stable_frames)
+        next_state = VocoderDecodeState(
+            recurrent_state=recurrent_state,
+            decoder_input=combined,
+            maximum_chunk_size=state.maximum_chunk_size,
+            total_frames=total_frames,
+            emitted_frames=next_emitted_frames,
+        )
+        if stable_frames <= state.emitted_frames:
+            return (
+                mx.zeros(
+                    (int(latent.shape[0]), 1, 0), dtype=state.decoder_input.dtype
+                ),
+                next_state,
+            )
+
+        valid_frames = min(total_frames, window_size)
+        window_start = total_frames - valid_frames
+        if state.emitted_frames < window_start:
+            raise RuntimeError("AudioVAE decoder window is shorter than its context")
+        local_start = state.emitted_frames - window_start
+        local_end = stable_frames - window_start
+        waveform = self.decoder(combined).transpose(0, 2, 1)
+        return (
+            waveform[
+                :,
+                :,
+                local_start * self.hop_size : local_end * self.hop_size,
+            ],
+            next_state,
         )
 
 

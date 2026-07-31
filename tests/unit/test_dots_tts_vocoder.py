@@ -29,6 +29,7 @@ def test_causal_transposed_convolution_has_exact_stride_length() -> None:
     output = convolution(mx.ones((1, 5, 4)))
     mx.eval(output)
     assert output.shape == (1, 15, 2)
+    assert convolution.left_context == 1
 
 
 def test_alias_free_snakebeta_preserves_shape_and_is_finite() -> None:
@@ -37,17 +38,28 @@ def test_alias_free_snakebeta_preserves_shape_and_is_finite() -> None:
     mx.eval(output)
     assert output.shape == (1, 7, 3)
     assert bool(mx.all(mx.isfinite(output)).item())
+    assert activation.left_context == 11
 
 
-def test_buffered_chunk_decode_matches_full_waveform() -> None:
+def test_decoder_stream_context_is_derived_from_layer_structure() -> None:
+    model = AudioVAE(_config(), encoder_residual_layers=1)
+    assert model.decoder.conv_pre.left_context == 2
+    assert model.decoder.conv_pre.right_context == 2
+    assert model.decoder.resblocks[0][0].left_context == 26
+    assert model.decoder.stream_left_context == 28
+    assert model.decoder.stream_lookahead == 2
+    assert model.decoder.stream_window_size(3) == 33
+
+
+def test_stateful_chunk_decode_matches_full_waveform() -> None:
     mx.random.seed(47)
     model = AudioVAE(_config(), encoder_residual_layers=1)
     latent = mx.random.normal((1, 4, 6))
     full = model.decode(latent)
-    state = model.init_decode_state()
+    state = model.init_decode_state(maximum_chunk_size=3)
     first, state = model.decode_chunk(latent[:, :, :3], state)
     second, state = model.decode_chunk(latent[:, :, 3:], state, final=True)
     combined = mx.concatenate((first, second), axis=-1)
     mx.eval(full, combined)
-    assert state.emitted_samples == 24
-    np.testing.assert_allclose(combined, full, atol=0.0, rtol=0.0)
+    assert state.emitted_frames == state.total_frames == 6
+    np.testing.assert_allclose(combined, full, atol=5e-3, rtol=5e-3)

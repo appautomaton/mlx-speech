@@ -6,6 +6,7 @@ import pytest
 
 from mlx_speech.models.dots_tts.audio_vae import (
     AudioVAE,
+    SLSTM,
     encoder_logical_workspace_bytes,
 )
 from mlx_speech.models.dots_tts.config import DotsTTSVocoderConfig
@@ -60,6 +61,24 @@ def test_audio_vae_decode_is_deterministic() -> None:
     second = model.decode(latent)
     mx.eval(first, second)
     np.testing.assert_allclose(first, second, atol=0.0, rtol=0.0)
+
+
+def test_slstm_chunk_execution_matches_zero_state_full_call() -> None:
+    mx.random.seed(39)
+    recurrent = SLSTM(5, 2)
+    value = mx.random.normal((2, 9, 5))
+    full = recurrent(value)
+    state = recurrent.initial_state(2, dtype=value.dtype)
+    outputs = []
+    for start, end in ((0, 2), (2, 6), (6, 9)):
+        output, state = recurrent.execute_chunk(value[:, start:end], state)
+        outputs.append(output)
+    chunked = mx.concatenate(outputs, axis=1)
+    mx.eval(full, chunked, state)
+
+    assert len(state) == 2
+    assert all(hidden.shape == cell.shape == (2, 5) for hidden, cell in state)
+    np.testing.assert_allclose(chunked, full, atol=2e-3, rtol=2e-3)
 
 
 def test_audio_vae_rejects_invalid_shapes() -> None:

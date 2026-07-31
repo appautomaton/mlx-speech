@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from fractions import Fraction
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -59,6 +60,19 @@ class Conv1d(nn.Module):
             dilation=self.dilation,
         )
         return output if self.bias is None else output + self.bias
+
+    @property
+    def left_context(self) -> int:
+        if self.causal:
+            return self.left_padding
+        return self.padding
+
+    @property
+    def right_context(self) -> int:
+        if self.causal:
+            return 0
+        receptive_field = self.dilation * (self.kernel_size - 1)
+        return receptive_field - self.padding
 
     def _call_high_precision(self, value: mx.array) -> mx.array:
         """Run an encoder-only convolution with true FP32 reductions."""
@@ -136,6 +150,7 @@ class CausalConvTranspose1d(nn.Module):
         if kernel_size != 2 * stride:
             raise ValueError("causal transposed convolution requires kernel_size=2*stride")
         self.stride = int(stride)
+        self.kernel_size = int(kernel_size)
         scale = math.sqrt(2.0 / (input_channels * kernel_size + output_channels))
         self.weight = mx.random.normal(
             (output_channels, kernel_size, input_channels)
@@ -147,6 +162,11 @@ class CausalConvTranspose1d(nn.Module):
         if self.bias is not None:
             output += self.bias
         return output[:, : -self.stride]
+
+    @property
+    def left_context(self) -> int:
+        overlap = self.kernel_size - self.stride
+        return (overlap + self.stride - 1) // self.stride
 
 
 def _default_filter(kernel_size: int, ratio: int) -> np.ndarray:
@@ -214,6 +234,14 @@ class AliasFreeSnakeBeta(nn.Module):
             groups=channels,
         ).astype(value.dtype)
 
+    @property
+    def left_context(self) -> int:
+        upsample_context = int(self.up_filter.shape[1]) - 1
+        downsample_context = int(self.down_filter.shape[1]) - 1
+        return (
+            upsample_context + downsample_context + self.ratio - 1
+        ) // self.ratio
+
 
 class AMPBlock(nn.Module):
     def __init__(
@@ -250,6 +278,18 @@ class AMPBlock(nn.Module):
             update = self.activations[2 * index + 1](update)
             value = value + second(update)
         return value
+
+    @property
+    def left_context(self) -> int:
+        context = 0
+        for index, (first, second) in enumerate(
+            zip(self.convs1, self.convs2, strict=True)
+        ):
+            context += self.activations[2 * index].left_context
+            context += first.left_context
+            context += self.activations[2 * index + 1].left_context
+            context += second.left_context
+        return context
 
 
 class BigVGANDecoder(nn.Module):
@@ -312,6 +352,31 @@ class BigVGANDecoder(nn.Module):
             outputs = [block(value) for block in blocks]
             value = sum(outputs[1:], outputs[0]) / len(outputs)
         return mx.clip(self.conv_post(self.activation_post(value)), -1.0, 1.0)
+
+    @property
+    def stream_lookahead(self) -> int:
+        return self.conv_pre.right_context
+
+    @property
+    def stream_left_context(self) -> int:
+        context = Fraction(self.conv_pre.left_context)
+        scale = Fraction(1)
+        for upsample, blocks in zip(self.ups, self.resblocks, strict=True):
+            context += scale * upsample.left_context
+            scale /= upsample.stride
+            context += scale * max(block.left_context for block in blocks)
+        context += scale * self.activation_post.left_context
+        context += scale * self.conv_post.left_context
+        return math.ceil(context)
+
+    def stream_window_size(self, maximum_chunk_size: int) -> int:
+        if maximum_chunk_size <= 0:
+            raise ValueError("maximum_chunk_size must be positive")
+        return (
+            int(maximum_chunk_size)
+            + self.stream_lookahead
+            + self.stream_left_context
+        )
 
 
 __all__ = [
