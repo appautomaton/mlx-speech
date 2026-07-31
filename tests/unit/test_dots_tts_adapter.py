@@ -4,19 +4,24 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import mlx.core as mx
+import numpy as np
 import pytest
 
+from mlx_speech.tts import TTSOutput
 from mlx_speech.tts._adapters.dots_tts import DotsTTSAdapter
 from mlx_speech.tts._registry import _resolve_tts_family
 
 
 class _Generator:
+    sample_rate = 48_000
+
     def __init__(self):
         self.kwargs = None
 
-    def synthesize(self, text, **kwargs):
+    def synthesize_stream(self, text, **kwargs):
         self.kwargs = {"text": text, **kwargs}
-        return SimpleNamespace(waveform=mx.ones((8,)), sample_rate=48_000)
+        yield SimpleNamespace(waveform=mx.ones((3,)), num_patches=1)
+        yield SimpleNamespace(waveform=mx.ones((5,)) * 2, num_patches=2)
 
 
 def test_adapter_keeps_model_controls_in_backend_kwargs() -> None:
@@ -36,6 +41,10 @@ def test_adapter_keeps_model_controls_in_backend_kwargs() -> None:
         eos_threshold=0.7,
     )
     assert output.sample_rate == 48_000
+    np.testing.assert_array_equal(
+        output.waveform,
+        mx.concatenate((mx.ones((3,)), mx.ones((5,)) * 2)),
+    )
     assert generator.kwargs["max_audio_patches"] == 7
     assert generator.kwargs["reference_sample_rate"] == 24_000
     assert generator.kwargs["solver_steps"] == 3
@@ -49,6 +58,20 @@ def test_adapter_accepts_explicit_patch_budget_and_rejects_conflicts() -> None:
     assert generator.kwargs["max_audio_patches"] == 5
     with pytest.raises(ValueError, match="must match"):
         adapter.generate("hello", max_new_tokens=4, max_audio_patches=5)
+
+
+def test_adapter_streams_unified_outputs_and_keeps_patch_metadata_private() -> None:
+    generator = _Generator()
+    adapter = DotsTTSAdapter(generator)
+    chunks = list(adapter.generate_stream("hello", stream_chunk_patches=3))
+
+    assert all(isinstance(chunk, TTSOutput) for chunk in chunks)
+    assert [int(chunk.waveform.size) for chunk in chunks] == [3, 5]
+    assert all(chunk.sample_rate == 48_000 for chunk in chunks)
+    assert all(not hasattr(chunk, "num_patches") for chunk in chunks)
+    assert generator.kwargs["stream_chunk_patches"] == 3
+    with pytest.raises(ValueError, match="positive integer"):
+        list(adapter.generate_stream("hello", stream_chunk_patches=0))
 
 
 def test_registry_detects_dots_tts(tmp_path: Path) -> None:

@@ -14,10 +14,10 @@ from .._hub import get_model_path as _get_model_path
 from .._hub import list_models as _list_all
 from .._hub import resolve_codec_path as _resolve_codec_path
 from .._hub import resolve_gemma_backbone_path as _resolve_gemma_backbone_path
-from ._adapter import TTSModel, TTSOutput
+from ._adapter import StreamingTTSModel, TTSModel, TTSOutput
 from ._registry import _resolve_tts_family
 
-__all__ = ["load", "list_models", "TTSModel", "TTSOutput"]
+__all__ = ["load", "list_models", "StreamingTTSModel", "TTSModel", "TTSOutput"]
 
 
 def list_models() -> dict[str, tuple[str, str]]:

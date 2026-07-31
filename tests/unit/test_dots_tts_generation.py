@@ -7,9 +7,11 @@ import numpy as np
 import pytest
 
 from mlx_speech.generation.dots_tts import (
+    DEFAULT_MAX_AUDIO_PATCHES,
     _RESAMPLE_WORKSPACE_BYTES,
     DotsTTSGenerator,
     DotsTTSPromptConditioning,
+    DotsTTSSynthesisOutput,
     _build_fm_attention_mask,
     _high_quality_resample,
     _resample_plan,
@@ -46,13 +48,21 @@ class _Qwen:
             ids[..., None].astype(mx.float32), self.hidden_size, -1
         )
 
-    def step(self, *, input_ids=None, inputs_embeds=None, cache=None):
+    def step(
+        self,
+        *,
+        input_ids=None,
+        inputs_embeds=None,
+        cache=None,
+        cache_capacity=None,
+    ):
+        del cache_capacity
         value = inputs_embeds
         if value is None:
             value = self.get_input_embeddings()(input_ids)
         self.steps += 1
         return SimpleNamespace(
-            last_hidden_state=value + self.steps / 100.0,
+            last_hidden_state=value + 0.01,
             cache=[] if cache is None else cache,
         )
 
@@ -62,7 +72,8 @@ class _Qwen:
 
 
 class _Semantic:
-    def prefill(self, value):
+    def prefill(self, value, *, max_audio_patches=None):
+        del max_audio_patches
         patches = int(value.shape[1]) // 2
         embedded = mx.repeat(
             mx.mean(value.reshape(1, patches, -1), -1)[..., None], 4, -1
@@ -76,6 +87,7 @@ class _Semantic:
 
 class _DiT:
     hidden_size = 4
+    _dots_tts_full_history_test_double = True
 
     def __init__(self):
         self.calls = 0
@@ -104,9 +116,20 @@ class _LatentIO:
 
 
 class _AudioVAE:
+    def __init__(self):
+        self.decode_calls: list[tuple[int, bool]] = []
+
     def decode(self, latent):
         waveform = mx.repeat(mx.sum(latent, axis=1), 2, axis=1)
         return waveform[:, None]
+
+    def init_decode_state(self, *, maximum_chunk_size):
+        return SimpleNamespace(maximum_chunk_size=maximum_chunk_size)
+
+    def decode_chunk(self, latent, state, *, final=False):
+        assert int(latent.shape[-1]) <= state.maximum_chunk_size
+        self.decode_calls.append((int(latent.shape[-1]), final))
+        return self.decode(latent), state
 
 
 def _generator(mode: str) -> tuple[DotsTTSGenerator, _Backend, _DiT]:
@@ -177,6 +200,141 @@ def test_solvers_are_deterministic_finite_non_silent_and_budgeted(mode: str) -> 
     assert dit.calls == 2 * 3 * 2
 
 
+def test_streaming_decodes_first_patches_then_merged_groups_and_residual() -> None:
+    generator, _, _ = _generator("flow_matching")
+    chunks = list(
+        generator.synthesize_stream(
+            "A",
+            max_audio_patches=8,
+            solver_steps=1,
+            seed=7,
+            eos_threshold=1.0,
+            stream_chunk_patches=4,
+        )
+    )
+
+    assert generator.components.audio_vae.decode_calls == [
+        (2, False),
+        (2, False),
+        (8, False),
+        (4, False),
+        (0, True),
+    ]
+    assert [chunk.num_patches for chunk in chunks] == [1, 1, 4, 2]
+    assert all(chunk.waveform.ndim == 1 for chunk in chunks)
+    assert all(chunk.waveform.dtype == mx.float32 for chunk in chunks)
+    assert all(int(chunk.waveform.size) > 0 for chunk in chunks)
+
+
+def test_synthesize_drains_stream_and_preserves_low_level_patch_metadata() -> None:
+    generator, _, _ = _generator("flow_matching")
+    streamed = list(
+        generator.synthesize_stream(
+            "A",
+            max_audio_patches=7,
+            solver_steps=1,
+            seed=11,
+            eos_threshold=1.0,
+        )
+    )
+    generator.components.audio_vae.decode_calls.clear()
+    aggregate = generator.synthesize(
+        "A",
+        max_audio_patches=7,
+        solver_steps=1,
+        seed=11,
+        eos_threshold=1.0,
+    )
+
+    assert isinstance(aggregate, DotsTTSSynthesisOutput)
+    np.testing.assert_array_equal(
+        aggregate.waveform,
+        mx.concatenate([chunk.waveform for chunk in streamed]),
+    )
+    assert aggregate.sample_rate == 48_000
+    assert aggregate.num_patches == 7
+    assert sum(chunk.num_patches for chunk in streamed) == aggregate.num_patches
+
+
+def test_same_seeded_streams_match_standalone_when_interleaved(monkeypatch) -> None:
+    original_normal = mx.random.normal
+
+    def keyed_normal(*args, **kwargs):
+        assert kwargs.get("key") is not None
+        return original_normal(*args, **kwargs)
+
+    monkeypatch.setattr(mx.random, "normal", keyed_normal)
+
+    def new_stream(generator):
+        return generator.synthesize_stream(
+            "A",
+            max_audio_patches=8,
+            solver_steps=1,
+            seed=29,
+            eos_threshold=1.0,
+            stream_chunk_patches=3,
+        )
+
+    standalone = []
+    for _ in range(2):
+        generator, _, _ = _generator("flow_matching")
+        standalone.append(
+            [np.asarray(chunk.waveform) for chunk in new_stream(generator)]
+        )
+
+    shared_generator, _, _ = _generator("flow_matching")
+    streams = [new_stream(shared_generator), new_stream(shared_generator)]
+    interleaved: list[list[np.ndarray]] = [[], []]
+    active = [True, True]
+    while any(active):
+        for index, stream in enumerate(streams):
+            if not active[index]:
+                continue
+            try:
+                interleaved[index].append(np.asarray(next(stream).waveform))
+            except StopIteration:
+                active[index] = False
+
+    for expected_chunks, actual_chunks in zip(
+        standalone,
+        interleaved,
+        strict=True,
+    ):
+        assert len(actual_chunks) == len(expected_chunks)
+        for expected, actual in zip(expected_chunks, actual_chunks, strict=True):
+            np.testing.assert_array_equal(actual, expected)
+
+
+def test_early_stream_close_does_not_flush_or_retain_request_state() -> None:
+    generator, _, dit = _generator("flow_matching")
+    stream = generator.synthesize_stream(
+        "A",
+        max_audio_patches=6,
+        solver_steps=1,
+        eos_threshold=1.0,
+    )
+    first = next(stream)
+    stream.close()
+
+    assert first.num_patches == 1
+    assert generator.components.audio_vae.decode_calls == [(2, False)]
+    assert dit.calls == 1
+    assert not hasattr(generator, "request_state")
+
+
+def test_patch_budget_cap_and_explicit_test_double_solver_path() -> None:
+    generator, _, dit = _generator("flow_matching")
+    assert DEFAULT_MAX_AUDIO_PATCHES == 500
+    with pytest.raises(ValueError, match="must not exceed 512"):
+        generator.synthesize("A", max_audio_patches=513)
+
+    solver, state = generator._new_dit_request(1)
+    assert solver is state is None
+    dit._dots_tts_full_history_test_double = False
+    with pytest.raises(AttributeError):
+        generator._new_dit_request(1)
+
+
 def test_continuation_speaker_only_and_no_reference_schedule_semantics(
     monkeypatch,
 ) -> None:
@@ -242,7 +400,8 @@ def test_prepare_prompt_only_encodes_latents_for_transcript_backed_reference(
         lambda *args, **kwargs: mx.ones((1, 4)),
     )
 
-    def prompt_latents(value):
+    def prompt_latents(value, **kwargs):
+        assert kwargs["key"].shape == (2,)
         calls.append(value)
         return mx.ones((1, 1, 2, 2)), mx.ones((1, 2, 2))
 

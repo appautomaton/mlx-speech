@@ -119,6 +119,10 @@ Implement the bounded cache and streaming contract in [SPEC.md](./SPEC.md) using
 **Touches:** dots.tts generator, unified TTS protocol/export, dots.tts adapter, generation/API tests
 **Produces:** public synchronous waveform streaming and one shared generation core
 
+**Status:** complete
+**Evidence:** Added the optional `StreamingTTSModel` protocol, request-local Qwen/semantic/DiT/vocoder/RNG state, dots.tts 1/1/N waveform cadence, early-close handling, and shared streaming/non-streaming generation while preserving `num_patches`; focused MLX suite `45 passed`, full unit suite `781 passed`, Ruff and scoped `git diff --check` passed; spec and quality reviews both `APPROVED` after the request-local RNG correction.
+**Risks / next:** Real-checkpoint streaming equivalence and peak-memory behavior remain Slice 5 gates; concurrent workflow-file edits are external to this slice and remain untouched.
+
 ### Slice 5: Performance, memory, integration, and quality gates
 
 **Objective:** Prove the cached path meets the accepted twofold speed target, 30 GiB bound, waveform integration, and published cloning-quality tolerances.
