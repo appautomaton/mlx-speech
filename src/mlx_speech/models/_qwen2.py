@@ -9,6 +9,8 @@ from typing import Literal, Protocol
 import mlx.core as mx
 import mlx.nn as nn
 
+from ._cache import BoundedKVCache
+
 
 class Qwen2Config(Protocol):
     """Configuration fields consumed by the shared Qwen2 implementation."""
@@ -28,9 +30,11 @@ class Qwen2Config(Protocol):
     rope_theta: float
 
 
-Qwen2LayerCache = tuple[mx.array, mx.array]
+Qwen2LayerCache = BoundedKVCache
 Qwen2KVCache = list[Qwen2LayerCache]
 Qwen2RotaryDtypePolicy = Literal["float32", "query"]
+_LegacyQwen2LayerCache = tuple[mx.array, mx.array]
+_QWEN2_CACHE_GROWTH = 256
 
 
 class Qwen2RMSNorm(nn.Module):
@@ -69,7 +73,9 @@ class Qwen2RotaryEmbedding(nn.Module):
         if offset < 0:
             raise ValueError(f"Qwen2 RoPE offset must be non-negative, got {offset}.")
         if seq_len <= 0:
-            raise ValueError(f"Qwen2 RoPE sequence length must be positive, got {seq_len}.")
+            raise ValueError(
+                f"Qwen2 RoPE sequence length must be positive, got {seq_len}."
+            )
         positions = mx.arange(offset, offset + seq_len, dtype=mx.float32)
         freqs = mx.outer(positions, self._inv_freq())
         emb = mx.concatenate([freqs, freqs], axis=-1)
@@ -122,6 +128,7 @@ class Qwen2Attention(nn.Module):
         self.hidden_size = config.hidden_size
         self.scale = 1.0 / math.sqrt(self.head_dim)
         self.rotary_dtype_policy = rotary_dtype_policy
+        self.max_position_embeddings = config.max_position_embeddings
 
         # Qwen2 uses bias for Q/K/V and no bias for the output projection.
         self.q_proj = nn.Linear(
@@ -154,7 +161,10 @@ class Qwen2Attention(nn.Module):
         x: mx.array,
         *,
         mask: mx.array | None = None,
-        cache: Qwen2LayerCache | None = None,
+        cache: Qwen2LayerCache | _LegacyQwen2LayerCache | None = None,
+        cache_capacity: int | None = None,
+        max_cache_capacity: int | None = None,
+        cache_growth_step: int | None = None,
     ) -> tuple[mx.array, Qwen2LayerCache]:
         batch_size, seq_len, _ = x.shape
 
@@ -177,16 +187,50 @@ class Qwen2Attention(nn.Module):
             self.head_dim,
         )
 
-        offset = 0 if cache is None else int(cache[0].shape[1])
+        if cache is None:
+            offset = 0
+        elif isinstance(cache, BoundedKVCache):
+            offset = cache.offset
+        else:
+            offset = int(cache[0].shape[1])
+        if offset + seq_len > self.max_position_embeddings:
+            raise ValueError(
+                "Qwen2 attention cache exceeds max_position_embeddings: "
+                f"{offset + seq_len} > {self.max_position_embeddings}."
+            )
         rotary_dtype = q.dtype if self.rotary_dtype_policy == "query" else mx.float32
         cos, sin = self.rotary_emb(offset, seq_len, dtype=rotary_dtype)
         q, k = _apply_rotary_pos_emb(q, k, cos, sin)
 
-        if cache is not None:
-            k_cache, v_cache = cache
-            k = mx.concatenate([k_cache, k], axis=1)
-            v = mx.concatenate([v_cache, v], axis=1)
-        new_cache = (k, v)
+        if isinstance(cache, BoundedKVCache):
+            cache.append(k, v)
+            new_cache = cache
+        else:
+            if cache_capacity is None:
+                cache_capacity = min(
+                    (
+                        (offset + seq_len + _QWEN2_CACHE_GROWTH - 1)
+                        // _QWEN2_CACHE_GROWTH
+                    )
+                    * _QWEN2_CACHE_GROWTH,
+                    self.max_position_embeddings,
+                )
+                max_cache_capacity = self.max_position_embeddings
+                cache_growth_step = _QWEN2_CACHE_GROWTH
+            new_cache = BoundedKVCache.allocate(
+                batch_size=batch_size,
+                capacity=cache_capacity,
+                num_heads=self.num_kv_heads,
+                head_dim=self.head_dim,
+                key_dtype=k.dtype,
+                value_dtype=v.dtype,
+                max_capacity=max_cache_capacity,
+                growth_step=cache_growth_step,
+            )
+            if cache is not None:
+                new_cache.append(*cache)
+            new_cache.append(k, v)
+        k, v = new_cache.fetch()
 
         q = q.transpose(0, 2, 1, 3)
         k = k.transpose(0, 2, 1, 3)
@@ -258,13 +302,19 @@ class Qwen2DecoderLayer(nn.Module):
         x: mx.array,
         *,
         mask: mx.array | None = None,
-        cache: Qwen2LayerCache | None = None,
+        cache: Qwen2LayerCache | _LegacyQwen2LayerCache | None = None,
+        cache_capacity: int | None = None,
+        max_cache_capacity: int | None = None,
+        cache_growth_step: int | None = None,
     ) -> tuple[mx.array, Qwen2LayerCache]:
         residual = x
         h, new_cache = self.self_attn(
             self.input_layernorm(x),
             mask=mask,
             cache=cache,
+            cache_capacity=cache_capacity,
+            max_cache_capacity=max_cache_capacity,
+            cache_growth_step=cache_growth_step,
         )
         x = residual + h
         return x + self.mlp(self.post_attention_layernorm(x)), new_cache
@@ -359,9 +409,10 @@ class Qwen2Model(nn.Module):
 
     def _cache_offset(
         self,
-        cache: Qwen2KVCache | None,
+        cache: Qwen2KVCache | list[_LegacyQwen2LayerCache] | None,
         *,
         batch_size: int,
+        exact_capacity: int | None,
     ) -> int:
         if cache is None:
             return 0
@@ -374,9 +425,30 @@ class Qwen2Model(nn.Module):
         offset: int | None = None
         expected_tail = (self.config.num_key_value_heads, self.head_dim)
         for index, layer_cache in enumerate(cache):
-            if not isinstance(layer_cache, tuple) or len(layer_cache) != 2:
-                raise ValueError(f"Qwen2 cache layer {index} must be a (keys, values) tuple.")
-            keys, values = layer_cache
+            if isinstance(layer_cache, BoundedKVCache):
+                keys, values = layer_cache.fetch()
+                if (
+                    layer_cache.capacity > self.config.max_position_embeddings
+                    or int(layer_cache.max_capacity)
+                    > self.config.max_position_embeddings
+                ):
+                    raise ValueError(
+                        f"Qwen2 cache layer {index} exceeds max_position_embeddings."
+                    )
+                if exact_capacity is not None and (
+                    layer_cache.capacity != exact_capacity
+                    or int(layer_cache.max_capacity) != exact_capacity
+                ):
+                    raise ValueError(
+                        "Qwen2 cache capacity differs from the requested exact "
+                        f"capacity: {layer_cache.capacity} vs {exact_capacity}."
+                    )
+            elif isinstance(layer_cache, tuple) and len(layer_cache) == 2:
+                keys, values = layer_cache
+            else:
+                raise ValueError(
+                    f"Qwen2 cache layer {index} must contain keys and values."
+                )
             if keys.shape != values.shape or keys.ndim != 4:
                 raise ValueError(
                     f"Qwen2 cache layer {index} has invalid key/value shapes: "
@@ -390,7 +462,9 @@ class Qwen2Model(nn.Module):
             if offset is None:
                 offset = layer_offset
             elif layer_offset != offset:
-                raise ValueError("Qwen2 cache layers must have the same sequence length.")
+                raise ValueError(
+                    "Qwen2 cache layers must have the same sequence length."
+                )
         return 0 if offset is None else offset
 
     def __call__(
@@ -398,7 +472,8 @@ class Qwen2Model(nn.Module):
         *,
         input_ids: mx.array | None = None,
         inputs_embeds: mx.array | None = None,
-        cache: Qwen2KVCache | None = None,
+        cache: Qwen2KVCache | list[_LegacyQwen2LayerCache] | None = None,
+        cache_capacity: int | None = None,
     ) -> Qwen2Output:
         hidden_states = self._prepare_inputs(
             input_ids=input_ids,
@@ -407,23 +482,74 @@ class Qwen2Model(nn.Module):
         batch_size, seq_len, _ = hidden_states.shape
         if seq_len <= 0:
             raise ValueError("Qwen2 input sequence must not be empty.")
-        offset = self._cache_offset(cache, batch_size=batch_size)
+        if cache_capacity is not None:
+            if cache_capacity <= 0:
+                raise ValueError("Qwen2 cache_capacity must be positive.")
+            if cache_capacity > self.config.max_position_embeddings:
+                raise ValueError(
+                    "Qwen2 cache_capacity exceeds max_position_embeddings: "
+                    f"{cache_capacity} > {self.config.max_position_embeddings}."
+                )
+        offset = self._cache_offset(
+            cache,
+            batch_size=batch_size,
+            exact_capacity=cache_capacity,
+        )
         if offset + seq_len > self.config.max_position_embeddings:
             raise ValueError(
                 "Qwen2 sequence exceeds max_position_embeddings: "
                 f"{offset + seq_len} > {self.config.max_position_embeddings}."
             )
+        if cache_capacity is not None and offset + seq_len > cache_capacity:
+            raise ValueError(
+                "Qwen2 sequence exceeds cache_capacity: "
+                f"{offset + seq_len} > {cache_capacity}."
+            )
+        if cache is not None:
+            for layer_cache in cache:
+                if isinstance(layer_cache, BoundedKVCache):
+                    layer_cache.validate_append_length(seq_len)
         mask = self._build_causal_mask(offset, seq_len)
 
-        new_cache: Qwen2KVCache = []
-        for index, layer in enumerate(self.layers):
-            layer_cache = None if cache is None else cache[index]
-            hidden_states, next_cache = layer(
-                hidden_states,
-                mask=mask,
-                cache=layer_cache,
+        if cache_capacity is None:
+            initial_capacity = min(
+                ((offset + seq_len + _QWEN2_CACHE_GROWTH - 1) // _QWEN2_CACHE_GROWTH)
+                * _QWEN2_CACHE_GROWTH,
+                self.config.max_position_embeddings,
             )
-            new_cache.append(next_cache)
+            max_cache_capacity = self.config.max_position_embeddings
+            cache_growth_step = _QWEN2_CACHE_GROWTH
+        else:
+            initial_capacity = cache_capacity
+            max_cache_capacity = cache_capacity
+            cache_growth_step = None
+
+        mutable_offsets = (
+            tuple(
+                (layer_cache, layer_cache.offset)
+                for layer_cache in cache
+                if isinstance(layer_cache, BoundedKVCache)
+            )
+            if cache is not None
+            else ()
+        )
+        new_cache: Qwen2KVCache = []
+        try:
+            for index, layer in enumerate(self.layers):
+                layer_cache = None if cache is None else cache[index]
+                hidden_states, next_cache = layer(
+                    hidden_states,
+                    mask=mask,
+                    cache=layer_cache,
+                    cache_capacity=initial_capacity,
+                    max_cache_capacity=max_cache_capacity,
+                    cache_growth_step=cache_growth_step,
+                )
+                new_cache.append(next_cache)
+        except Exception:
+            for layer_cache, prior_offset in mutable_offsets:
+                layer_cache.restore_offset(prior_offset)
+            raise
 
         return Qwen2Output(
             last_hidden_state=self.norm(hidden_states),

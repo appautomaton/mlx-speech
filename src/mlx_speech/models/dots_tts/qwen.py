@@ -83,12 +83,14 @@ class DotsTTSQwen(nn.Module):
         input_ids: mx.array | None = None,
         inputs_embeds: mx.array | None = None,
         cache: Qwen2KVCache | None = None,
+        cache_capacity: int | None = None,
         request_logits: bool = True,
     ) -> DotsTTSQwenOutput:
         output = self.model(
             input_ids=input_ids,
             inputs_embeds=inputs_embeds,
             cache=cache,
+            cache_capacity=cache_capacity,
         )
         hidden_states = output.last_hidden_state
         logits = self.project_logits(hidden_states) if request_logits else None
@@ -105,6 +107,7 @@ class DotsTTSQwen(nn.Module):
         input_ids: mx.array | None = None,
         inputs_embeds: mx.array | None = None,
         cache: Qwen2KVCache | None = None,
+        cache_capacity: int | None = None,
         request_logits: bool = False,
     ) -> DotsTTSQwenOutput:
         """Run a cache-aware contextual step without vocabulary logits by default."""
@@ -113,6 +116,7 @@ class DotsTTSQwen(nn.Module):
             input_ids=input_ids,
             inputs_embeds=inputs_embeds,
             cache=cache,
+            cache_capacity=cache_capacity,
             request_logits=request_logits,
         )
 

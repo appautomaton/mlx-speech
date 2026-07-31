@@ -3,6 +3,7 @@ from __future__ import annotations
 import mlx.core as mx
 from mlx.utils import tree_flatten
 
+from mlx_speech.models._cache import BoundedKVCache
 from mlx_speech.models._qwen2 import Qwen2Model as SharedQwen2Model
 from mlx_speech.models.vibevoice.config import Qwen2LanguageConfig
 from mlx_speech.models.vibevoice.qwen2 import (
@@ -38,7 +39,9 @@ def _set_deterministic_weights(module, *, dtype: mx.Dtype | None = None) -> None
         values = mx.cos(values + float(index + 1)) * 0.03
         if name.endswith("norm.weight") or name.endswith("layernorm.weight"):
             values = values + 1.0
-        weights.append((name, values.astype(parameter.dtype if dtype is None else dtype)))
+        weights.append(
+            (name, values.astype(parameter.dtype if dtype is None else dtype))
+        )
     module.load_weights(weights, strict=True)
 
 
@@ -82,6 +85,9 @@ def test_vibevoice_qwen2_parameter_surface_and_cached_call_are_preserved() -> No
 
     ids = mx.array([[4, 5, 6]], dtype=mx.int32)
     prefill = model(inputs_embeds=model.embed_tokens(ids[:, :2]))
+    storage_ids = tuple(
+        (id(layer_cache.keys), id(layer_cache.values)) for layer_cache in prefill.cache
+    )
     decode = model(
         inputs_embeds=model.embed_tokens(ids[:, 2:]),
         cache=prefill.cache,
@@ -89,7 +95,35 @@ def test_vibevoice_qwen2_parameter_surface_and_cached_call_are_preserved() -> No
     mx.eval(decode.last_hidden_state)
 
     assert decode.last_hidden_state.shape == (1, 1, 16)
+    assert all(isinstance(cache, BoundedKVCache) for cache in decode.cache)
+    assert all(cache.offset == 3 for cache in decode.cache)
+    assert all(cache.capacity == 32 for cache in decode.cache)
+    assert (
+        tuple(
+            (id(layer_cache.keys), id(layer_cache.values))
+            for layer_cache in decode.cache
+        )
+        == storage_ids
+    )
     assert all(keys.shape == (1, 3, 2, 4) for keys, _ in decode.cache)
+
+
+def test_vibevoice_qwen2_accepts_legacy_tuple_cache_once() -> None:
+    model = Qwen2Model(_tiny_config())
+    _set_deterministic_weights(model)
+    ids = mx.array([[2, 4, 6]], dtype=mx.int32)
+    prefill = model(inputs_embeds=model.embed_tokens(ids[:, :2]))
+    legacy_cache = [tuple(layer_cache) for layer_cache in prefill.cache]
+
+    decode = model(
+        inputs_embeds=model.embed_tokens(ids[:, 2:]),
+        cache=legacy_cache,
+    )
+    mx.eval(decode.last_hidden_state)
+
+    assert all(isinstance(cache, BoundedKVCache) for cache in decode.cache)
+    assert all(cache.offset == 3 for cache in decode.cache)
+    assert all(cache.capacity == 32 for cache in decode.cache)
 
 
 def test_vibevoice_qwen2_preserves_legacy_bf16_rope_numerics() -> None:
@@ -118,5 +152,7 @@ def test_vibevoice_qwen2_preserves_legacy_bf16_rope_numerics() -> None:
     assert output.last_hidden_state.dtype == mx.float32
     assert all(keys.dtype == mx.float32 for keys, _ in output.cache)
     assert output.cache[0][1].dtype == mx.bfloat16
+    assert output.cache[0].keys.dtype == mx.float32
+    assert output.cache[0].values.dtype == mx.bfloat16
     assert all(values.dtype == mx.float32 for _, values in output.cache[1:])
     assert mx.allclose(actual, expected, rtol=5e-4, atol=5e-4).item()

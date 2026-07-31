@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 
 import mlx.core as mx
 import mlx.nn as nn
+
+from .._cache import BoundedKVCache
 
 
 class CausalConv1d(nn.Module):
@@ -29,9 +30,9 @@ class CausalConv1d(nn.Module):
         self.dilation = int(dilation)
         self.left_padding = self.dilation * (int(kernel_size) - 1)
         scale = math.sqrt(2.0 / (input_channels * kernel_size + output_channels))
-        self.weight = mx.random.normal(
-            (output_channels, kernel_size, input_channels)
-        ) * scale
+        self.weight = (
+            mx.random.normal((output_channels, kernel_size, input_channels)) * scale
+        )
         self.bias = mx.zeros((output_channels,)) if bias else None
 
     def _convolve(self, value: mx.array) -> mx.array:
@@ -67,10 +68,7 @@ class SemanticRMSNorm(nn.Module):
         return mx.fast.rms_norm(value, self.weight, self.eps)
 
 
-@dataclass(frozen=True)
-class SemanticLayerCache:
-    keys: mx.array
-    values: mx.array
+SemanticLayerCache = BoundedKVCache
 
 
 class SemanticAttention(nn.Module):
@@ -103,27 +101,31 @@ class SemanticAttention(nn.Module):
         value: mx.array,
         *,
         cache: SemanticLayerCache | None = None,
+        cache_capacity: int | None = None,
     ) -> tuple[mx.array, SemanticLayerCache]:
         batch, length, _ = value.shape
-        query = self.q_proj(value).reshape(
-            batch, length, self.num_heads, self.head_dim
-        )
-        keys = self.k_proj(value).reshape(
-            batch, length, self.num_heads, self.head_dim
-        )
+        query = self.q_proj(value).reshape(batch, length, self.num_heads, self.head_dim)
+        keys = self.k_proj(value).reshape(batch, length, self.num_heads, self.head_dim)
         values = self.v_proj(value).reshape(
             batch, length, self.num_heads, self.head_dim
         )
         offset = 0
         if cache is not None:
-            if cache.keys.shape != cache.values.shape or cache.keys.ndim != 4:
-                raise ValueError("semantic cache key/value shapes are invalid")
-            if int(cache.keys.shape[0]) != batch:
+            cached_keys, _ = cache.fetch()
+            if int(cached_keys.shape[0]) != batch:
                 raise ValueError("semantic cache batch size differs from input")
-            offset = int(cache.keys.shape[1])
-            keys = mx.concatenate((cache.keys, keys), axis=1)
-            values = mx.concatenate((cache.values, values), axis=1)
-        next_cache = SemanticLayerCache(keys=keys, values=values)
+            offset = cache.offset
+            cache.append(keys, values)
+            next_cache = cache
+        else:
+            capacity = length if cache_capacity is None else cache_capacity
+            next_cache = SemanticLayerCache.from_values(
+                keys,
+                values,
+                capacity=capacity,
+                max_capacity=capacity,
+            )
+        keys, values = next_cache.fetch()
         mask = self._mask(offset, length, dtype=query.dtype)
         attended = mx.fast.scaled_dot_product_attention(
             query.transpose(0, 2, 1, 3),
@@ -159,8 +161,13 @@ class SemanticEncoderLayer(nn.Module):
         value: mx.array,
         *,
         cache: SemanticLayerCache | None = None,
+        cache_capacity: int | None = None,
     ) -> tuple[mx.array, SemanticLayerCache]:
-        attended, next_cache = self.attn(self.attn_norm(value), cache=cache)
+        attended, next_cache = self.attn(
+            self.attn_norm(value),
+            cache=cache,
+            cache_capacity=cache_capacity,
+        )
         value = value + attended
         return value + self.ffn(self.ffn_norm(value)), next_cache
 

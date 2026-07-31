@@ -412,3 +412,29 @@ Checkpoints: none planned. Slice 14 proceeds under the publication authority in 
 - Concern: Slice 11 must serialize converted native `qwen.*` quantization paths and inherit every non-Qwen base dtype, while the current checkpoint schema still assumes the stale upstream `llm.*` prefix and uniform per-component dtypes.
 - Action: In Slice 9, stage and atomically promote complete artifacts, implement a total native-path dtype predicate, and separate oracle-comparison from runtime-dtype gates; in Slice 11, assert that only native Qwen paths are quantized and all other tensor dtypes equal `mlx-base`.
 - Verified: Traced the revised PLAN/DESIGN critical path against the current converter, checkpoint loader, audit implementation, native parameter namespaces, partial-output behavior, mixed-dtype binding, and specified unit/checkpoint/runtime gates.
+
+## Verification
+
+**Verdict:** PASS — `65/65` acceptance criteria satisfied.
+
+- **Slice 1 — PASS (3/3):** `download_dots_tts.py --variant all --verify` freshly verified both pinned source revisions; source-asset tests passed in the aggregate suite; reference commits and gitignore rules matched the documented values.
+- **Slice 2 — PASS (5/5):** the isolated official oracle freshly regenerated SOAR and MeanFlow fixtures and matched all 16 checked NPZ files within recorded tolerances; fixture inventory remained bounded numeric NPZ/JSON only.
+- **Slices 3–8 — PASS (24/24):** focused config, schedule, checkpoint-contract, shared Qwen/VibeVoice, latent, semantic, speaker, AudioVAE, vocoder, DiT, and solver tests passed in the fresh aggregate run; forbidden runtime dependency scan returned no hits.
+- **Slice 9 — PASS (7/7):** both base artifacts strict-loaded in checkpoint tests; the fresh all-variant base audit passed every component tolerance, including AudioVAE waveform max error `0.001367`, SOAR solver `0.015291`, and MeanFlow solver `0.007935`.
+- **Slice 10 — PASS (8/8):** dots.tts base runtime and hub-selector tests passed; the fresh local integration batch covered both unified base aliases plus all clone-mode cases and returned `10 passed` with finite, non-silent 48 kHz waveform output.
+- **Slice 11 — PASS (4/4):** both int8 artifacts strict-loaded; the fresh audit confirmed Qwen-only affine int8 group size 64, minimum Qwen cosine `0.999023`, unchanged non-Qwen tolerances, and `29.565%`/`29.550%` size reductions.
+- **Slice 12 — PASS (5/5):** the resumable gate revalidated all 16 output hashes, four artifact digests, and ASR evaluator provenance; overall WER regression was `0.0000`, speaker-cosine regression `-0.0094`, and the gate verdict was PASS.
+- **Slice 13 — PASS (4/4):** final unit tier returned `737 passed`; release tests returned `9 passed`; dry run exposed only the four approved selectors and matching artifact digests. Model-card metadata parsed, the replacement source URL returned HTTP 200, anti-slop/promotional-claim scan found no unjustified hit, and the published README matched the authoritative card at SHA-256 `9a2bc58b54a34f95760665103d36ccb026939f1d497cf9249883c3bfd03b52c6`.
+- **Slice 14 — PASS (5/5):** current public revision `5dde9ded6c577a84a71b5ee9dafebfa53188d6d6` contained 58 approved paths and no unexpected subtree; all 16 safetensors hashes matched artifact revision `0af7ad2f837278b364902500d086553f1586ce9a`. Four fresh isolated-cache alias smokes returned `4 passed in 261.89 s`, each strict-loading only its selected subtree and producing valid continuation waveform; peak MLX allocation was `6,521,655,508` bytes.
+
+**Commands and derived checks:** Fresh verification ran source download/audit, official-oracle regeneration, `814 passed, 34 skipped` unit/checkpoint/runtime/VibeVoice aggregation, base and int8 component audits, `10 passed` local integrations, the resumable quant gate, release dry run, final `737 passed` unit tier, remote README/API inventory and LFS-hash comparisons, HTTP source-link checks, and the final four-case remote integration gate. The 34 aggregate skips were explicitly limited to absent non-dots Fish, LongCat, Nemotron, and Qwen3-ASR assets. The mutating Hugging Face upload command was not rerun during verify; read-only remote inventory, byte equality, old/new LFS hash equality, and fresh isolated-cache waveform generation supplied the publication proof. The quality gate resumed only records whose artifact/output/evaluator hashes matched; fresh local and remote waveform integration independently exercised generation.
+
+**Content checks:** PASS. The guide addresses Apple Silicon `mlx-speech` users and covers selection, cloning modes, controls, layout, conversion, precision, memory, limitations, and safety. The model card's claims trace to pinned upstream sources or the checked local benchmark; it makes no upstream-parity, lossless-quantization, streaming, or real-time claim. Apache-2.0 attribution, consent, disclosure, and misuse risk are explicit. The technical guide and Hugging Face README fit their publication channels, and the anti-slop scan found no unapproved promotional or significance-inflation pattern.
+
+**Derived or skipped plan checks:** No acceptance criterion was skipped. The release publish invocation was replaced by the safer read-only checks named above because rerunning it would mutate external state without adding proof.
+
+**Overall:** PASS
+
+**Passed:** `65/65` criteria
+
+**Remaining gaps:** none

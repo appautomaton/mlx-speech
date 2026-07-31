@@ -11,7 +11,10 @@ from .config import DotsTTSConfig
 from .layers import CausalConv1d, SemanticEncoderLayer, SemanticLayerCache
 
 
-@dataclass(frozen=True)
+_DEFAULT_SEMANTIC_CACHE_PATCHES = 512
+
+
+@dataclass
 class SemanticEncoderState:
     conv_tail: mx.array
     layer_caches: tuple[SemanticLayerCache, ...]
@@ -100,50 +103,103 @@ class VAESemanticEncoder(nn.Module):
         grouped = value.reshape(batch, tokens // rate, rate * hidden)
         return self.out_proj(grouped)
 
-    def _state_for(self, value: mx.array) -> SemanticEncoderState:
-        empty = mx.zeros(
-            (int(value.shape[0]), 0, self.encoder.num_heads, self.encoder.head_dim),
-            dtype=value.dtype,
-        )
-        return SemanticEncoderState(
-            conv_tail=mx.zeros(
+    def _increment(
+        self,
+        value: mx.array,
+        state: SemanticEncoderState | None,
+        *,
+        cache_capacity: int | None = None,
+    ) -> tuple[mx.array, SemanticEncoderState]:
+        if state is None:
+            conv_tail = mx.zeros(
                 (int(value.shape[0]), self.ds_proj.left_padding, self.input_dim),
                 dtype=value.dtype,
-            ),
-            layer_caches=tuple(
-                SemanticLayerCache(keys=empty, values=empty)
-                for _ in self.encoder.layers
-            ),
-        )
+            )
+            layer_caches = None
+            sequence_length = 0
+        else:
+            expected_tail = (
+                int(value.shape[0]),
+                self.ds_proj.left_padding,
+                self.input_dim,
+            )
+            if state.conv_tail.shape != expected_tail:
+                raise ValueError(
+                    "semantic state batch size or convolution tail is invalid"
+                )
+            if len(state.layer_caches) != len(self.encoder.layers):
+                raise ValueError("semantic state layer count differs from encoder")
+            if any(
+                cache.offset != state.sequence_length for cache in state.layer_caches
+            ):
+                raise ValueError(
+                    "semantic state cache offsets differ from sequence_length"
+                )
+            if cache_capacity is not None and any(
+                cache.capacity != cache_capacity for cache in state.layer_caches
+            ):
+                raise ValueError(
+                    "semantic state cache capacity differs from the request capacity"
+                )
+            conv_tail = state.conv_tail
+            layer_caches = state.layer_caches
+            sequence_length = state.sequence_length
 
-    def _increment(
-        self, value: mx.array, state: SemanticEncoderState
-    ) -> tuple[mx.array, SemanticEncoderState]:
-        if int(state.conv_tail.shape[0]) != int(value.shape[0]):
-            raise ValueError("semantic state batch size differs from input")
-        if len(state.layer_caches) != len(self.encoder.layers):
-            raise ValueError("semantic state layer count differs from encoder")
-        conv_input = mx.concatenate((state.conv_tail, value), axis=1)
-        downsampled = self.ds_proj._convolve(conv_input)
-        next_tail = value[:, -self.ds_proj.left_padding :, :]
-        encoded, caches = self.encoder(
-            self.in_proj(downsampled), caches=state.layer_caches
+        prior_offsets = (
+            tuple(cache.offset for cache in layer_caches)
+            if layer_caches is not None
+            else ()
         )
-        next_length = state.sequence_length + int(encoded.shape[1])
-        return self._project(encoded), SemanticEncoderState(
-            conv_tail=next_tail,
-            layer_caches=caches,
-            sequence_length=next_length,
-        )
+        try:
+            conv_input = mx.concatenate((conv_tail, value), axis=1)
+            downsampled = self.ds_proj._convolve(conv_input)
+            next_tail = value[:, -self.ds_proj.left_padding :, :]
+            encoded, caches = self.encoder(
+                self.in_proj(downsampled),
+                caches=layer_caches,
+                cache_capacity=cache_capacity,
+            )
+            next_length = sequence_length + int(encoded.shape[1])
+            projected = self._project(encoded)
+        except Exception:
+            if layer_caches is not None:
+                for cache, prior_offset in zip(
+                    layer_caches, prior_offsets, strict=True
+                ):
+                    cache.restore_offset(prior_offset)
+            raise
+
+        if state is None:
+            state = SemanticEncoderState(
+                conv_tail=next_tail,
+                layer_caches=caches,
+                sequence_length=next_length,
+            )
+        else:
+            state.conv_tail = next_tail
+            state.layer_caches = caches
+            state.sequence_length = next_length
+        return projected, state
 
     def prefill(
         self,
         value: mx.array,
         state: SemanticEncoderState | None = None,
+        *,
+        max_audio_patches: int | None = None,
     ) -> tuple[mx.array, SemanticEncoderState]:
         self._validate_input(value)
-        current = self._state_for(value) if state is None else state
-        return self._increment(value, current)
+        cache_capacity = None
+        if state is None or max_audio_patches is not None:
+            patch_capacity = (
+                _DEFAULT_SEMANTIC_CACHE_PATCHES
+                if max_audio_patches is None
+                else int(max_audio_patches)
+            )
+            if patch_capacity <= 0:
+                raise ValueError("semantic max_audio_patches must be positive")
+            cache_capacity = patch_capacity * self.output_downsample_rate
+        return self._increment(value, state, cache_capacity=cache_capacity)
 
     def decode_patch(
         self,
@@ -184,14 +240,31 @@ class _SemanticTransformer(nn.Module):
         value: mx.array,
         *,
         caches: tuple[SemanticLayerCache, ...] | None = None,
+        cache_capacity: int | None = None,
     ) -> tuple[mx.array, tuple[SemanticLayerCache, ...]]:
         if caches is not None and len(caches) != len(self.layers):
             raise ValueError("semantic cache layer count differs from model")
+        prior_offsets = (
+            tuple(cache.offset for cache in caches) if caches is not None else ()
+        )
+        if caches is not None:
+            for cache in caches:
+                cache.validate_append_length(int(value.shape[1]))
         next_caches = []
-        for index, layer in enumerate(self.layers):
-            cache = None if caches is None else caches[index]
-            value, next_cache = layer(value, cache=cache)
-            next_caches.append(next_cache)
+        try:
+            for index, layer in enumerate(self.layers):
+                cache = None if caches is None else caches[index]
+                value, next_cache = layer(
+                    value,
+                    cache=cache,
+                    cache_capacity=cache_capacity,
+                )
+                next_caches.append(next_cache)
+        except Exception:
+            if caches is not None:
+                for cache, prior_offset in zip(caches, prior_offsets, strict=True):
+                    cache.restore_offset(prior_offset)
+            raise
         return value, tuple(next_caches)
 
 
