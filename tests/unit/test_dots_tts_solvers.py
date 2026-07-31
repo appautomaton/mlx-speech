@@ -8,6 +8,7 @@ import pytest
 from mlx_speech.models.dots_tts.solvers import (
     MeanFlowSolver,
     SOARSolver,
+    build_ode_schedule,
     resolve_solver_steps,
     splice_coordinate,
 )
@@ -76,9 +77,7 @@ class _MeanFlowPredictor:
                 float(duration[0].item()),
             )
         )
-        return mx.full(
-            (sequence.shape[0], sequence.shape[1], self.latent_dim), 0.1
-        )
+        return mx.full((sequence.shape[0], sequence.shape[1], self.latent_dim), 0.1)
 
 
 def test_splice_coordinate_preserves_prefix_and_replaces_tail() -> None:
@@ -97,9 +96,7 @@ def test_splice_coordinate_preserves_prefix_and_replaces_tail() -> None:
 def test_soar_uses_euler_cfg_and_approved_defaults() -> None:
     latent_dim = 3
     predictor = _SOARPredictor(latent_dim)
-    solver = SOARSolver(
-        predictor, _projection(latent_dim, 8), latent_dim=latent_dim
-    )
+    solver = SOARSolver(predictor, _projection(latent_dim, 8), latent_dim=latent_dim)
     result = solver.sample(
         sequence=mx.ones((1, 6, 8)),
         cfg_sequence=mx.zeros((1, 6, 8)),
@@ -168,3 +165,12 @@ def test_solver_step_defaults_and_validation() -> None:
         resolve_solver_steps("soar", 0)
     with pytest.raises(ValueError, match="unsupported"):
         resolve_solver_steps("unknown", None)
+
+
+def test_solver_schedule_is_shared_fixed_step_euler_grid() -> None:
+    meanflow = build_ode_schedule("meanflow", None, mx.float32)
+    soar = build_ode_schedule("soar", 4, mx.float32)
+    mx.eval(meanflow.times, soar.times)
+    np.testing.assert_allclose(meanflow.times, [0.0, 0.25, 0.5, 0.75])
+    np.testing.assert_allclose(soar.times, meanflow.times)
+    assert meanflow.step_size == soar.step_size == 0.25

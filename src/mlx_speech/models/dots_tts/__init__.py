@@ -25,6 +25,16 @@ from .audio_vae import (
 )
 from .config import DotsTTSConfig, DotsTTSQwenConfig
 from .dit import DiT
+from .dit_inference import (
+    DIT_CACHE_BUCKETS,
+    CachedDiTRunner,
+    CachedDiTSolver,
+    CachedMeanFlowSolver,
+    CachedSOARSolver,
+    DiTKvCache,
+    DiTSolverState,
+    resolve_dit_cache_bucket,
+)
 from .latent import LatentIO, LatentStatistics
 from .semantic_encoder import SemanticEncoderState, VAESemanticEncoder
 from .solvers import MeanFlowSolver, SOARSolver
@@ -43,9 +53,16 @@ __all__ = [
     "DotsTTSSchedule",
     "DotsTTSTokenizer",
     "DiT",
+    "DIT_CACHE_BUCKETS",
     "AudioVAE",
     "CAMPPlus",
     "CAMPPlusConfig",
+    "CachedDiTRunner",
+    "CachedDiTSolver",
+    "CachedMeanFlowSolver",
+    "CachedSOARSolver",
+    "DiTKvCache",
+    "DiTSolverState",
     "LatentIO",
     "LatentStatistics",
     "LoadedDotsTTSComponents",
@@ -64,6 +81,7 @@ __all__ = [
     "eligible_qwen_quantization_paths",
     "load_dots_tts_components",
     "quantize_dots_tts_core",
+    "resolve_dit_cache_bucket",
     "storage_dtype",
     "storage_dtype_name",
     "validate_artifact_dir",

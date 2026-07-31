@@ -63,6 +63,10 @@ Implement the bounded cache and streaming contract in [SPEC.md](./SPEC.md) using
 **Touches:** dots.tts DiT, solver, inference cache, focused unit tests
 **Produces:** cached DiT solver plus retained internal full-history oracle
 
+**Status:** complete
+**Evidence:** Added projected-dtype-aware per-NFE/layer/branch delayed-commit caches, cache-safe mask intersection, batch-aligned SOAR metadata, transactional tail publication, and streamed unpublished prompt prefill; focused Metal suite `30 passed`, full unit suite `766 passed`, Ruff and `git diff --check` passed; spec and quality reviews both `APPROVED`.
+**Risks / next:** Only unrecoverable process/device failure during final MLX materialization remains; proceed to bounded stateful AudioVAE decoding.
+
 ### Slice 3: Stateful bounded AudioVAE decoding
 
 **Objective:** Replace buffered full-history `decode_chunk` behavior with persistent SLSTM recurrence and a finite-context BigVGAN decoder window.

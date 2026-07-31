@@ -3,6 +3,7 @@ from __future__ import annotations
 import mlx.core as mx
 import numpy as np
 import pytest
+from mlx.utils import tree_flatten
 
 from mlx_speech.models.dots_tts.config import DotsTTSTransformerConfig
 from mlx_speech.models.dots_tts.dit import DiT, sinusoidal_embedding
@@ -43,12 +44,8 @@ def test_dit_causal_mask_prevents_future_context_leakage() -> None:
     mask = mx.tril(mx.ones((1, 6, 6), dtype=mx.bool_))
     positions = mx.arange(6, dtype=mx.float32)[None]
     timestep = mx.array([0.4])
-    first = model(
-        value, timestep, attention_mask=mask, positions=positions
-    )
-    second = model(
-        changed, timestep, attention_mask=mask, positions=positions
-    )
+    first = model(value, timestep, attention_mask=mask, positions=positions)
+    second = model(changed, timestep, attention_mask=mask, positions=positions)
     mx.eval(first, second)
     np.testing.assert_allclose(first[:, :3], second[:, :3], atol=2e-5, rtol=2e-5)
 
@@ -100,3 +97,45 @@ def test_dit_rejects_invalid_runtime_shapes() -> None:
         model(mx.zeros((1, 3, 7)), mx.array([0.0]))
     with pytest.raises(ValueError, match="timesteps"):
         model(mx.zeros((1, 3, 8)), mx.array([0.0, 1.0]))
+
+
+def test_dit_projected_attention_supports_a_rectangular_cached_prefix() -> None:
+    mx.random.seed(71)
+    model = DiT(8, 4, _config())
+    attention = model.blocks[0].attn
+    prefix = mx.random.normal((1, 3, 8))
+    tail = mx.random.normal((1, 2, 8))
+    prefix_q, prefix_k, prefix_v = attention.project(
+        prefix, positions=mx.arange(3, dtype=mx.float32)[None]
+    )
+    tail_q, tail_k, tail_v = attention.project(
+        tail, positions=mx.arange(3, 5, dtype=mx.float32)[None]
+    )
+    del prefix_q
+    mask = mx.ones((1, 2, 5), dtype=mx.bool_)
+    cached = attention.attend(
+        tail_q,
+        mx.concatenate((prefix_k, tail_k), axis=2),
+        mx.concatenate((prefix_v, tail_v), axis=2),
+        mask=mask,
+    )
+    full = attention(
+        mx.concatenate((prefix, tail), axis=1),
+        positions=mx.arange(5, dtype=mx.float32)[None],
+    )[:, -2:]
+    mx.eval(cached, full)
+    np.testing.assert_allclose(cached, full, atol=2e-5, rtol=2e-5)
+
+
+def test_preparing_dit_modulations_does_not_change_parameter_names() -> None:
+    model = DiT(8, 4, _config(layers=2), meanflow=True)
+    before = set(tree_flatten(model.parameters(), destination={}))
+    condition = model.prepare_condition(
+        mx.array([0.25]),
+        duration=mx.array([0.5]),
+        speaker_condition=mx.ones((1, 8)),
+    )
+    modulations = model.prepare_modulations(condition)
+    after = set(tree_flatten(model.parameters(), destination={}))
+    assert len(modulations[0]) == 2
+    assert before == after

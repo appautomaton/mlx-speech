@@ -37,9 +37,7 @@ def sinusoidal_embedding(
     if half == 0:
         return mx.zeros((timesteps.shape[0], dimension), dtype=mx.float32)
     frequencies = mx.exp(
-        -math.log(max_period)
-        * mx.arange(half, dtype=mx.float32)
-        / float(half)
+        -math.log(max_period) * mx.arange(half, dtype=mx.float32) / float(half)
     )
     arguments = timesteps.astype(mx.float32)[:, None] * frequencies[None]
     embedding = mx.concatenate((mx.cos(arguments), mx.sin(arguments)), axis=-1)
@@ -58,9 +56,7 @@ class TimestepEmbedder(nn.Module):
         self.fc2 = nn.Linear(hidden_size, hidden_size, bias=True)
 
     def __call__(self, timesteps: mx.array) -> mx.array:
-        embedding = sinusoidal_embedding(
-            timesteps, self.frequency_embedding_size
-        )
+        embedding = sinusoidal_embedding(timesteps, self.frequency_embedding_size)
         return self.fc2(_silu(self.fc1(embedding)))
 
 
@@ -123,9 +119,7 @@ class RotaryEmbedding(nn.Module):
         else:
             raise ValueError("rotary frequencies must have rank two or three")
         value = value.astype(mx.float32)
-        output = value * mx.cos(frequencies) + _rotate_half(value) * mx.sin(
-            frequencies
-        )
+        output = value * mx.cos(frequencies) + _rotate_half(value) * mx.sin(frequencies)
         return output.astype(source_dtype)
 
 
@@ -133,23 +127,27 @@ def _attention_bias(
     mask: mx.array | None,
     *,
     batch_size: int,
-    sequence_length: int,
+    query_length: int,
+    key_length: int,
     dtype: mx.Dtype,
 ) -> mx.array | None:
     if mask is None:
         return None
     if mask.ndim == 2:
-        if mask.shape == (batch_size, sequence_length):
+        if mask.shape == (batch_size, key_length):
             mask = mask[:, None, None, :]
-        elif mask.shape == (sequence_length, sequence_length):
+        elif mask.shape == (query_length, key_length):
             mask = mask[None, None]
         else:
             raise ValueError(f"unsupported rank-two attention mask: {mask.shape}")
     elif mask.ndim == 3:
-        if mask.shape[-2:] != (sequence_length, sequence_length):
+        if mask.shape[-2:] != (query_length, key_length):
             raise ValueError(f"attention mask sequence dimensions differ: {mask.shape}")
         mask = mask[:, None]
-    elif mask.ndim != 4:
+    elif mask.ndim == 4:
+        if mask.shape[-2:] != (query_length, key_length):
+            raise ValueError(f"attention mask sequence dimensions differ: {mask.shape}")
+    else:
         raise ValueError(f"attention mask must have rank 2-4, got {mask.shape}")
     if mask.dtype == mx.bool_:
         return mx.where(mask, 0.0, float("-inf")).astype(dtype)
@@ -199,12 +197,25 @@ class DiTAttention(nn.Module):
         mask: mx.array | None = None,
         positions: mx.array | None = None,
     ) -> mx.array:
+        query, key, projected_value = self.project(value, positions=positions)
+        return self.attend(query, key, projected_value, mask=mask)
+
+    def project(
+        self,
+        value: mx.array,
+        *,
+        positions: mx.array | None = None,
+    ) -> tuple[mx.array, mx.array, mx.array]:
+        """Project self-attention Q/K/V without changing checkpoint modules."""
+
         batch_size, sequence_length, _ = value.shape
 
         def project(layer: nn.Linear) -> mx.array:
-            return layer(value).reshape(
-                batch_size, sequence_length, self.num_heads, self.head_dim
-            ).transpose(0, 2, 1, 3)
+            return (
+                layer(value)
+                .reshape(batch_size, sequence_length, self.num_heads, self.head_dim)
+                .transpose(0, 2, 1, 3)
+            )
 
         query, key, projected_value = (
             project(self.q_proj),
@@ -222,10 +233,32 @@ class DiTAttention(nn.Module):
             frequencies = self.rotary(positions)
             query = self.rotary.apply(query, frequencies)
             key = self.rotary.apply(key, frequencies)
+        return query, key, projected_value
+
+    def attend(
+        self,
+        query: mx.array,
+        key: mx.array,
+        projected_value: mx.array,
+        *,
+        mask: mx.array | None = None,
+    ) -> mx.array:
+        """Apply attention to projected tensors, including a cached K/V prefix."""
+
+        if query.ndim != 4 or key.ndim != 4 or projected_value.ndim != 4:
+            raise ValueError("projected DiT attention tensors must have rank four")
+        if key.shape != projected_value.shape:
+            raise ValueError("projected DiT attention key/value shapes differ")
+        if query.shape[:2] != key.shape[:2] or query.shape[-1] != key.shape[-1]:
+            raise ValueError("projected DiT attention Q/K dimensions differ")
+        batch_size = int(query.shape[0])
+        query_length = int(query.shape[2])
+        key_length = int(key.shape[2])
         bias = _attention_bias(
             mask,
             batch_size=batch_size,
-            sequence_length=sequence_length,
+            query_length=query_length,
+            key_length=key_length,
             dtype=query.dtype,
         )
         attended = mx.fast.scaled_dot_product_attention(
@@ -236,7 +269,7 @@ class DiTAttention(nn.Module):
             mask=bias,
         )
         attended = attended.transpose(0, 2, 1, 3).reshape(
-            batch_size, sequence_length, self.hidden_size
+            batch_size, query_length, self.hidden_size
         )
         return self.o_proj(attended)
 
@@ -282,8 +315,8 @@ class DiTBlock(nn.Module):
         positions: mx.array | None,
     ) -> mx.array:
         modulation = self.adaLN_modulation(_silu(condition))
-        shift_attn, scale_attn, gate_attn, shift_ffn, scale_ffn, gate_ffn = (
-            mx.split(modulation, 6, axis=-1)
+        shift_attn, scale_attn, gate_attn, shift_ffn, scale_ffn, gate_ffn = mx.split(
+            modulation, 6, axis=-1
         )
         attended = self.attn(
             modulate(self.norm1(value), shift_attn, scale_attn),
@@ -291,9 +324,7 @@ class DiTBlock(nn.Module):
             positions=positions,
         )
         value = value + gate_attn[:, None] * attended
-        feed_forward = self.ffn(
-            modulate(self.norm2(value), shift_ffn, scale_ffn)
-        )
+        feed_forward = self.ffn(modulate(self.norm2(value), shift_ffn, scale_ffn))
         return value + gate_ffn[:, None] * feed_forward
 
 
@@ -305,9 +336,7 @@ class DiTFinalLayer(nn.Module):
         self.linear = nn.Linear(hidden_size, output_size, bias=True)
 
     def __call__(self, value: mx.array, condition: mx.array) -> mx.array:
-        shift, scale = mx.split(
-            self.adaLN_modulation(_silu(condition)), 2, axis=-1
-        )
+        shift, scale = mx.split(self.adaLN_modulation(_silu(condition)), 2, axis=-1)
         return self.linear(modulate(self.norm(value), shift, scale))
 
 
@@ -342,6 +371,54 @@ class DiT(nn.Module):
         self.blocks = [DiTBlock(config) for _ in range(config.num_layers)]
         self.output_layer = DiTFinalLayer(config.hidden_size, output_size)
 
+    def prepare_condition(
+        self,
+        timesteps: mx.array,
+        *,
+        duration: mx.array | None = None,
+        speaker_condition: mx.array | None = None,
+    ) -> mx.array:
+        """Build the request/NFE-specific adaptive-normalization condition."""
+
+        if timesteps.ndim != 1:
+            raise ValueError("DiT timesteps must be rank one")
+        batch_size = int(timesteps.shape[0])
+        condition = self.time_embedder(timesteps)
+        if self.duration_embedder is not None:
+            if duration is None or duration.shape != (batch_size,):
+                raise ValueError(f"MeanFlow duration must have shape ({batch_size},)")
+            condition = condition + self.duration_embedder(duration)
+        if speaker_condition is not None:
+            if speaker_condition.shape != (batch_size, self.hidden_size):
+                raise ValueError(
+                    "speaker condition must match the DiT batch and hidden size"
+                )
+            condition = condition + speaker_condition
+        return condition
+
+    def prepare_modulations(
+        self,
+        condition: mx.array,
+    ) -> tuple[tuple[tuple[mx.array, ...], ...], tuple[mx.array, mx.array]]:
+        """Precompute all AdaLN values while retaining serialized layer names."""
+
+        if condition.ndim != 2 or int(condition.shape[-1]) != self.hidden_size:
+            raise ValueError(
+                "DiT modulation condition must have shape (batch, hidden_size)"
+            )
+        block_modulations = tuple(
+            tuple(mx.split(block.adaLN_modulation(_silu(condition)), 6, axis=-1))
+            for block in self.blocks
+        )
+        final_modulation = tuple(
+            mx.split(
+                self.output_layer.adaLN_modulation(_silu(condition)),
+                2,
+                axis=-1,
+            )
+        )
+        return block_modulations, final_modulation
+
     def __call__(
         self,
         sequence: mx.array,
@@ -359,19 +436,11 @@ class DiT(nn.Module):
         batch_size = int(sequence.shape[0])
         if timesteps.shape != (batch_size,):
             raise ValueError(f"DiT timesteps must have shape ({batch_size},)")
-        condition = self.time_embedder(timesteps)
-        if self.duration_embedder is not None:
-            if duration is None or duration.shape != (batch_size,):
-                raise ValueError(
-                    f"MeanFlow duration must have shape ({batch_size},)"
-                )
-            condition = condition + self.duration_embedder(duration)
-        if speaker_condition is not None:
-            if speaker_condition.shape != (batch_size, self.hidden_size):
-                raise ValueError(
-                    "speaker condition must match the DiT batch and hidden size"
-                )
-            condition = condition + speaker_condition
+        condition = self.prepare_condition(
+            timesteps,
+            duration=duration,
+            speaker_condition=speaker_condition,
+        )
         value = self.input_layer(sequence)
         for block in self.blocks:
             value = block(

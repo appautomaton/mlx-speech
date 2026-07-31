@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol
 
 import mlx.core as mx
@@ -21,6 +22,25 @@ class _DiTPredictor(Protocol):
         positions: mx.array | None = None,
         speaker_condition: mx.array | None = None,
     ) -> mx.array: ...
+
+
+@dataclass(frozen=True)
+class ODESchedule:
+    """Fixed Euler schedule shared by cached and full-history solvers."""
+
+    mode: str
+    times: mx.array
+    step_size: float
+
+
+def build_ode_schedule(mode: str, steps: int | None, dtype: mx.Dtype) -> ODESchedule:
+    resolved = resolve_solver_steps(mode, steps)
+    step_size = 1.0 / resolved
+    return ODESchedule(
+        mode=mode,
+        times=mx.array([index * step_size for index in range(resolved)], dtype=dtype),
+        step_size=step_size,
+    )
 
 
 def resolve_solver_steps(mode: str, steps: int | None) -> int:
@@ -55,6 +75,28 @@ def splice_coordinate(
         raise ValueError("coordinate projection does not match sequence hidden size")
     latent_start = int(sequence.shape[1]) - patch_size
     return mx.concatenate((sequence[:, :latent_start], projected), axis=1), latent_start
+
+
+def _expand_cfg_mask(mask: mx.array | None, batch_size: int) -> mx.array | None:
+    if mask is None or mask.ndim == 2:
+        return mask
+    if mask.ndim not in {3, 4} or mask.shape[0] not in {1, batch_size}:
+        raise ValueError("SOAR attention mask batch must be one or match the input")
+    if mask.shape[0] == batch_size:
+        return mx.concatenate((mask, mask), axis=0)
+    return mask
+
+
+def _expand_cfg_positions(
+    positions: mx.array | None, batch_size: int
+) -> mx.array | None:
+    if positions is None or positions.ndim == 1:
+        return positions
+    if positions.ndim != 2 or positions.shape[0] not in {1, batch_size}:
+        raise ValueError("SOAR position batch must be one or match the input")
+    if positions.shape[0] == batch_size:
+        return mx.concatenate((positions, positions), axis=0)
+    return positions
 
 
 class SOARSolver:
@@ -102,8 +144,8 @@ class SOARSolver:
         prediction = self.dit(
             branches,
             times,
-            attention_mask=attention_mask,
-            positions=positions,
+            attention_mask=_expand_cfg_mask(attention_mask, batch_size),
+            positions=_expand_cfg_positions(positions, batch_size),
             speaker_condition=speaker_branches,
         )[:, latent_start:]
         conditional_velocity = prediction[:batch_size]
@@ -125,7 +167,7 @@ class SOARSolver:
         patch_size: int = 4,
         noise: mx.array | None = None,
     ) -> mx.array:
-        steps = resolve_solver_steps("soar", steps)
+        schedule = build_ode_schedule("soar", steps, sequence.dtype)
         batch_size = int(sequence.shape[0])
         expected = (batch_size, int(patch_size), self.latent_dim)
         coordinate = (
@@ -135,10 +177,9 @@ class SOARSolver:
         )
         if coordinate.shape != expected:
             raise ValueError(f"SOAR noise must have shape {expected}")
-        step_size = 1.0 / steps
-        for index in range(steps):
-            timestep = mx.array([index * step_size], dtype=sequence.dtype)
-            coordinate = coordinate + step_size * self.velocity(
+        for index in range(int(schedule.times.shape[0])):
+            timestep = schedule.times[index : index + 1]
+            coordinate = coordinate + schedule.step_size * self.velocity(
                 coordinate,
                 timestep,
                 sequence=sequence,
@@ -176,7 +217,7 @@ class MeanFlowSolver:
         patch_size: int = 4,
         noise: mx.array | None = None,
     ) -> mx.array:
-        steps = resolve_solver_steps("meanflow", steps)
+        schedule = build_ode_schedule("meanflow", steps, sequence.dtype)
         batch_size = int(sequence.shape[0])
         expected = (batch_size, int(patch_size), self.latent_dim)
         coordinate = (
@@ -186,13 +227,12 @@ class MeanFlowSolver:
         )
         if coordinate.shape != expected:
             raise ValueError(f"MeanFlow noise must have shape {expected}")
-        step_size = 1.0 / steps
-        for index in range(steps):
+        for index in range(int(schedule.times.shape[0])):
             conditioned, latent_start = splice_coordinate(
                 sequence, coordinate, self.coordinate_projection
             )
-            timestep = mx.full((batch_size,), index * step_size, dtype=sequence.dtype)
-            duration = mx.full((batch_size,), step_size, dtype=sequence.dtype)
+            timestep = mx.broadcast_to(schedule.times[index : index + 1], (batch_size,))
+            duration = mx.full((batch_size,), schedule.step_size, dtype=sequence.dtype)
             velocity = self.dit(
                 conditioned,
                 timestep,
@@ -201,13 +241,15 @@ class MeanFlowSolver:
                 positions=positions,
                 speaker_condition=speaker_condition,
             )[:, latent_start:]
-            coordinate = coordinate + velocity * step_size
+            coordinate = coordinate + velocity * schedule.step_size
         return coordinate
 
 
 __all__ = [
     "MeanFlowSolver",
+    "ODESchedule",
     "SOARSolver",
+    "build_ode_schedule",
     "resolve_solver_steps",
     "splice_coordinate",
 ]
