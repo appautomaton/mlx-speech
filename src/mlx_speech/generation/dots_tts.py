@@ -1019,17 +1019,18 @@ class DotsTTSGenerator:
                 mx.eval(patch)
                 self._append_history(patch, state.fm_chunks, state.cfg_chunks)
                 denormalized = self.components.latent_io.denormalize(patch)
+                semantic_patch = denormalized.astype(self._activation_dtype)
                 if state.semantic_state is None:
                     patch_embedding, state.semantic_state = (
                         self.components.core.semantic_encoder.prefill(
-                            denormalized,
+                            semantic_patch,
                             max_audio_patches=schedule.audio_patch_budget,
                         )
                     )
                 else:
                     patch_embedding, state.semantic_state = (
                         self.components.core.semantic_encoder.decode_patch(
-                            denormalized,
+                            semantic_patch,
                             state.semantic_state,
                         )
                     )

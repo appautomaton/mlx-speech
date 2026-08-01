@@ -546,6 +546,67 @@ def test_continuation_speaker_only_and_no_reference_schedule_semantics(
     assert "match" in backend.encoded
 
 
+def test_continuation_semantic_dtype_preserves_vocoder_payload(
+    monkeypatch,
+) -> None:
+    generator, _, _ = _generator("flow_matching", mx.bfloat16)
+    continuation = DotsTTSPromptConditioning(
+        mx.ones((1, 4), dtype=mx.bfloat16),
+        mx.ones((1, 1, 2, 2), dtype=mx.bfloat16),
+        mx.ones((1, 2, 2), dtype=mx.bfloat16),
+    )
+    monkeypatch.setattr(
+        generator, "prepare_prompt", lambda *args, **kwargs: continuation
+    )
+
+    semantic = generator.components.core.semantic_encoder
+    semantic_inputs = []
+    original_prefill = semantic.prefill
+    original_decode_patch = semantic.decode_patch
+
+    def record_prefill(value, *, max_audio_patches=None):
+        semantic_inputs.append(("prefill", value))
+        return original_prefill(value, max_audio_patches=max_audio_patches)
+
+    def record_decode_patch(value, state):
+        semantic_inputs.append(("decode", value))
+        return original_decode_patch(value, state)
+
+    monkeypatch.setattr(semantic, "prefill", record_prefill)
+    monkeypatch.setattr(semantic, "decode_patch", record_decode_patch)
+
+    denormalized = []
+
+    def fp32_denormalize(value):
+        payload = value.astype(mx.float32) + mx.array(0.25, dtype=mx.float32)
+        denormalized.append(payload)
+        return payload
+
+    monkeypatch.setattr(generator.components.latent_io, "denormalize", fp32_denormalize)
+    payloads = list(
+        generator._generate_latent_patches(
+            "new",
+            reference_audio=mx.ones((8,)),
+            reference_text="ref",
+            max_audio_patches=3,
+            solver_steps=1,
+            eos_threshold=1.0,
+        )
+    )
+    mx.eval(*payloads, *denormalized)
+
+    assert semantic_inputs[0][0] == "prefill"
+    assert semantic_inputs[0][1].dtype == mx.bfloat16
+    generated_semantic_inputs = [
+        value for operation, value in semantic_inputs if operation == "decode"
+    ]
+    assert len(generated_semantic_inputs) == 2
+    assert all(value.dtype == mx.bfloat16 for value in generated_semantic_inputs)
+    assert len(payloads) == 1
+    assert payloads[0].dtype == mx.float32
+    np.testing.assert_array_equal(payloads[0], denormalized[-1])
+
+
 def test_prepare_prompt_only_encodes_latents_for_transcript_backed_reference(
     monkeypatch,
 ) -> None:

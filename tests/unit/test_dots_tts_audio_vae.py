@@ -108,6 +108,29 @@ def test_high_precision_reductions_are_bounded_to_encode() -> None:
     assert not model.decoder.conv_pre.high_precision
 
 
+def test_decoder_uses_bf16_weights_with_an_fp32_slstm_boundary() -> None:
+    model = _model()
+    model.set_dtype(mx.bfloat16)
+    latent = mx.ones((1, model.latent_dim, 4), dtype=mx.float32)
+    post_projection = model.post_proj(
+        latent.astype(model.post_proj.weight.dtype).transpose(0, 2, 1)
+    )
+    state = model.init_decode_state(maximum_chunk_size=4)
+    decoded, state = model.decode_chunk(latent, state, final=True)
+    mx.eval(post_projection, decoded, state)
+
+    assert model.post_proj.weight.dtype == mx.bfloat16
+    assert post_projection.dtype == mx.bfloat16
+    assert model.dec_mi_layer.recurrent_dtype == mx.float32
+    assert all(
+        hidden.dtype == cell.dtype == mx.float32
+        for hidden, cell in state.recurrent_state
+    )
+    assert model.decoder.input_dtype == mx.bfloat16
+    assert state.decoder_input.dtype == model.decoder.input_dtype
+    assert decoded.dtype == mx.float32
+
+
 def test_representative_encoder_logical_workspace_is_bounded() -> None:
     payload = _config().to_dict()
     payload.update(

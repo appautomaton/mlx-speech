@@ -5,8 +5,13 @@ from dataclasses import fields
 import mlx.core as mx
 import numpy as np
 import pytest
+from mlx.utils import tree_flatten
 
-from mlx_speech.models.dots_tts.audio_vae import AudioVAE, VocoderDecodeState
+from mlx_speech.models.dots_tts.audio_vae import (
+    _COMPILED_VOCODER_CACHE_LIMIT,
+    AudioVAE,
+    VocoderDecodeState,
+)
 from mlx_speech.models.dots_tts.vocoder import AliasFreeSnakeBeta
 from test_dots_tts_audio_vae import _config
 
@@ -43,6 +48,33 @@ def _stream_chunks(
         offset = end
         size_index += 1
     return mx.concatenate(chunks, axis=-1), state, tuple(emitted_samples)
+
+
+def _assert_state_close(
+    actual: VocoderDecodeState,
+    expected: VocoderDecodeState,
+) -> None:
+    assert actual.maximum_chunk_size == expected.maximum_chunk_size
+    assert actual.total_frames == expected.total_frames
+    assert actual.emitted_frames == expected.emitted_frames
+    np.testing.assert_allclose(
+        actual.decoder_input.astype(mx.float32),
+        expected.decoder_input.astype(mx.float32),
+        atol=0.0,
+        rtol=0.0,
+    )
+    for actual_layer, expected_layer in zip(
+        actual.recurrent_state, expected.recurrent_state, strict=True
+    ):
+        for actual_tensor, expected_tensor in zip(
+            actual_layer, expected_layer, strict=True
+        ):
+            np.testing.assert_allclose(
+                actual_tensor,
+                expected_tensor,
+                atol=1e-5,
+                rtol=1e-5,
+            )
 
 
 def test_alias_free_left_padding_has_a_finite_safe_seam() -> None:
@@ -141,6 +173,257 @@ def test_streaming_flushes_lookahead_once_after_partial_groups() -> None:
     assert int(duplicate_tail.shape[-1]) == 0
     assert duplicate_state.emitted_frames == duplicate_state.total_frames == 9
     np.testing.assert_allclose(streamed, full, atol=5e-3, rtol=5e-3)
+
+
+def test_compiled_common_and_residual_shapes_reuse_pure_tensor_helpers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _model(127)
+    model.set_dtype(mx.bfloat16)
+    parameter_names = tuple(name for name, _ in tree_flatten(model.parameters()))
+    mx.random.seed(131)
+    latent = mx.random.normal((1, model.latent_dim, 28))
+    eager_state = model.init_decode_state(maximum_chunk_size=16)
+    compiled_state = model.init_decode_state(maximum_chunk_size=16)
+    offset = 0
+    for chunk_frames in (4, 16, 8):
+        chunk = latent[:, :, offset : offset + chunk_frames]
+        eager_output, eager_state = model._decode_chunk(
+            chunk,
+            eager_state,
+            final=False,
+            use_compiled=False,
+        )
+        compiled_output, compiled_state = model.decode_chunk(chunk, compiled_state)
+        mx.eval(eager_output, compiled_output, eager_state, compiled_state)
+        np.testing.assert_allclose(
+            compiled_output,
+            eager_output,
+            atol=1e-5,
+            rtol=1e-5,
+        )
+        _assert_state_close(compiled_state, eager_state)
+        offset += chunk_frames
+
+    recurrent_keys = {
+        key
+        for key in model._compiled_vocoder_functions
+        if key.operation == "recurrent"
+    }
+    decoder_keys = {
+        key for key in model._compiled_vocoder_functions if key.operation == "decoder"
+    }
+    assert {key.shapes[0] for key in recurrent_keys} == {
+        (1, model.latent_dim, 4),
+        (1, model.latent_dim, 8),
+        (1, model.latent_dim, 16),
+    }
+    assert {key.dtypes[0] for key in recurrent_keys} == {str(latent.dtype)}
+    assert {key.dtypes[-4:] for key in recurrent_keys} == {
+        (
+            str(mx.bfloat16),
+            str(mx.bfloat16),
+            str(mx.float32),
+            str(mx.bfloat16),
+        )
+    }
+    assert {key.model_identity for key in recurrent_keys} == {
+        id(model.dec_mi_layer)
+    }
+    assert len(decoder_keys) == 1
+    decoder_key = next(iter(decoder_keys))
+    assert decoder_key.shapes == ((1, 46, model.latent_dim),)
+    assert decoder_key.dtypes == (str(mx.bfloat16),)
+    assert decoder_key.model_identity == id(model.decoder)
+
+    recurrent_cache = {
+        key: function
+        for key, function in model._compiled_vocoder_functions.items()
+        if key.operation == "recurrent"
+    }
+    empty = mx.zeros((1, model.latent_dim, 0), dtype=latent.dtype)
+    eager_tail, eager_state = model._decode_chunk(
+        empty,
+        eager_state,
+        final=True,
+        use_compiled=False,
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            model,
+            "_execute_recurrent_step",
+            lambda *args, **kwargs: pytest.fail("flush reran SLSTM recurrence"),
+        )
+        compiled_tail, compiled_state = model.decode_chunk(
+            empty, compiled_state, final=True
+        )
+    mx.eval(eager_tail, compiled_tail, eager_state, compiled_state)
+    np.testing.assert_allclose(compiled_tail, eager_tail, atol=1e-5, rtol=1e-5)
+    _assert_state_close(compiled_state, eager_state)
+    assert recurrent_cache == {
+        key: function
+        for key, function in model._compiled_vocoder_functions.items()
+        if key.operation == "recurrent"
+    }
+
+    cached_functions = dict(model._compiled_vocoder_functions)
+    warm_state = model.init_decode_state(maximum_chunk_size=16)
+    warm_output, _ = model.decode_chunk(latent[:, :, :4], warm_state)
+    mx.eval(warm_output)
+    assert model._compiled_vocoder_functions == cached_functions
+    assert tuple(name for name, _ in tree_flatten(model.parameters())) == parameter_names
+
+
+def test_compiled_helpers_observe_same_dtype_weight_replacement() -> None:
+    model = _model(137)
+    model.set_dtype(mx.bfloat16)
+    mx.random.seed(139)
+    latent = mx.random.normal((1, model.latent_dim, 4))
+    recurrent_state = model.init_decode_state(
+        maximum_chunk_size=4
+    ).recurrent_state
+    warm_recurrent, _ = model._execute_recurrent_step(
+        latent,
+        recurrent_state,
+        use_compiled=True,
+    )
+    decoder_input = mx.random.normal(
+        (1, model.decoder.stream_window_size(4), model.latent_dim)
+    ).astype(model.decoder.input_dtype)
+    warm_decoder = model._execute_decoder_window(
+        decoder_input,
+        use_compiled=True,
+    )
+    mx.eval(warm_recurrent, warm_decoder)
+    recurrent_key = next(
+        key
+        for key in model._compiled_vocoder_functions
+        if key.operation == "recurrent"
+    )
+    decoder_key = next(
+        key
+        for key in model._compiled_vocoder_functions
+        if key.operation == "decoder"
+    )
+    recurrent_function = model._compiled_vocoder_functions[recurrent_key]
+    decoder_function = model._compiled_vocoder_functions[decoder_key]
+
+    model.post_proj.weight = mx.zeros_like(model.post_proj.weight)
+    updated_recurrent, _ = model._execute_recurrent_step(
+        latent,
+        recurrent_state,
+        use_compiled=True,
+    )
+    eager_recurrent, _ = model._execute_recurrent_step(
+        latent,
+        recurrent_state,
+        use_compiled=False,
+    )
+    model.decoder.conv_pre.weight = mx.zeros_like(model.decoder.conv_pre.weight)
+    updated_decoder = model._execute_decoder_window(
+        decoder_input,
+        use_compiled=True,
+    )
+    eager_decoder = model._execute_decoder_window(
+        decoder_input,
+        use_compiled=False,
+    )
+    mx.eval(updated_recurrent, eager_recurrent, updated_decoder, eager_decoder)
+
+    assert model.post_proj.weight.dtype == mx.bfloat16
+    assert model.decoder.conv_pre.weight.dtype == mx.bfloat16
+    assert model._compiled_vocoder_functions[recurrent_key] is recurrent_function
+    assert model._compiled_vocoder_functions[decoder_key] is decoder_function
+    assert not np.allclose(
+        warm_recurrent.astype(mx.float32),
+        updated_recurrent.astype(mx.float32),
+        atol=1e-6,
+        rtol=1e-6,
+    )
+    assert not np.allclose(
+        warm_decoder.astype(mx.float32),
+        updated_decoder.astype(mx.float32),
+        atol=1e-6,
+        rtol=1e-6,
+    )
+    np.testing.assert_allclose(
+        updated_recurrent.astype(mx.float32),
+        eager_recurrent.astype(mx.float32),
+        atol=0.0,
+        rtol=0.0,
+    )
+    np.testing.assert_allclose(
+        updated_decoder.astype(mx.float32),
+        eager_decoder.astype(mx.float32),
+        atol=0.0,
+        rtol=0.0,
+    )
+
+
+def test_compiled_cache_is_bounded_and_preserves_common_warm_shapes() -> None:
+    model = _model(149)
+    model.set_dtype(mx.bfloat16)
+    mx.random.seed(151)
+    latent = mx.random.normal(
+        (1, model.latent_dim, _COMPILED_VOCODER_CACHE_LIMIT + 6)
+    )
+
+    for chunk_frames in (4, 16):
+        state = model.init_decode_state(maximum_chunk_size=16)
+        output, _ = model.decode_chunk(
+            latent[:, :, :chunk_frames],
+            state,
+            final=True,
+        )
+        mx.eval(output)
+    common_cache = {
+        key: function
+        for key, function in model._compiled_vocoder_functions.items()
+        if model._is_common_compile_key(key)
+    }
+    assert len(common_cache) == 3
+
+    first_varied_keys = set()
+    varied_shapes = [
+        frames
+        for frames in range(1, _COMPILED_VOCODER_CACHE_LIMIT + 5)
+        if frames not in (4, 16)
+    ]
+    for index, chunk_frames in enumerate(varied_shapes):
+        state = model.init_decode_state(maximum_chunk_size=chunk_frames)
+        output, _ = model.decode_chunk(
+            latent[:, :, :chunk_frames],
+            state,
+            final=True,
+        )
+        mx.eval(output)
+        if index == 0:
+            first_varied_keys = set(model._compiled_vocoder_functions) - set(
+                common_cache
+            )
+
+    assert len(model._compiled_vocoder_functions) == _COMPILED_VOCODER_CACHE_LIMIT
+    assert first_varied_keys.isdisjoint(model._compiled_vocoder_functions)
+    assert all(
+        model._compiled_vocoder_functions.get(key) is function
+        for key, function in common_cache.items()
+    )
+
+    for chunk_frames in (4, 16):
+        state = model.init_decode_state(maximum_chunk_size=16)
+        output, _ = model.decode_chunk(
+            latent[:, :, :chunk_frames],
+            state,
+            final=True,
+        )
+        mx.eval(output)
+    assert all(
+        model._compiled_vocoder_functions.get(key) is function
+        for key, function in common_cache.items()
+    )
+
+    model._clear_compiled_vocoder_cache()
+    assert not model._compiled_vocoder_functions
 
 
 def test_streaming_holds_samples_inside_the_decoder_lookahead() -> None:

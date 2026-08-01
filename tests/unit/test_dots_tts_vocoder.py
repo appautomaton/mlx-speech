@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import mlx.core as mx
 import numpy as np
+import pytest
 
 from mlx_speech.models.dots_tts.audio_vae import AudioVAE
 from mlx_speech.models.dots_tts.vocoder import (
@@ -49,6 +50,13 @@ def test_decoder_stream_context_is_derived_from_layer_structure() -> None:
     assert model.decoder.stream_left_context == 28
     assert model.decoder.stream_lookahead == 2
     assert model.decoder.stream_window_size(3) == 33
+
+
+def test_bigvgan_rejects_input_outside_its_checkpoint_dtype() -> None:
+    model = AudioVAE(_config(), encoder_residual_layers=1)
+    model.set_dtype(mx.bfloat16)
+    with pytest.raises(ValueError, match="input dtype must match conv_pre weights"):
+        model.decoder(mx.zeros((1, 3, model.latent_dim), dtype=mx.float32))
 
 
 def test_stateful_chunk_decode_matches_full_waveform() -> None:

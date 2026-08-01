@@ -13,6 +13,7 @@ from mlx_speech.models.dots_tts.checkpoint import (
     INT8_DTYPE_POLICY,
     SOURCE_REVISIONS,
     TOKENIZER_FILES,
+    storage_dtype,
     validate_artifact_dir,
 )
 from test_dots_tts_config import dots_config, qwen_config
@@ -273,3 +274,16 @@ def test_contract_rejects_obsolete_bf16_directory_name(tmp_path: Path) -> None:
     artifact = _write_artifact(tmp_path / "mlx-int8")
     with pytest.raises(ValueError, match="class base requires directory mlx-base"):
         validate_artifact_dir(artifact)
+
+
+@pytest.mark.parametrize("dtype_policy", (BASE_DTYPE_POLICY, INT8_DTYPE_POLICY))
+def test_base_and_int8_vocoder_decoder_execution_paths_are_bf16(
+    dtype_policy: dict[str, dict[str, str]],
+) -> None:
+    for path in (
+        "post_proj.weight",
+        "dec_mi_layer.input.weight",
+        "dec_mi_layer.recurrent.layers.0.weight_ih",
+        "decoder.conv_pre.weight",
+    ):
+        assert storage_dtype(dtype_policy, "vocoder", path) == mx.bfloat16

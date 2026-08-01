@@ -346,12 +346,21 @@ class BigVGANDecoder(nn.Module):
         self.conv_post = Conv1d(channels, 1, 7, causal=True, bias=False)
 
     def __call__(self, value: mx.array) -> mx.array:
+        if value.dtype != self.input_dtype:
+            raise ValueError(
+                "BigVGAN decoder input dtype must match conv_pre weights: "
+                f"expected {self.input_dtype}, got {value.dtype}"
+            )
         value = self.conv_pre(value)
         for upsample, blocks in zip(self.ups, self.resblocks, strict=True):
             value = upsample(value)
             outputs = [block(value) for block in blocks]
             value = sum(outputs[1:], outputs[0]) / len(outputs)
         return mx.clip(self.conv_post(self.activation_post(value)), -1.0, 1.0)
+
+    @property
+    def input_dtype(self) -> mx.Dtype:
+        return self.conv_pre.weight.dtype
 
     @property
     def stream_lookahead(self) -> int:

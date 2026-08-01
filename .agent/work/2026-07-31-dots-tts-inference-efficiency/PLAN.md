@@ -95,6 +95,10 @@ The plan deliberately measures the current cached path once, then optimizes the 
 
 **Produces:** precision-correct warm-reused vocoder execution
 
+**Status:** complete
+
+**Evidence:** [Slice 3 execution summary](slices/slice-003-summary.md)
+
 ### Slice 4: Grow DiT cache storage on demand
 
 **Objective:** Separate request maximum from physical cache capacity and make 64/128/256/512 growth transactional.
