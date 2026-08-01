@@ -307,6 +307,12 @@ git diff --check
 
 **Produces:** final cached-path performance, memory, quality, and repository acceptance evidence
 
+**Status:** complete
+
+**Evidence:** Final unit/checkpoint/runtime coverage passed (`898 passed, 34 skipped`), and local base end-to-end waveform integration passed (`2 passed`). The canonical default-lazy-boundary 128-patch profile passed its frozen comparison: MF batch median `30.1329s` versus `52.5995s` (`42.71%` improvement), SOAR batch median `44.1175s` versus `74.8863s` (`41.09%` improvement). MF stream median was `51.0209s` with `2.9020s` TTFC and `7.710 GiB` peak; SOAR stream median was `64.3186s` with `3.0910s` TTFC and `13.666 GiB` peak. Both 512-budget/two-patch smokes allocated physical bucket 64, published the first cache unit, and remained below 30 GiB. The regenerated full MF/SOAR × base/int8 × continuation/speaker-only quality matrix passed with zero WER regression; worst speaker-cosine regression was `0.009301` against the `0.02` limit. Upload dry-run enumerated all four expected artifacts, and `git diff --check` passed from a clean source tree. Repository-wide Ruff still reports the same 21 unrelated pre-existing findings recorded in Slice 8; touched files remain clean and the approved acceptance criteria do not include that unrelated debt.
+
+**Risks / next:** none for this change; continue inline to `auto-verify`.
+
 ## Requirement Traceability
 
 | Requirement / gap | Satisfying slices |
