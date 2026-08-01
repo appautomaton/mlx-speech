@@ -153,6 +153,10 @@ The plan deliberately measures the current cached path once, then optimizes the 
 
 **Produces:** bounded later-patch attention without full-prefix K/V copies
 
+**Status:** complete
+
+**Evidence:** [Slice 5 execution summary](slices/slice-005-summary.md)
+
 ### Slice 6: Pack and reuse DiT inference kernels
 
 **Objective:** Remove checkpoint-shaped projection overhead from stable DiT hot steps while preserving serialization and request isolation.

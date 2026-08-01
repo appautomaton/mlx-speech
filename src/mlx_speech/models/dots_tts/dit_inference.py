@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -19,6 +20,7 @@ PreparedModulations = tuple[
     tuple[BlockModulation, ...],
     tuple[mx.array, mx.array],
 ]
+CacheFactory = Callable[[mx.Dtype, mx.Dtype], "DiTKvCache"]
 
 
 def resolve_dit_cache_bucket(patch_count: int) -> int:
@@ -45,8 +47,8 @@ class DiTKvCache:
     num_layers: int
     branch_count: int
     batch_size: int
-    cache_k: mx.array
-    cache_v: mx.array
+    cache_k: tuple[tuple[mx.array, ...], ...]
+    cache_v: tuple[tuple[mx.array, ...], ...]
     offsets: list[int]
 
     def __post_init__(self) -> None:
@@ -65,26 +67,39 @@ class DiTKvCache:
             <= 0
         ):
             raise ValueError("DiT cache dimensions must be positive")
-        if self.cache_k.ndim != 6 or self.cache_v.ndim != 6:
+        if len(self.cache_k) != self.nfe or len(self.cache_v) != self.nfe:
             raise ValueError(
-                "DiT cache arrays must have shape "
-                "(nfe, layer, branch_batch, head, token, head_dim)"
+                "DiT cache storage must contain one layer table per NFE"
             )
-        if self.cache_k.shape != self.cache_v.shape:
-            raise ValueError("DiT cache key/value shapes differ")
-        expected_prefix = (
-            self.nfe,
-            self.num_layers,
+        if any(len(layers) != self.num_layers for layers in self.cache_k) or any(
+            len(layers) != self.num_layers for layers in self.cache_v
+        ):
+            raise ValueError("DiT cache storage must contain every model layer")
+        expected_shape = (
             self.branch_count * self.batch_size,
+            self.num_heads,
+            self.capacity_tokens,
+            self.head_dim,
         )
-        if self.cache_k.shape[:3] != expected_prefix:
-            raise ValueError(
-                "DiT cache storage does not match its NFE/layer/branch metadata"
-            )
-        if int(self.cache_k.shape[3]) <= 0 or int(self.cache_k.shape[-1]) <= 0:
+        key_dtype = self.cache_k[0][0].dtype
+        value_dtype = self.cache_v[0][0].dtype
+        if self.num_heads <= 0 or self.head_dim <= 0:
             raise ValueError("DiT cache head dimensions must be positive")
-        if int(self.cache_k.shape[-2]) != self.capacity_tokens:
-            raise ValueError("DiT cache token storage differs from its capacity")
+        for nfe_index in range(self.nfe):
+            for layer_index in range(self.num_layers):
+                keys = self.cache_k[nfe_index][layer_index]
+                values = self.cache_v[nfe_index][layer_index]
+                if keys.ndim != 4 or values.ndim != 4:
+                    raise ValueError(
+                        "DiT cache layer arrays must have shape "
+                        "(branch_batch, head, token, head_dim)"
+                    )
+                if keys.shape != expected_shape or values.shape != expected_shape:
+                    raise ValueError(
+                        "DiT cache storage does not match its layer metadata"
+                    )
+                if keys.dtype != key_dtype or values.dtype != value_dtype:
+                    raise ValueError("DiT cache layer dtypes must be uniform")
         if len(self.offsets) != self.nfe:
             raise ValueError("DiT cache must track one offset per NFE")
         if any(offset < 0 or offset > self.capacity_tokens for offset in self.offsets):
@@ -104,12 +119,55 @@ class DiTKvCache:
         return self.offsets[0]
 
     @property
+    def num_heads(self) -> int:
+        return int(self.cache_k[0][0].shape[1])
+
+    @property
+    def head_dim(self) -> int:
+        return int(self.cache_k[0][0].shape[-1])
+
+    @property
+    def key_dtype(self) -> mx.Dtype:
+        return self.cache_k[0][0].dtype
+
+    @property
+    def value_dtype(self) -> mx.Dtype:
+        return self.cache_v[0][0].dtype
+
+    @property
+    def storage_shape(self) -> tuple[int, ...]:
+        return (
+            self.nfe,
+            self.num_layers,
+            self.branch_count * self.batch_size,
+            self.num_heads,
+            self.capacity_tokens,
+            self.head_dim,
+        )
+
+    def stacked_keys(self) -> mx.array:
+        """Materialize a unified inspection view without using it for inference."""
+
+        return mx.stack(
+            tuple(mx.stack(layers, axis=0) for layers in self.cache_k),
+            axis=0,
+        )
+
+    def stacked_values(self) -> mx.array:
+        """Materialize a unified inspection view without using it for inference."""
+
+        return mx.stack(
+            tuple(mx.stack(layers, axis=0) for layers in self.cache_v),
+            axis=0,
+        )
+
+    @property
     def keys(self) -> mx.array:
-        return self.cache_k
+        return self.stacked_keys()
 
     @property
     def values(self) -> mx.array:
-        return self.cache_v
+        return self.stacked_values()
 
     @classmethod
     def allocate(
@@ -127,15 +185,26 @@ class DiTKvCache:
         value_dtype: mx.Dtype,
     ) -> DiTKvCache:
         capacity_tokens = int(capacity_patches) * int(unit_length)
-        shape = (
-            int(nfe),
-            int(num_layers),
+        layer_shape = (
             int(branch_count) * int(batch_size),
             int(num_heads),
             capacity_tokens,
             int(head_dim),
         )
-        cache_k = mx.zeros(shape, dtype=key_dtype)
+        cache_k = tuple(
+            tuple(
+                mx.zeros(layer_shape, dtype=key_dtype)
+                for _layer_index in range(int(num_layers))
+            )
+            for _nfe_index in range(int(nfe))
+        )
+        cache_v = tuple(
+            tuple(
+                mx.zeros(layer_shape, dtype=value_dtype)
+                for _layer_index in range(int(num_layers))
+            )
+            for _nfe_index in range(int(nfe))
+        )
         return cls(
             capacity_patches=int(capacity_patches),
             unit_length=int(unit_length),
@@ -144,7 +213,7 @@ class DiTKvCache:
             branch_count=int(branch_count),
             batch_size=int(batch_size),
             cache_k=cache_k,
-            cache_v=mx.zeros(shape, dtype=value_dtype),
+            cache_v=cache_v,
             offsets=[0] * int(nfe),
         )
 
@@ -157,8 +226,13 @@ class DiTKvCache:
         """Append one independently computed prefix segment for one NFE."""
 
         start, end = self.validate_write(nfe_index, keys, values)
-        self.cache_k[nfe_index, :, :, :, start:end, :] = keys
-        self.cache_v[nfe_index, :, :, :, start:end, :] = values
+        for layer_index in range(self.num_layers):
+            self.cache_k[nfe_index][layer_index][..., start:end, :] = keys[
+                layer_index
+            ]
+            self.cache_v[nfe_index][layer_index][..., start:end, :] = values[
+                layer_index
+            ]
         self.offsets[nfe_index] = end
 
     def validate_write(
@@ -176,13 +250,18 @@ class DiTKvCache:
                 "DiT cache writes require matching "
                 "(layer, branch_batch, head, token, head_dim) arrays"
             )
-        expected = self.cache_k.shape[1:4] + self.cache_k.shape[-1:]
+        expected = (
+            self.num_layers,
+            self.branch_count * self.batch_size,
+            self.num_heads,
+            self.head_dim,
+        )
         actual = keys.shape[:3] + keys.shape[-1:]
         if actual != expected:
             raise ValueError(
                 f"DiT cache write shape differs from storage: {keys.shape}"
             )
-        if keys.dtype != self.cache_k.dtype or values.dtype != self.cache_v.dtype:
+        if keys.dtype != self.key_dtype or values.dtype != self.value_dtype:
             raise ValueError("DiT cache write dtype differs from storage")
         start = self.offsets[nfe_index]
         write_length = int(keys.shape[-2])
@@ -194,6 +273,61 @@ class DiTKvCache:
                 f"DiT cache overflow: required={end} capacity={self.capacity_tokens}"
             )
         return start, end
+
+    def write_scratch(
+        self,
+        nfe_index: int,
+        layer_index: int,
+        keys: mx.array,
+        values: mx.array,
+    ) -> int:
+        """Write a fresh two-unit tail without publishing either unit."""
+
+        if nfe_index < 0 or nfe_index >= self.nfe:
+            raise ValueError(f"DiT cache NFE index is out of range: {nfe_index}")
+        if layer_index < 0 or layer_index >= self.num_layers:
+            raise ValueError(f"DiT cache layer index is out of range: {layer_index}")
+        if keys.ndim != 4 or values.ndim != 4 or keys.shape != values.shape:
+            raise ValueError(
+                "DiT cache scratch writes require matching "
+                "(branch_batch, head, token, head_dim) arrays"
+            )
+        expected = (
+            self.branch_count * self.batch_size,
+            self.num_heads,
+            self.head_dim,
+        )
+        actual = keys.shape[:2] + keys.shape[-1:]
+        if actual != expected:
+            raise ValueError(
+                f"DiT cache scratch shape differs from storage: {keys.shape}"
+            )
+        if keys.dtype != self.key_dtype or values.dtype != self.value_dtype:
+            raise ValueError("DiT cache scratch dtype differs from storage")
+        start = self.offsets[nfe_index]
+        write_length = int(keys.shape[-2])
+        if write_length != 2 * self.unit_length:
+            raise ValueError("DiT cache scratch must contain exactly two units")
+        end = start + write_length
+        if end > self.capacity_tokens:
+            raise ValueError(
+                "DiT cache scratch overflow: "
+                f"required={end} capacity={self.capacity_tokens}"
+            )
+        self.cache_k[nfe_index][layer_index][..., start:end, :] = keys
+        self.cache_v[nfe_index][layer_index][..., start:end, :] = values
+        return end
+
+    def publish_unit(self) -> None:
+        """Atomically expose one finalized unit for every NFE."""
+
+        start = self.valid_tokens
+        end = start + self.unit_length
+        if end > self.capacity_tokens:
+            raise ValueError(
+                f"DiT cache overflow: required={end} capacity={self.capacity_tokens}"
+            )
+        self.offsets = [end] * self.nfe
 
 
 @dataclass
@@ -373,17 +507,22 @@ class CachedDiTRunner:
         positions: mx.array,
         attention_mask: mx.array | None,
         cache: DiTKvCache | None = None,
+        cache_factory: CacheFactory | None = None,
         nfe_index: int | None = None,
         commit_length: int = 0,
-    ) -> tuple[mx.array, mx.array | None, mx.array | None]:
+        scratch_length: int = 0,
+    ) -> tuple[
+        mx.array,
+        mx.array | None,
+        mx.array | None,
+        DiTKvCache | None,
+    ]:
         block_modulations, _final_modulation = modulations
         if len(block_modulations) != self.num_layers:
             raise ValueError("cached DiT modulation layer count differs from model")
-        persistent_length = 0
-        if cache is not None:
+        if cache is not None or cache_factory is not None:
             if nfe_index is None:
                 raise ValueError("cached DiT attention requires an NFE index")
-            persistent_length = cache.offsets[nfe_index]
         value = self.dit.input_layer(sequence)
         committed_keys: list[mx.array] = []
         committed_values: list[mx.array] = []
@@ -405,35 +544,23 @@ class CachedDiTRunner:
             if commit_length:
                 committed_keys.append(key[..., :commit_length, :])
                 committed_values.append(projected_value[..., :commit_length, :])
-            if cache is not None:
-                key = mx.concatenate(
-                    (
-                        cache.cache_k[
-                            nfe_index,
-                            layer_index,
-                            :,
-                            :,
-                            :persistent_length,
-                            :,
-                        ],
-                        key,
-                    ),
-                    axis=2,
+            if scratch_length:
+                if cache is None:
+                    if cache_factory is None:
+                        raise RuntimeError("cached DiT scratch has no storage factory")
+                    cache = cache_factory(key.dtype, projected_value.dtype)
+                if int(key.shape[-2]) != scratch_length:
+                    raise ValueError("cached DiT projected scratch length differs")
+                key_end = cache.write_scratch(
+                    nfe_index,
+                    layer_index,
+                    key,
+                    projected_value,
                 )
-                projected_value = mx.concatenate(
-                    (
-                        cache.cache_v[
-                            nfe_index,
-                            layer_index,
-                            :,
-                            :,
-                            :persistent_length,
-                            :,
-                        ],
-                        projected_value,
-                    ),
-                    axis=2,
-                )
+                key = cache.cache_k[nfe_index][layer_index][..., :key_end, :]
+                projected_value = cache.cache_v[nfe_index][layer_index][
+                    ..., :key_end, :
+                ]
             attended = block.attn.attend(
                 query, key, projected_value, mask=attention_mask
             )
@@ -441,11 +568,12 @@ class CachedDiTRunner:
             feed_forward = block.ffn(modulate(block.norm2(value), shift_ffn, scale_ffn))
             value = value + gate_ffn[:, None] * feed_forward
         if not commit_length:
-            return value, None, None
+            return value, None, None, cache
         return (
             value,
             mx.stack(committed_keys, axis=0),
             mx.stack(committed_values, axis=0),
+            cache,
         )
 
     def _apply_final(
@@ -480,7 +608,7 @@ class CachedDiTRunner:
             if cfg_prefix_sequence is not None:
                 raise ValueError("cached MeanFlow prefill cannot use a CFG prefix")
             branches = prefix_sequence
-        _value, keys, values = self._run_blocks(
+        _value, keys, values, _cache = self._run_blocks(
             branches,
             modulations,
             positions=positions,
@@ -511,7 +639,7 @@ class CachedDiTRunner:
             branches = mx.concatenate((conditional, unconditional), axis=0)
         else:
             branches = conditional
-        value, _keys, _values = self._run_blocks(
+        value, _keys, _values, _cache = self._run_blocks(
             branches,
             modulations,
             positions=positions,
@@ -536,12 +664,13 @@ class CachedDiTRunner:
         cfg_previous_unit: mx.array | None,
         cfg_current_hidden: mx.array | None,
         cache: DiTKvCache | None,
+        cache_factory: CacheFactory | None,
         nfe_index: int,
         modulations: PreparedModulations,
         positions: mx.array,
         attention_mask: mx.array,
         guidance_scale: float,
-    ) -> tuple[mx.array, mx.array, mx.array]:
+    ) -> tuple[mx.array, DiTKvCache]:
         projected = self._project_coordinate(coordinate)
         conditional = mx.concatenate((previous_unit, current_hidden, projected), axis=1)
         if self.mode == "soar":
@@ -553,17 +682,18 @@ class CachedDiTRunner:
             branches = mx.concatenate((conditional, unconditional), axis=0)
         else:
             branches = conditional
-        value, keys, values = self._run_blocks(
+        value, _keys, _values, cache = self._run_blocks(
             branches,
             modulations,
             positions=positions,
             attention_mask=attention_mask,
             cache=cache,
+            cache_factory=cache_factory,
             nfe_index=nfe_index,
-            commit_length=self.unit_length,
+            scratch_length=2 * self.unit_length,
         )
-        if keys is None or values is None:
-            raise RuntimeError("cached DiT tail did not produce commit K/V")
+        if cache is None:
+            raise RuntimeError("cached DiT tail did not produce scratch K/V")
         latent_start = self.unit_length + self.hidden_patch_size
         prediction = self._apply_final(value, modulations)[:, latent_start:]
         if self.mode == "meanflow":
@@ -575,7 +705,7 @@ class CachedDiTRunner:
             velocity = conditional_velocity + float(guidance_scale) * (
                 conditional_velocity - unconditional_velocity
             )
-        return velocity, keys, values
+        return velocity, cache
 
 
 class CachedDiTSolver:
@@ -657,12 +787,13 @@ class CachedDiTSolver:
 
         for nfe_index, offset in enumerate(source.offsets):
             if offset:
-                replacement.cache_k[nfe_index, ..., :offset, :] = source.cache_k[
-                    nfe_index, ..., :offset, :
-                ]
-                replacement.cache_v[nfe_index, ..., :offset, :] = source.cache_v[
-                    nfe_index, ..., :offset, :
-                ]
+                for layer_index in range(source.num_layers):
+                    replacement.cache_k[nfe_index][layer_index][..., :offset, :] = (
+                        source.cache_k[nfe_index][layer_index][..., :offset, :]
+                    )
+                    replacement.cache_v[nfe_index][layer_index][..., :offset, :] = (
+                        source.cache_v[nfe_index][layer_index][..., :offset, :]
+                    )
         replacement.offsets = list(source.offsets)
 
     @staticmethod
@@ -687,8 +818,8 @@ class CachedDiTSolver:
             capacity_patches=capacity_patches,
             nfe=cache.nfe,
             batch_size=cache.batch_size,
-            key_dtype=cache.cache_k.dtype,
-            value_dtype=cache.cache_v.dtype,
+            key_dtype=cache.key_dtype,
+            value_dtype=cache.value_dtype,
         )
         self._copy_published_cache(cache, replacement)
         self._materialize_cache_growth(replacement)
@@ -1018,6 +1149,11 @@ class CachedDiTSolver:
                 "DiT solver state offset does not match finalized history: "
                 f"offsets={cache.offsets} expected={persistent_length}"
             )
+        if cache is not None:
+            cache = self._grow_projected_cache(
+                cache,
+                required_tokens=persistent_length + 2 * self.unit_length,
+            )
         required_tail_mask = _delayed_tail_mask(persistent_length, self.unit_length)
         tail_mask = (
             required_tail_mask
@@ -1037,15 +1173,32 @@ class CachedDiTSolver:
             if compact_tail
             else full_positions[..., persistent_length:total_length]
         )
-        pending_writes: list[tuple[int, mx.array, mx.array]] = []
+        cache_factory: CacheFactory | None = None
+        if cache is None:
+
+            def allocate_scratch_cache(
+                key_dtype: mx.Dtype,
+                value_dtype: mx.Dtype,
+            ) -> DiTKvCache:
+                return self.runner.allocate_cache(
+                    capacity_patches=DIT_CACHE_BUCKETS[0],
+                    nfe=nfe,
+                    batch_size=batch_size,
+                    key_dtype=key_dtype,
+                    value_dtype=value_dtype,
+                )
+
+            cache_factory = allocate_scratch_cache
+
         for nfe_index, modulations in enumerate(modulations_by_nfe):
-            velocity, keys, values = self.runner.next_velocity(
+            velocity, cache = self.runner.next_velocity(
                 coordinate,
                 previous_unit=previous_unit,
                 current_hidden=current_hidden,
                 cfg_previous_unit=cfg_previous_unit,
                 cfg_current_hidden=cfg_current_hidden,
                 cache=cache,
+                cache_factory=cache_factory,
                 nfe_index=nfe_index,
                 modulations=modulations,
                 positions=tail_positions,
@@ -1053,27 +1206,10 @@ class CachedDiTSolver:
                 guidance_scale=guidance_scale,
             )
             coordinate = coordinate + schedule.step_size * velocity
-            pending_writes.append((nfe_index, keys, values))
-        if cache is None:
-            _first_nfe, first_keys, first_values = pending_writes[0]
-            cache = self._allocate_projected_cache(
-                state,
-                nfe=nfe,
-                batch_size=batch_size,
-                keys=first_keys,
-                values=first_values,
-            )
-        cache = self._grow_projected_cache(
-            cache,
-            required_tokens=persistent_length + self.unit_length,
-        )
-        for nfe_index, keys, values in pending_writes:
-            cache.validate_write(nfe_index, keys, values)
-        for nfe_index, keys, values in pending_writes:
-            cache.write(nfe_index, keys, values)
         if cache is None:
             raise RuntimeError("cached DiT did not produce request K/V")
         mx.eval(coordinate, cache.cache_k, cache.cache_v)
+        cache.publish_unit()
         if state.cache is not cache:
             state.cache = cache
         return coordinate

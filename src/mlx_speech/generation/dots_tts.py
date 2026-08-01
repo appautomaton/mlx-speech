@@ -736,6 +736,23 @@ class DotsTTSGenerator:
             (1, self.config.patch_size, self.config.latent_dim),
             key=state.rng.next_key(),
         ).astype(self._activation_dtype)
+
+        def finish_cached_patch(patch: mx.array) -> mx.array:
+            if (
+                state.dit_solver is None
+                or state.dit_state is None
+                or state.dit_state.cache is None
+            ):
+                return patch
+            tail_length = state.dit_solver.hidden_patch_size
+            state.fm_chunks[:] = [
+                _concatenate_suffix(state.fm_chunks, tail_length)
+            ]
+            state.cfg_chunks[:] = [
+                _concatenate_suffix(state.cfg_chunks, tail_length)
+            ]
+            return patch
+
         if state.dit_solver is not None:
             if state.dit_state is None:
                 raise RuntimeError("dots.tts request is missing its DiT solver state")
@@ -750,24 +767,26 @@ class DotsTTSGenerator:
                     if self.config.mode == "meanflow"
                     else _concatenate_suffix(state.cfg_chunks, fresh_length)
                 )
-                return state.dit_solver.sample_tail(
-                    state.dit_state,
-                    previous_unit=fresh[:, : state.dit_solver.unit_length],
-                    current_hidden=fresh[:, state.dit_solver.unit_length :],
-                    cfg_previous_unit=(
-                        None
-                        if cfg_fresh is None
-                        else cfg_fresh[:, : state.dit_solver.unit_length]
-                    ),
-                    cfg_current_hidden=(
-                        None
-                        if cfg_fresh is None
-                        else cfg_fresh[:, state.dit_solver.unit_length :]
-                    ),
-                    speaker_condition=speaker_condition,
-                    guidance_scale=guidance_scale,
-                    steps=solver_steps,
-                    noise=noise,
+                return finish_cached_patch(
+                    state.dit_solver.sample_tail(
+                        state.dit_state,
+                        previous_unit=fresh[:, : state.dit_solver.unit_length],
+                        current_hidden=fresh[:, state.dit_solver.unit_length :],
+                        cfg_previous_unit=(
+                            None
+                            if cfg_fresh is None
+                            else cfg_fresh[:, : state.dit_solver.unit_length]
+                        ),
+                        cfg_current_hidden=(
+                            None
+                            if cfg_fresh is None
+                            else cfg_fresh[:, state.dit_solver.unit_length :]
+                        ),
+                        speaker_condition=speaker_condition,
+                        guidance_scale=guidance_scale,
+                        steps=solver_steps,
+                        noise=noise,
+                    )
                 )
             fm_sequence = mx.concatenate(state.fm_chunks, axis=1)
             sequence = mx.concatenate((fm_sequence, padding), axis=1)
@@ -776,16 +795,18 @@ class DotsTTSGenerator:
                 cfg_sequence = mx.concatenate(
                     (mx.concatenate(state.cfg_chunks, axis=1), padding), axis=1
                 )
-            return state.dit_solver.sample(
-                state.dit_state,
-                sequence=sequence,
-                cfg_sequence=cfg_sequence,
-                attention_mask=None,
-                positions=None,
-                speaker_condition=speaker_condition,
-                guidance_scale=guidance_scale,
-                steps=solver_steps,
-                noise=noise,
+            return finish_cached_patch(
+                state.dit_solver.sample(
+                    state.dit_state,
+                    sequence=sequence,
+                    cfg_sequence=cfg_sequence,
+                    attention_mask=None,
+                    positions=None,
+                    speaker_condition=speaker_condition,
+                    guidance_scale=guidance_scale,
+                    steps=solver_steps,
+                    noise=noise,
+                )
             )
         fm_sequence = mx.concatenate(state.fm_chunks, axis=1)
         sequence = mx.concatenate((fm_sequence, padding), axis=1)

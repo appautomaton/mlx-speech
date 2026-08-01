@@ -138,12 +138,23 @@ def _published_cache(
     )
     published_tokens = published_patches * solver.unit_length
     for nfe_index in range(cache.nfe):
-        shape = cache.cache_k[nfe_index, ..., :published_tokens, :].shape
+        shape = (
+            cache.num_layers,
+            cache.branch_count * cache.batch_size,
+            cache.num_heads,
+            published_tokens,
+            cache.head_dim,
+        )
         size = int(np.prod(shape))
         values = mx.arange(size, dtype=mx.float32).reshape(shape)
         values = values / 200.0 + nfe_index / 10.0
-        cache.cache_k[nfe_index, ..., :published_tokens, :] = values
-        cache.cache_v[nfe_index, ..., :published_tokens, :] = -values
+        for layer_index in range(cache.num_layers):
+            cache.cache_k[nfe_index][layer_index][..., :published_tokens, :] = (
+                values[layer_index]
+            )
+            cache.cache_v[nfe_index][layer_index][..., :published_tokens, :] = (
+                -values[layer_index]
+            )
     cache.offsets = [published_tokens] * cache.nfe
     mx.eval(cache.cache_k, cache.cache_v)
     return cache
@@ -158,19 +169,69 @@ def _copy_cache_to_capacity(
         capacity_patches=capacity_patches,
         nfe=source.nfe,
         batch_size=source.batch_size,
-        key_dtype=source.cache_k.dtype,
-        value_dtype=source.cache_v.dtype,
+        key_dtype=source.key_dtype,
+        value_dtype=source.value_dtype,
     )
     for nfe_index, offset in enumerate(source.offsets):
-        cache.cache_k[nfe_index, ..., :offset, :] = source.cache_k[
-            nfe_index, ..., :offset, :
-        ]
-        cache.cache_v[nfe_index, ..., :offset, :] = source.cache_v[
-            nfe_index, ..., :offset, :
-        ]
+        for layer_index in range(source.num_layers):
+            cache.cache_k[nfe_index][layer_index][..., :offset, :] = source.cache_k[
+                nfe_index
+            ][layer_index][..., :offset, :]
+            cache.cache_v[nfe_index][layer_index][..., :offset, :] = source.cache_v[
+                nfe_index
+            ][layer_index][..., :offset, :]
     cache.offsets = list(source.offsets)
     mx.eval(cache.cache_k, cache.cache_v)
     return cache
+
+
+def _cache_keys(cache: DiTKvCache) -> mx.array:
+    return cache.stacked_keys()
+
+
+def _cache_values(cache: DiTKvCache) -> mx.array:
+    return cache.stacked_values()
+
+
+def test_cache_scratch_storage_is_physical_per_nfe_layer() -> None:
+    cache = DiTKvCache.allocate(
+        capacity_patches=64,
+        unit_length=1,
+        nfe=2,
+        num_layers=2,
+        branch_count=1,
+        batch_size=1,
+        num_heads=1,
+        head_dim=2,
+        key_dtype=mx.float32,
+        value_dtype=mx.float32,
+    )
+    key_storage_ids = {
+        id(layer) for nfe_layers in cache.cache_k for layer in nfe_layers
+    }
+    value_storage_ids = {
+        id(layer) for nfe_layers in cache.cache_v for layer in nfe_layers
+    }
+    assert len(key_storage_ids) == len(value_storage_ids) == 4
+    assert cache.keys.shape == cache.values.shape == cache.storage_shape
+
+    keys = mx.full((1, 1, 2, 2), 3.0)
+    values = mx.full((1, 1, 2, 2), -5.0)
+    cache.write_scratch(1, 1, keys, values)
+    mx.eval(cache.cache_k, cache.cache_v)
+
+    assert cache.offsets == [0, 0]
+    np.testing.assert_array_equal(cache.cache_k[1][1][..., :2, :], keys)
+    np.testing.assert_array_equal(cache.cache_v[1][1][..., :2, :], values)
+    for nfe_index, layer_index in ((0, 0), (0, 1), (1, 0)):
+        np.testing.assert_array_equal(
+            cache.cache_k[nfe_index][layer_index],
+            mx.zeros_like(cache.cache_k[nfe_index][layer_index]),
+        )
+        np.testing.assert_array_equal(
+            cache.cache_v[nfe_index][layer_index],
+            mx.zeros_like(cache.cache_v[nfe_index][layer_index]),
+        )
 
 
 def _oracle_meanflow(
@@ -299,6 +360,156 @@ def test_compact_tail_matches_full_history_after_cache_creation(mode: str) -> No
     assert compact_state.cache.offsets == full_state.cache.offsets
 
 
+@pytest.mark.parametrize("mode", ["meanflow", "soar"])
+def test_cached_interleaved_requests_are_exactly_isolated(mode: str) -> None:
+    mx.random.seed(77)
+    if mode == "meanflow":
+        oracle, cached = _meanflow_pair()
+    else:
+        oracle, cached = _soar_pair()
+
+    speakers = {
+        "a": mx.full((1, _HIDDEN_SIZE), 0.11),
+        "b": mx.full((1, _HIDDEN_SIZE), 0.37),
+    }
+    histories = {
+        "a": [_unit(0.15), _unit(0.55), _unit(0.95)],
+        "b": [_unit(1.4), _unit(1.8), _unit(2.2)],
+    }
+    cfg_histories = {
+        "a": [_unit(-0.25), _unit(-0.65), _unit(-1.05)],
+        "b": [_unit(-1.5), _unit(-1.9), _unit(-2.3)],
+    }
+    currents = {
+        "a": [_current(0.35), _current(0.75), _current(1.15)],
+        "b": [_current(1.6), _current(2.0), _current(2.4)],
+    }
+    cfg_currents = {
+        "a": [_current(-0.45), _current(-0.85), _current(-1.25)],
+        "b": [_current(-1.7), _current(-2.1), _current(-2.5)],
+    }
+    noises = {
+        "a": [
+            mx.full((1, _PATCH_SIZE, _LATENT_DIM), value)
+            for value in (0.05, 0.15, 0.25)
+        ],
+        "b": [
+            mx.full((1, _PATCH_SIZE, _LATENT_DIM), value)
+            for value in (0.45, 0.55, 0.65)
+        ],
+    }
+
+    def trusted_output(request: str, index: int) -> mx.array:
+        sequence = _sequence(histories[request][: index + 1], currents[request][index])
+        if mode == "meanflow":
+            return _oracle_meanflow(
+                oracle,
+                sequence,
+                noises[request][index],
+                speakers[request],
+            )
+        return _oracle_soar(
+            oracle,
+            sequence,
+            _sequence(
+                cfg_histories[request][: index + 1],
+                cfg_currents[request][index],
+            ),
+            noises[request][index],
+            speakers[request],
+        )
+
+    def cached_output(state, request: str, index: int) -> mx.array:
+        kwargs = {
+            "sequence": _sequence(
+                histories[request][: index + 1], currents[request][index]
+            ),
+            "speaker_condition": speakers[request],
+            "steps": 2,
+            "noise": noises[request][index],
+        }
+        if mode == "soar":
+            kwargs.update(
+                cfg_sequence=_sequence(
+                    cfg_histories[request][: index + 1],
+                    cfg_currents[request][index],
+                ),
+                guidance_scale=1.3,
+            )
+        return cached.sample(state, **kwargs)
+
+    baseline_states = {request: cached.new_state(64) for request in ("a", "b")}
+    baseline_outputs = {"a": [], "b": []}
+    for request in ("a", "b"):
+        for index in range(3):
+            expected = trusted_output(request, index)
+            actual = cached_output(baseline_states[request], request, index)
+            mx.eval(expected, actual)
+            np.testing.assert_allclose(actual, expected, atol=3e-5, rtol=3e-5)
+            saved = actual + 0
+            mx.eval(saved)
+            baseline_outputs[request].append(saved)
+
+    interleaved_states = {request: cached.new_state(64) for request in ("a", "b")}
+    for request, index in (
+        ("a", 0),
+        ("b", 0),
+        ("a", 1),
+        ("b", 1),
+        ("a", 2),
+        ("b", 2),
+    ):
+        other = "b" if request == "a" else "a"
+        other_cache = interleaved_states[other].cache
+        if other_cache is not None:
+            other_offsets = list(other_cache.offsets)
+            other_keys = _cache_keys(other_cache) + 0
+            other_values = _cache_values(other_cache) + 0
+            mx.eval(other_keys, other_values)
+
+        expected = trusted_output(request, index)
+        actual = cached_output(interleaved_states[request], request, index)
+        mx.eval(expected, actual)
+        np.testing.assert_allclose(actual, expected, atol=3e-5, rtol=3e-5)
+        np.testing.assert_array_equal(actual, baseline_outputs[request][index])
+
+        if other_cache is not None:
+            assert interleaved_states[other].cache is other_cache
+            assert other_cache.offsets == other_offsets
+            np.testing.assert_array_equal(_cache_keys(other_cache), other_keys)
+            np.testing.assert_array_equal(_cache_values(other_cache), other_values)
+
+    for request in ("a", "b"):
+        cache = interleaved_states[request].cache
+        baseline_cache = baseline_states[request].cache
+        assert cache is not None and baseline_cache is not None
+        assert cache.capacity_patches == baseline_cache.capacity_patches == 64
+        assert cache.storage_shape == baseline_cache.storage_shape
+        assert cache.offsets == baseline_cache.offsets == [3 * _UNIT_LENGTH] * 2
+        np.testing.assert_array_equal(_cache_keys(cache), _cache_keys(baseline_cache))
+        np.testing.assert_array_equal(
+            _cache_values(cache), _cache_values(baseline_cache)
+        )
+
+    first_cache = interleaved_states["a"].cache
+    second_cache = interleaved_states["b"].cache
+    assert first_cache is not None and second_cache is not None
+    first_storage = {
+        id(layer)
+        for storage in (first_cache.cache_k, first_cache.cache_v)
+        for nfe_layers in storage
+        for layer in nfe_layers
+    }
+    second_storage = {
+        id(layer)
+        for storage in (second_cache.cache_k, second_cache.cache_v)
+        for nfe_layers in storage
+        for layer in nfe_layers
+    }
+    assert first_cache is not second_cache
+    assert first_storage.isdisjoint(second_storage)
+
+
 def test_continuation_prefill_is_per_nfe_and_commits_the_final_prompt_unit() -> None:
     mx.random.seed(79)
     oracle, cached = _meanflow_pair()
@@ -322,13 +533,16 @@ def test_continuation_prefill_is_per_nfe_and_commits_the_final_prompt_unit() -> 
     assert cache.offsets == [3 * _UNIT_LENGTH, 3 * _UNIT_LENGTH]
     assert not bool(
         mx.allclose(
-            cache.cache_k[0, :, :, :, : cache.valid_tokens],
-            cache.cache_k[1, :, :, :, : cache.valid_tokens],
+            _cache_keys(cache)[0, :, :, :, : cache.valid_tokens],
+            _cache_keys(cache)[1, :, :, :, : cache.valid_tokens],
         ).item()
     )
+    scratch_end = cache.valid_tokens + _UNIT_LENGTH
+    stacked_keys = _cache_keys(cache)
+    assert bool(mx.any(stacked_keys[..., cache.valid_tokens : scratch_end, :] != 0))
     np.testing.assert_array_equal(
-        cache.cache_k[..., cache.valid_tokens :, :],
-        mx.zeros_like(cache.cache_k[..., cache.valid_tokens :, :]),
+        stacked_keys[..., scratch_end:, :],
+        mx.zeros_like(stacked_keys[..., scratch_end:, :]),
     )
 
 
@@ -359,20 +573,22 @@ def test_current_noisy_tail_never_changes_committed_cache_contents() -> None:
     assert first_state.cache is not None and second_state.cache is not None
     assert first_state.cache.offsets == second_state.cache.offsets == [3, 3]
     np.testing.assert_allclose(
-        first_state.cache.cache_k[..., :3, :],
-        second_state.cache.cache_k[..., :3, :],
+        _cache_keys(first_state.cache)[..., :3, :],
+        _cache_keys(second_state.cache)[..., :3, :],
         atol=2e-5,
         rtol=2e-5,
     )
     np.testing.assert_allclose(
-        first_state.cache.cache_v[..., :3, :],
-        second_state.cache.cache_v[..., :3, :],
+        _cache_values(first_state.cache)[..., :3, :],
+        _cache_values(second_state.cache)[..., :3, :],
         atol=2e-5,
         rtol=2e-5,
     )
-    np.testing.assert_array_equal(
-        first_state.cache.cache_k[..., 3:6, :],
-        mx.zeros_like(first_state.cache.cache_k[..., 3:6, :]),
+    assert not bool(
+        mx.allclose(
+            _cache_keys(first_state.cache)[..., 3:6, :],
+            _cache_keys(second_state.cache)[..., 3:6, :],
+        ).item()
     )
 
 
@@ -417,12 +633,12 @@ def test_soar_cache_matches_cfg_oracle_and_separates_branches() -> None:
     np.testing.assert_allclose(actual, expected, atol=3e-5, rtol=3e-5)
     cache = state.cache
     assert cache is not None
-    assert cache.cache_k.shape[:3] == (2, 2, 2)
+    assert cache.storage_shape[:3] == (2, 2, 2)
     assert cache.offsets == [3, 3]
     assert not bool(
         mx.allclose(
-            cache.cache_k[0, :, 0, :, :3],
-            cache.cache_k[0, :, 1, :, :3],
+            _cache_keys(cache)[0, :, 0, :, :3],
+            _cache_keys(cache)[0, :, 1, :, :3],
         ).item()
     )
 
@@ -479,12 +695,15 @@ def test_batched_soar_expands_masks_and_positions_to_cfg_branches() -> None:
     mx.eval(expected, actual)
     np.testing.assert_allclose(actual, expected, atol=3e-5, rtol=3e-5)
     assert state.cache is not None
-    assert state.cache.cache_k.shape[2] == 4
+    assert state.cache.storage_shape[2] == 4
     assert state.cache.offsets == [_UNIT_LENGTH, _UNIT_LENGTH]
 
 
 @pytest.mark.parametrize("mode", ["meanflow", "soar"])
-def test_bfloat16_later_patch_uses_projected_cache_dtypes(mode: str) -> None:
+def test_bfloat16_later_patch_uses_projected_cache_dtypes(
+    monkeypatch,
+    mode: str,
+) -> None:
     mx.random.seed(93)
     model, projection = _model_and_projection(meanflow=mode == "meanflow")
     model.set_dtype(mx.bfloat16)
@@ -545,6 +764,20 @@ def test_bfloat16_later_patch_uses_projected_cache_dtypes(mode: str) -> None:
     sequence = _sequence([previous], _current(0.8).astype(mx.bfloat16))
     cfg_sequence = _sequence([cfg_previous], _current(-0.2).astype(mx.bfloat16))
     noise = mx.full((1, _PATCH_SIZE, _LATENT_DIM), 0.3, dtype=mx.bfloat16)
+    projected_dtypes = []
+    original_write_scratch = DiTKvCache.write_scratch
+
+    def record_projected_dtypes(cache_self, nfe_index, layer_index, keys, values):
+        projected_dtypes.append((keys.dtype, values.dtype))
+        return original_write_scratch(
+            cache_self,
+            nfe_index,
+            layer_index,
+            keys,
+            values,
+        )
+
+    monkeypatch.setattr(DiTKvCache, "write_scratch", record_projected_dtypes)
     if mode == "meanflow":
         expected = _oracle_meanflow(oracle, sequence, noise, speaker)
         actual = cached.sample(
@@ -554,8 +787,6 @@ def test_bfloat16_later_patch_uses_projected_cache_dtypes(mode: str) -> None:
             steps=2,
             noise=noise,
         )
-        cfg_previous_unit = None
-        cfg_current_hidden = None
     else:
         expected = _oracle_soar(oracle, sequence, cfg_sequence, noise, speaker)
         actual = cached.sample(
@@ -567,8 +798,6 @@ def test_bfloat16_later_patch_uses_projected_cache_dtypes(mode: str) -> None:
             steps=2,
             noise=noise,
         )
-        cfg_previous_unit = cfg_previous
-        cfg_current_hidden = cfg_sequence[:, _UNIT_LENGTH : _UNIT_LENGTH + 1]
     mx.eval(expected, actual)
     np.testing.assert_allclose(
         actual.astype(mx.float32),
@@ -579,23 +808,12 @@ def test_bfloat16_later_patch_uses_projected_cache_dtypes(mode: str) -> None:
     cache = state.cache
     assert cache is not None
     assert cache.offsets == [_UNIT_LENGTH, _UNIT_LENGTH]
-    assert state.modulations_by_nfe is not None
-    _velocity, projected_keys, projected_values = cached.runner.next_velocity(
-        noise,
-        previous_unit=previous,
-        current_hidden=sequence[:, _UNIT_LENGTH : _UNIT_LENGTH + 1],
-        cfg_previous_unit=cfg_previous_unit,
-        cfg_current_hidden=cfg_current_hidden,
-        cache=None,
-        nfe_index=0,
-        modulations=state.modulations_by_nfe[0],
-        positions=_positions(2 * _UNIT_LENGTH),
-        attention_mask=_mask(2 * _UNIT_LENGTH),
-        guidance_scale=1.3,
+    assert projected_dtypes
+    assert all(key_dtype == cache.key_dtype for key_dtype, _ in projected_dtypes)
+    assert all(
+        value_dtype == cache.value_dtype for _, value_dtype in projected_dtypes
     )
-    assert cache.cache_k.dtype == projected_keys.dtype
-    assert cache.cache_v.dtype == projected_values.dtype
-    assert bool(mx.any(cache.cache_k[..., :_UNIT_LENGTH, :] != 0).item())
+    assert bool(mx.any(_cache_keys(cache)[..., :_UNIT_LENGTH, :] != 0).item())
 
     next_previous = _unit(0.9).astype(mx.bfloat16)
     next_cfg_previous = _unit(-0.9).astype(mx.bfloat16)
@@ -641,8 +859,10 @@ def test_bfloat16_later_patch_uses_projected_cache_dtypes(mode: str) -> None:
         rtol=5e-2,
     )
     assert cache.offsets == [2 * _UNIT_LENGTH, 2 * _UNIT_LENGTH]
-    assert cache.cache_k.dtype == projected_keys.dtype
-    assert cache.cache_v.dtype == projected_values.dtype
+    assert all(key_dtype == cache.key_dtype for key_dtype, _ in projected_dtypes)
+    assert all(
+        value_dtype == cache.value_dtype for _, value_dtype in projected_dtypes
+    )
 
 
 @pytest.mark.parametrize(
@@ -699,8 +919,8 @@ def test_cache_grows_transactionally_without_changing_solver_output(
         published_patches=source_capacity,
     )
     baseline = _copy_cache_to_capacity(cached, source, target_capacity)
-    source_keys = source.cache_k + 0
-    source_values = source.cache_v + 0
+    source_keys = _cache_keys(source) + 0
+    source_values = _cache_values(source) + 0
     mx.eval(source_keys, source_values)
     growing_state = cached.new_state(512)
     baseline_state = cached.new_state(512)
@@ -736,25 +956,29 @@ def test_cache_grows_transactionally_without_changing_solver_output(
     assert grown.offsets == [
         (source_capacity + 1) * _UNIT_LENGTH,
     ] * 2
-    assert grown.cache_k.dtype == source.cache_k.dtype
-    assert grown.cache_v.dtype == source.cache_v.dtype
-    assert grown.cache_k.shape[:4] == source.cache_k.shape[:4]
+    assert grown.key_dtype == source.key_dtype
+    assert grown.value_dtype == source.value_dtype
+    assert grown.storage_shape[:4] == source.storage_shape[:4]
     np.testing.assert_array_equal(
-        grown.cache_k[..., : source.capacity_tokens, :],
+        _cache_keys(grown)[..., : source.capacity_tokens, :],
         source_keys,
     )
     np.testing.assert_array_equal(
-        grown.cache_v[..., : source.capacity_tokens, :],
+        _cache_values(grown)[..., : source.capacity_tokens, :],
         source_values,
     )
     assert baseline_state.cache is not None
     np.testing.assert_array_equal(
-        grown.cache_k[..., : grown.valid_tokens, :],
-        baseline_state.cache.cache_k[..., : baseline_state.cache.valid_tokens, :],
+        _cache_keys(grown)[..., : grown.valid_tokens, :],
+        _cache_keys(baseline_state.cache)[
+            ..., : baseline_state.cache.valid_tokens, :
+        ],
     )
     np.testing.assert_array_equal(
-        grown.cache_v[..., : grown.valid_tokens, :],
-        baseline_state.cache.cache_v[..., : baseline_state.cache.valid_tokens, :],
+        _cache_values(grown)[..., : grown.valid_tokens, :],
+        _cache_values(baseline_state.cache)[
+            ..., : baseline_state.cache.valid_tokens, :
+        ],
     )
 
 
@@ -771,8 +995,8 @@ def test_cache_growth_failure_leaves_prior_cache_usable(
     )
     state = cached.new_state(512)
     state.cache = source
-    original_keys = source.cache_k + 0
-    original_values = source.cache_v + 0
+    original_keys = _cache_keys(source) + 0
+    original_values = _cache_values(source) + 0
     original_offsets = list(source.offsets)
     mx.eval(original_keys, original_values)
 
@@ -811,8 +1035,8 @@ def test_cache_growth_failure_leaves_prior_cache_usable(
     assert state.cache is source
     assert source.capacity_patches == 64
     assert source.offsets == original_offsets
-    np.testing.assert_array_equal(source.cache_k, original_keys)
-    np.testing.assert_array_equal(source.cache_v, original_values)
+    np.testing.assert_array_equal(_cache_keys(source), original_keys)
+    np.testing.assert_array_equal(_cache_values(source), original_values)
 
     if failure == "allocation":
         monkeypatch.setattr(cached.runner, "allocate_cache", original)
@@ -858,7 +1082,7 @@ def test_cache_rejects_overflow_alignment_and_inconsistent_state() -> None:
         )
 
 
-def test_later_nfe_failure_keeps_existing_cache_transactional(monkeypatch) -> None:
+def test_mid_nfe_failure_preserves_exact_published_prefix_and_retry(monkeypatch) -> None:
     mx.random.seed(99)
     _oracle, cached = _meanflow_pair()
     state = cached.new_state(64)
@@ -875,39 +1099,92 @@ def test_later_nfe_failure_keeps_existing_cache_transactional(monkeypatch) -> No
     cache = state.cache
     assert cache is not None
     original_offsets = list(cache.offsets)
-    original_keys = cache.cache_k + 0
-    original_values = cache.cache_v + 0
+    published_length = cache.valid_tokens
+    original_keys = _cache_keys(cache)[..., :published_length, :] + 0
+    original_values = _cache_values(cache)[..., :published_length, :] + 0
     mx.eval(original_keys, original_values)
     third_sequence = _sequence([previous, _unit(0.9)], _current(1.3))
-    original_next_velocity = cached.runner.next_velocity
+    third_noise = mx.ones((1, _PATCH_SIZE, _LATENT_DIM)) * 0.2
+    clean_state = cached.new_state(64)
+    cached.sample(
+        clean_state,
+        sequence=second_sequence,
+        speaker_condition=speaker,
+        steps=2,
+        noise=mx.zeros((1, _PATCH_SIZE, _LATENT_DIM)),
+    )
+    expected = cached.sample(
+        clean_state,
+        sequence=third_sequence,
+        speaker_condition=speaker,
+        steps=2,
+        noise=third_noise,
+    )
+    assert clean_state.cache is not None
+    original_write_scratch = DiTKvCache.write_scratch
 
-    def fail_second_nfe(*args, **kwargs):
-        if kwargs["nfe_index"] == 1:
-            raise RuntimeError("injected later NFE failure")
-        return original_next_velocity(*args, **kwargs)
+    def fail_mid_nfe(cache_self, nfe_index, layer_index, keys, values):
+        end = original_write_scratch(
+            cache_self,
+            nfe_index,
+            layer_index,
+            keys,
+            values,
+        )
+        if nfe_index == 1 and layer_index == 0:
+            raise RuntimeError("injected mid-NFE failure")
+        return end
 
-    monkeypatch.setattr(cached.runner, "next_velocity", fail_second_nfe)
-    with pytest.raises(RuntimeError, match="injected later NFE"):
+    monkeypatch.setattr(DiTKvCache, "write_scratch", fail_mid_nfe)
+    with pytest.raises(RuntimeError, match="injected mid-NFE"):
         cached.sample(
             state,
             sequence=third_sequence,
             speaker_condition=speaker,
             steps=2,
-            noise=mx.ones((1, _PATCH_SIZE, _LATENT_DIM)) * 0.2,
+            noise=third_noise,
         )
     assert cache.offsets == original_offsets
-    np.testing.assert_array_equal(cache.cache_k, original_keys)
-    np.testing.assert_array_equal(cache.cache_v, original_values)
+    np.testing.assert_array_equal(
+        _cache_keys(cache)[..., :published_length, :], original_keys
+    )
+    np.testing.assert_array_equal(
+        _cache_values(cache)[..., :published_length, :], original_values
+    )
 
-    monkeypatch.setattr(cached.runner, "next_velocity", original_next_velocity)
-    cached.sample(
+    scratch_end = published_length + 2 * _UNIT_LENGTH
+    for nfe_layers in cache.cache_k:
+        for layer in nfe_layers:
+            layer[..., published_length:scratch_end, :] = 37.0
+    for nfe_layers in cache.cache_v:
+        for layer in nfe_layers:
+            layer[..., published_length:scratch_end, :] = -41.0
+    mx.eval(cache.cache_k, cache.cache_v)
+    monkeypatch.setattr(DiTKvCache, "write_scratch", original_write_scratch)
+    actual = cached.sample(
         state,
         sequence=third_sequence,
         speaker_condition=speaker,
         steps=2,
-        noise=mx.ones((1, _PATCH_SIZE, _LATENT_DIM)) * 0.2,
+        noise=third_noise,
     )
     assert cache.offsets == [2 * _UNIT_LENGTH, 2 * _UNIT_LENGTH]
+    mx.eval(expected, actual, cache.cache_k, cache.cache_v)
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(
+        _cache_keys(cache)[..., : cache.valid_tokens, :],
+        _cache_keys(clean_state.cache)[..., : clean_state.cache.valid_tokens, :],
+    )
+    np.testing.assert_array_equal(
+        _cache_values(cache)[..., : cache.valid_tokens, :],
+        _cache_values(clean_state.cache)[..., : clean_state.cache.valid_tokens, :],
+    )
+    np.testing.assert_array_equal(
+        _cache_keys(cache)[..., :published_length, :], original_keys
+    )
+    np.testing.assert_array_equal(
+        _cache_values(cache)[..., :published_length, :], original_values
+    )
 
 
 def test_prompt_prefill_streams_nfe_and_publishes_only_after_success(

@@ -9,6 +9,7 @@ import pytest
 from mlx_speech.generation.dots_tts import (
     DEFAULT_MAX_AUDIO_PATCHES,
     _RESAMPLE_WORKSPACE_BYTES,
+    _DotsTTSRequestState,
     DotsTTSGenerator,
     DotsTTSPromptConditioning,
     DotsTTSSynthesisOutput,
@@ -186,6 +187,88 @@ def _generator(
         latent_io=_LatentIO(),
     )
     return DotsTTSGenerator(components, tokenizer), backend, dit
+
+
+def test_cached_generator_compacts_full_history_after_cache_publication() -> None:
+    generator, _, _ = _generator("meanflow")
+
+    class CompactSolver:
+        unit_length = 3
+        hidden_patch_size = 1
+
+        def __init__(self):
+            self.full_sequences = []
+            self.tails = []
+
+        def sample(self, state, *, sequence, **kwargs):
+            del kwargs
+            self.full_sequences.append(sequence)
+            state.cache = object()
+            return mx.full((1, 2, 2), 0.25)
+
+        def sample_tail(
+            self,
+            state,
+            *,
+            previous_unit,
+            current_hidden,
+            **kwargs,
+        ):
+            del state, kwargs
+            self.tails.append((previous_unit, current_hidden))
+            return mx.full((1, 2, 2), 0.5)
+
+    solver = CompactSolver()
+    current = mx.full((1, 1, 4), 0.7)
+    cfg_current = mx.full((1, 1, 4), -0.7)
+    state = _DotsTTSRequestState(
+        fm_chunks=[
+            mx.full((1, 3, 4), 0.1),
+            mx.full((1, 3, 4), 0.4),
+            current,
+        ],
+        cfg_chunks=[
+            mx.full((1, 3, 4), -0.1),
+            mx.full((1, 3, 4), -0.4),
+            cfg_current,
+        ],
+        qwen_cache=None,
+        semantic_state=None,
+        dit_solver=solver,
+        dit_state=SimpleNamespace(cache=None),
+        rng=SimpleNamespace(next_key=lambda: mx.random.key(123)),
+    )
+
+    first_patch = generator._solve_patch(
+        state,
+        speaker_condition=None,
+        solver_steps=1,
+        guidance_scale=1.2,
+    )
+    assert len(solver.full_sequences) == 1
+    assert int(solver.full_sequences[0].shape[1]) == 9
+    assert [int(chunk.shape[1]) for chunk in state.fm_chunks] == [1]
+    assert [int(chunk.shape[1]) for chunk in state.cfg_chunks] == [1]
+    np.testing.assert_array_equal(state.fm_chunks[0], current)
+    np.testing.assert_array_equal(state.cfg_chunks[0], cfg_current)
+
+    generator._append_history(first_patch, state.fm_chunks, state.cfg_chunks)
+    next_hidden = mx.full((1, 1, 4), 0.9)
+    generator._append_hidden(next_hidden, state.fm_chunks, state.cfg_chunks)
+    expected_previous = mx.concatenate(state.fm_chunks[:-1], axis=1)
+    expected_current = state.fm_chunks[-1]
+
+    generator._solve_patch(
+        state,
+        speaker_condition=None,
+        solver_steps=1,
+        guidance_scale=1.2,
+    )
+    assert len(solver.tails) == 1
+    np.testing.assert_array_equal(solver.tails[0][0], expected_previous)
+    np.testing.assert_array_equal(solver.tails[0][1], expected_current)
+    assert [int(chunk.shape[1]) for chunk in state.fm_chunks] == [1]
+    assert [int(chunk.shape[1]) for chunk in state.cfg_chunks] == [1]
 
 
 @pytest.mark.parametrize("mode", ["flow_matching", "meanflow"])
