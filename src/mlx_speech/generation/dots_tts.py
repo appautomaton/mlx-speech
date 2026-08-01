@@ -379,8 +379,37 @@ def _mono_waveform(value: mx.array) -> mx.array:
     return waveform
 
 
+def _materialize_waveform_health(
+    waveform: mx.array,
+    *dependencies: mx.array,
+) -> tuple[bool, bool]:
+    """Publish waveform work once and return its finite/non-silent health."""
+
+    health = mx.stack(
+        (
+            mx.all(mx.isfinite(waveform)),
+            mx.any(mx.abs(waveform) > 0),
+        )
+    )
+    mx.eval(waveform, health, *dependencies)
+    finite, non_silent = np.asarray(health, dtype=np.bool_)
+    return bool(finite), bool(non_silent)
+
+
+def _vocoder_state_arrays(state: Any) -> tuple[mx.array, ...]:
+    """Return decoder arrays whose publication is owned by the waveform sink."""
+
+    arrays: list[mx.array] = []
+    decoder_input = getattr(state, "decoder_input", None)
+    if decoder_input is not None:
+        arrays.append(decoder_input)
+    recurrent_state = getattr(state, "recurrent_state", ())
+    arrays.extend(tensor for layer_state in recurrent_state for tensor in layer_state)
+    return tuple(arrays)
+
+
 class DotsTTSGenerator:
-    """Compose converted dots.tts components into non-streaming waveform inference."""
+    """Compose converted dots.tts components into batch or streaming inference."""
 
     def __init__(
         self,
@@ -400,6 +429,8 @@ class DotsTTSGenerator:
             OrderedDict()
         )
         self._prompt_cache_lock = Lock()
+        self._soar_unconditional_hidden: mx.array | None = None
+        self._soar_unconditional_lock = Lock()
 
     @classmethod
     def from_dir(cls, model_dir: str | Path) -> "DotsTTSGenerator":
@@ -740,9 +771,17 @@ class DotsTTSGenerator:
         core = self.components.core
         last = hidden[:, -1:, :]
         fm_chunks.append(core.hidden_projection(last).astype(self._activation_dtype))
-        cfg_chunks.append(
-            core.hidden_projection(mx.zeros_like(last)).astype(self._activation_dtype)
-        )
+        if self.config.mode != "meanflow":
+            unconditional = self._soar_unconditional_hidden
+            if unconditional is None:
+                candidate = core.hidden_projection(mx.zeros_like(last)).astype(
+                    self._activation_dtype
+                )
+                with self._soar_unconditional_lock:
+                    if self._soar_unconditional_hidden is None:
+                        self._soar_unconditional_hidden = candidate
+                    unconditional = self._soar_unconditional_hidden
+            cfg_chunks.append(unconditional)
 
     def _append_history(
         self,
@@ -754,7 +793,8 @@ class DotsTTSGenerator:
             self._activation_dtype
         )
         fm_chunks.append(projected)
-        cfg_chunks.append(projected)
+        if self.config.mode != "meanflow":
+            cfg_chunks.append(projected)
 
     def _prefill(
         self,
@@ -873,7 +913,12 @@ class DotsTTSGenerator:
                 return patch
             tail_length = state.dit_solver.hidden_patch_size
             state.fm_chunks[:] = [_concatenate_suffix(state.fm_chunks, tail_length)]
-            state.cfg_chunks[:] = [_concatenate_suffix(state.cfg_chunks, tail_length)]
+            if self.config.mode == "meanflow":
+                state.cfg_chunks.clear()
+            else:
+                state.cfg_chunks[:] = [
+                    _concatenate_suffix(state.cfg_chunks, tail_length)
+                ]
             return patch
 
         if state.dit_solver is not None:
@@ -998,15 +1043,18 @@ class DotsTTSGenerator:
             )
         state.pending_chunk_patches += patch_count
         waveform = decoded[0, 0].astype(mx.float32)
-        mx.eval(waveform)
-        if not bool(mx.all(mx.isfinite(waveform)).item()):
+        finite, non_silent = _materialize_waveform_health(
+            waveform,
+            *_vocoder_state_arrays(state.vocoder_state),
+        )
+        if not finite:
             raise RuntimeError("dots.tts generation produced non-finite audio")
         if int(waveform.size) == 0:
             return None
         num_patches = state.pending_chunk_patches
         state.pending_chunk_patches = 0
         state.yielded_waveform = True
-        if bool(mx.any(mx.abs(waveform) > 0).item()):
+        if non_silent:
             state.has_non_silent_audio = True
         return _DotsTTSStreamChunk(
             waveform=waveform,
@@ -1160,7 +1208,6 @@ class DotsTTSGenerator:
                     solver_steps=solver_steps,
                     guidance_scale=guidance_scale,
                 )
-                mx.eval(patch)
                 self._append_history(patch, state.fm_chunks, state.cfg_chunks)
                 denormalized = self.components.latent_io.denormalize(patch)
                 semantic_patch = denormalized.astype(self._activation_dtype)
@@ -1334,12 +1381,12 @@ class DotsTTSGenerator:
                 f"dots.tts AudioVAE returned invalid waveform {decoded.shape}"
             )
         waveform = decoded[0, 0].astype(mx.float32)
-        mx.eval(waveform)
-        if not bool(mx.all(mx.isfinite(waveform)).item()):
+        finite, non_silent = _materialize_waveform_health(waveform)
+        if not finite:
             raise RuntimeError("dots.tts generation produced non-finite audio")
         if int(waveform.size) == 0:
             raise RuntimeError("dots.tts generation produced empty audio")
-        if not bool(mx.any(mx.abs(waveform) > 0).item()):
+        if not non_silent:
             raise RuntimeError("dots.tts generation produced silent audio")
         return DotsTTSSynthesisOutput(
             waveform=waveform,

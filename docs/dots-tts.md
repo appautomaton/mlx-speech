@@ -94,7 +94,7 @@ These dots.tts controls are keyword arguments to `model.generate(...)`.
 
 | Argument | Default | Behavior |
 | --- | ---: | --- |
-| `max_audio_patches` | 128 | Hard cap on generated latent patches; `max_new_tokens` is an alias. |
+| `max_audio_patches` | 500 | Generated latent-patch budget; `max_new_tokens` is an alias. The hard runtime maximum is 512. |
 | `solver_steps` | SOAR 10, MF 4 | Positive override for acoustic solver evaluations. |
 | `guidance_scale` | 1.2 | SOAR classifier-free guidance; accepted but unused by MeanFlow. |
 | `speaker_scale` | 1.5 | Scales the reference speaker embedding. |
@@ -102,11 +102,45 @@ These dots.tts controls are keyword arguments to `model.generate(...)`.
 | `seed` | 42 | Seeds latent sampling for repeatable runs on the same stack. |
 | `eos_threshold` | 0.8 | Qwen EOS probability threshold in the closed interval `[0, 1]`. |
 | `template` | `tts` | `tts` or the source-compatible `tts_interleave` schedule. |
+| `stream_chunk_patches` | 4 | After the first two one-patch chunks, group this many patches per streaming vocoder call. |
 
 Continuation references consume part of the patch budget. The runtime rejects
 a budget that cannot hold the reference prefill, its regenerated tail, and at
 least one target patch. Raising the budget can increase both output length and
 peak memory.
+
+## Batch and streaming output
+
+`model.generate(...)` collects all generated latent patches and invokes the
+AudioVAE decoder once. `model.generate_stream(...)` uses a bounded recurrent
+decoder state and yields waveform chunks as they become stable:
+
+```python
+for chunk in model.generate_stream(
+    "Today the weather is bright and peaceful.",
+    reference_audio="reference.wav",
+    language="en",
+):
+    play(chunk.waveform, sample_rate=chunk.sample_rate)
+```
+
+The default streaming cadence decodes the first patch, the second patch, then
+four-patch groups; a residual group and decoder lookahead are flushed at the
+end. This is a `1 / 1 / 4` patch cadence, not sentence-level text streaming.
+Closing the iterator early releases request-owned Qwen, semantic, DiT, and
+vocoder state without flushing more audio.
+
+Reference features are cached in memory by normalized waveform content and
+prompt mode. Reusing the same reference avoids repeating its speaker encoder
+and, for continuation mode, AudioVAE encoder work. Speaker scale and sampling
+seed remain request-specific. Low-level `DotsTTSGenerator` users can call
+`clear_prompt_cache()`; otherwise the cache is released with the loaded model.
+
+The DiT key/value cache allocates progressively in 64, 128, 256, and 512 patch
+buckets while the request budget remains a logical bound. Common recurrent and
+decoder shapes also use model-owned compiled functions. The first request can
+therefore include compilation warmup that later requests on the same loaded
+model do not repeat.
 
 ## Artifact layout and precision
 
@@ -185,16 +219,23 @@ speakers, languages, seeds, or hardware.
 
 ## Memory and limitations
 
-- Generation is non-streaming and continuously autoregressive. Prompt and
-  generated history remain live, so memory grows with reference duration and
-  patch budget even when Qwen is int8.
+- Generation is continuously autoregressive. The batch sink retains generated
+  latent patches until its single decode; the streaming sink retains bounded
+  recurrent decoder state and its pending patch group. Qwen, semantic, and DiT
+  caches still grow with generated length, with DiT storage following the
+  progressive cache buckets above.
 - Load and evaluate one artifact at a time. The four-artifact gate did this
   sequentially and stopped runs above explicit memory guards.
 - Start with the int8 alias and a bounded patch budget. The measured int8 peaks
   were about 7.0–7.2 GiB for the 128-patch gate; longer or different workloads
   may use more.
-- Output is finite, mono, 48 kHz audio. There is no public streaming API and no
-  training path in `mlx-speech`.
+- Both output sinks produce finite, mono, 48 kHz audio. There is no training
+  path in `mlx-speech`.
+- The complete text/token schedule is built before acoustic generation. The
+  streaming API streams waveform decoding, but it does not accept incremental
+  text, split long text automatically, or continue beyond Qwen's configured
+  position limit. Applications should segment long text deliberately and keep
+  the 500-patch default and 512-patch hard bound in mind.
 - English and Mandarin passed the local release gate. The tokenizer can accept
   other language tags, but this release does not publish MLX quality results
   for them.

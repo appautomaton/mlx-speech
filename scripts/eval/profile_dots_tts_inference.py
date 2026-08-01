@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 import numpy as np
 
@@ -150,12 +150,63 @@ def _host_identity() -> dict[str, str]:
 
 
 class _StageProfiler:
-    def __init__(self, generator: Any):
+    def __init__(self, generator: Any, *, synchronize_outputs: bool = False):
         self.generator = generator
+        self.synchronize_outputs = bool(synchronize_outputs)
         self.seconds: dict[str, float] = {}
         self._originals: list[tuple[Any, str, Any]] = []
 
-    def _wrap(self, target: Any, name: str, stage: str) -> None:
+    @staticmethod
+    def _materialize_prompt(prompt: Any) -> None:
+        import mlx.core as mx
+
+        tensors = [
+            value
+            for value in (
+                prompt.speaker_condition,
+                prompt.prompt_patches,
+                prompt.prompt_latents,
+            )
+            if value is not None
+        ]
+        if tensors:
+            mx.eval(*tensors)
+
+    @staticmethod
+    def _materialize_qwen(output: Any) -> None:
+        import mlx.core as mx
+
+        tensors = [output.last_hidden_state, output.eos_logits]
+        if output.logits is not None:
+            tensors.append(output.logits)
+        for cache in output.cache:
+            tensors.extend((cache.keys, cache.values))
+        mx.eval(*tensors)
+
+    @staticmethod
+    def _materialize_semantic(result: Any) -> None:
+        import mlx.core as mx
+
+        output, state = result
+        tensors = [output, state.conv_tail]
+        for cache in state.layer_caches:
+            tensors.extend((cache.keys, cache.values))
+        mx.eval(*tensors)
+
+    @staticmethod
+    def _materialize_array(value: Any) -> None:
+        import mlx.core as mx
+
+        mx.eval(value)
+
+    def _wrap(
+        self,
+        target: Any,
+        name: str,
+        stage: str,
+        *,
+        materialize: Callable[[Any], None] | None = None,
+    ) -> None:
         if not hasattr(target, name):
             return
         original = getattr(target, name)
@@ -164,7 +215,10 @@ class _StageProfiler:
         def measured(*args: Any, **kwargs: Any) -> Any:
             started = time.perf_counter()
             try:
-                return original(*args, **kwargs)
+                result = original(*args, **kwargs)
+                if materialize is not None:
+                    materialize(result)
+                return result
             finally:
                 self.seconds[stage] = self.seconds.get(stage, 0.0) + (
                     time.perf_counter() - started
@@ -174,11 +228,57 @@ class _StageProfiler:
         setattr(target, name, measured)
 
     def __enter__(self) -> "_StageProfiler":
-        self._wrap(self.generator, "prepare_prompt", "prompt")
-        self._wrap(self.generator, "_prefill", "prefill")
+        materialize_prompt = (
+            self._materialize_prompt if self.synchronize_outputs else None
+        )
+        materialize_qwen = (
+            self._materialize_qwen if self.synchronize_outputs else None
+        )
+        materialize_semantic = (
+            self._materialize_semantic if self.synchronize_outputs else None
+        )
+        materialize_array = (
+            self._materialize_array if self.synchronize_outputs else None
+        )
+        self._wrap(
+            self.generator,
+            "prepare_prompt",
+            "prompt",
+            materialize=materialize_prompt,
+        )
         self._wrap(self.generator, "_solve_patch", "acoustic")
-        self._wrap(self.generator, "_decode_request_chunk", "decoder")
-        self._wrap(self.generator.components.audio_vae, "decode", "decoder")
+        self._wrap(
+            self.generator.components.core.qwen,
+            "step",
+            "qwen",
+            materialize=materialize_qwen,
+        )
+        self._wrap(
+            self.generator.components.core.qwen,
+            "should_stop",
+            "qwen",
+            materialize=materialize_array,
+        )
+        semantic = self.generator.components.core.semantic_encoder
+        self._wrap(
+            semantic,
+            "prefill",
+            "semantic",
+            materialize=materialize_semantic,
+        )
+        self._wrap(
+            semantic,
+            "decode_patch",
+            "semantic",
+            materialize=materialize_semantic,
+        )
+        self._wrap(self.generator, "_decode_stream_chunk", "decoder")
+        self._wrap(
+            self.generator.components.audio_vae,
+            "decode",
+            "decoder",
+            materialize=materialize_array,
+        )
         return self
 
     def __exit__(self, *_args: object) -> None:
@@ -255,7 +355,6 @@ def measure_trial(
             seed=seed,
             eos_threshold=eos_threshold,
         )
-        mx.eval(result.waveform)
         first_output_seconds = time.perf_counter() - started
         patch_count = int(result.num_patches)
         chunk_count = 1
@@ -270,7 +369,6 @@ def measure_trial(
         )
         try:
             for chunk in stream:
-                mx.eval(chunk.waveform)
                 if first_output_seconds is None:
                     first_output_seconds = time.perf_counter() - started
                 waveforms.append(chunk.waveform)
@@ -394,7 +492,6 @@ def _maximum_budget_smoke(
     )
     try:
         for chunk in stream:
-            mx.eval(chunk.waveform)
             emitted += int(chunk.num_patches)
             waveform_samples += int(chunk.waveform.size)
             if emitted >= patch_count:
@@ -516,7 +613,10 @@ def profile(args: argparse.Namespace) -> dict[str, Any]:
     for variant in args.variants:
         model_dir = args.model_root / variant / f"mlx-{args.artifact_class}"
         generator = DotsTTSGenerator.from_dir(model_dir)
-        with _StageProfiler(generator) as stage_profiler:
+        with _StageProfiler(
+            generator,
+            synchronize_outputs=args.synchronized_stage_timing,
+        ) as stage_profiler:
             for path in args.paths:
                 warmup_trials = []
                 for warmup_index in range(args.warmup_runs):
@@ -606,6 +706,11 @@ def profile(args: argparse.Namespace) -> dict[str, Any]:
             "paths": list(args.paths),
             "memory_limit_gib": args.memory_limit_gib,
             "solver_steps": "artifact_default",
+            "stage_timing": (
+                "synchronized_component_outputs"
+                if args.synchronized_stage_timing
+                else "default_lazy_boundaries"
+            ),
         },
         "reference": reference,
         "artifacts": artifacts,
@@ -655,6 +760,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--comparison-contract", type=Path)
     parser.add_argument("--minimum-batch-improvement", type=float, default=0.0)
     parser.add_argument("--maximum-bucket-smoke-patches", type=int, default=0)
+    parser.add_argument(
+        "--synchronized-stage-timing",
+        action="store_true",
+        help=(
+            "materialize component outputs for diagnostic stage attribution; "
+            "never use for canonical total-time comparison"
+        ),
+    )
     args = parser.parse_args()
     if args.warmup_runs < 1 or args.runs < 1:
         parser.error("warmup and measured run counts must be positive")
@@ -668,6 +781,13 @@ def parse_args() -> argparse.Namespace:
         parser.error("--maximum-bucket-smoke-patches must be non-negative")
     if args.freeze_comparison_contract and args.comparison_contract:
         parser.error("freeze and comparison contract modes are mutually exclusive")
+    if args.synchronized_stage_timing and (
+        args.freeze_comparison_contract or args.comparison_contract
+    ):
+        parser.error(
+            "synchronized stage timing is diagnostic-only and cannot freeze or "
+            "compare canonical totals"
+        )
     if args.freeze_comparison_contract and (
         args.warmup_runs != 1
         or args.runs != 3

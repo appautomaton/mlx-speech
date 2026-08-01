@@ -229,7 +229,7 @@ The plan deliberately measures the current cached path once, then optimizes the 
 ```bash
 .venv/bin/python -m pytest tests/unit/test_dots_tts_generation.py tests/unit/test_dots_tts_dit_cache.py -k 'cache or eval or sync or meanflow or cfg or interleav or incremental'
 .venv/bin/python -m pytest tests/unit/test_dots_tts_release.py
-.venv/bin/python scripts/eval/profile_dots_tts_inference.py --model-root models/dots_tts --reference-audio outputs/source/hank_hill_ref.wav --variants mf soar --paths batch --warmup-runs 1 --runs 1 --max-audio-patches 32 --seed 42 --eos-threshold 1.0 --memory-limit-gib 30 --output outputs/dots_tts/inference_efficiency/slice-8.json
+.venv/bin/python scripts/eval/profile_dots_tts_inference.py --model-root models/dots_tts --reference-audio outputs/source/hank_hill_ref.wav --variants mf soar --paths batch --warmup-runs 1 --runs 1 --max-audio-patches 32 --seed 42 --eos-threshold 1.0 --memory-limit-gib 30 --synchronized-stage-timing --output outputs/dots_tts/inference_efficiency/slice-8.json
 .venv/bin/ruff check src scripts tests
 git diff --check
 ```
@@ -239,6 +239,12 @@ git diff --check
 **Touches:** generation synchronization, mode-specific history, request lifetime tests, `docs/dots-tts.md`
 
 **Produces:** bounded low-synchronization orchestration, a residual-stage profile, and accurate runtime documentation
+
+**Status:** complete
+
+**Evidence:** Removed the redundant generator patch evaluation and profiler sink evaluations; the waveform health boundary now materializes finite/non-silent reductions and returned recurrent state together. MeanFlow retains no CFG chunks, while SOAR reuses one model-owned unconditional projection. Focused synchronization/cache/CFG/streaming checks passed (47), release checks passed (9), and the full unit suite passed (830). The diagnostic-only synchronized-stage `slice-8.json` profile passed at 32 patches: MF total `8.2239s`, Qwen `4.24%`, semantic `2.41%`, combined `6.65%`; SOAR total `11.4210s`, Qwen `3.36%`, semantic `2.23%`, combined `5.60%`. Canonical comparison rejects this diagnostic flag and keeps default lazy boundaries. Touched-file Ruff and `git diff --check` passed. Repository-wide Ruff remains blocked by 21 pre-existing unrelated findings outside this slice.
+
+**Risks / next:** Slice 9's `15%` combined and `10%` individual triggers are not crossed; leave shared Qwen/semantic runtime code untouched.
 
 ### Slice 9: Close only material Qwen and semantic residual overhead
 
@@ -255,7 +261,7 @@ git diff --check
 
 ```bash
 .venv/bin/python -m pytest tests/unit/test_dots_tts_qwen.py tests/unit/test_dots_tts_semantic_encoder.py tests/unit/test_vibevoice_qwen2.py
-.venv/bin/python scripts/eval/profile_dots_tts_inference.py --model-root models/dots_tts --reference-audio outputs/source/hank_hill_ref.wav --variants mf soar --paths batch --warmup-runs 1 --runs 1 --max-audio-patches 32 --seed 42 --eos-threshold 1.0 --memory-limit-gib 30 --output outputs/dots_tts/inference_efficiency/slice-9.json
+.venv/bin/python scripts/eval/profile_dots_tts_inference.py --model-root models/dots_tts --reference-audio outputs/source/hank_hill_ref.wav --variants mf soar --paths batch --warmup-runs 1 --runs 1 --max-audio-patches 32 --seed 42 --eos-threshold 1.0 --memory-limit-gib 30 --synchronized-stage-timing --output outputs/dots_tts/inference_efficiency/slice-9.json
 ```
 
 **Execution:** subagent recommended

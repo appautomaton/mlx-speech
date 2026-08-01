@@ -45,6 +45,88 @@ class _Profiler:
         return {"residual": total_seconds}
 
 
+def test_stage_profiler_separates_qwen_semantic_and_sink_work() -> None:
+    qwen_output = SimpleNamespace(
+        last_hidden_state=mx.ones((1, 1, 2)),
+        eos_logits=mx.ones((1, 1, 2)),
+        logits=None,
+        cache=[],
+    )
+    semantic_output = (
+        mx.ones((1, 1, 2)),
+        SimpleNamespace(
+            conv_tail=mx.ones((1, 1, 2)),
+            layer_caches=(),
+        ),
+    )
+    generator = SimpleNamespace(
+        prepare_prompt=lambda: SimpleNamespace(
+            speaker_condition=None,
+            prompt_patches=None,
+            prompt_latents=None,
+        ),
+        _solve_patch=lambda: None,
+        _decode_stream_chunk=lambda: None,
+        components=SimpleNamespace(
+            core=SimpleNamespace(
+                qwen=SimpleNamespace(
+                    step=lambda: qwen_output,
+                    should_stop=lambda: mx.array(False),
+                ),
+                semantic_encoder=SimpleNamespace(
+                    prefill=lambda: semantic_output,
+                    decode_patch=lambda: semantic_output,
+                ),
+            ),
+            audio_vae=SimpleNamespace(decode=lambda: mx.ones((1, 1, 2))),
+        ),
+    )
+    profiler = profile._StageProfiler(generator, synchronize_outputs=True)
+
+    with profiler:
+        generator.prepare_prompt()
+        generator.components.core.qwen.step()
+        generator.components.core.qwen.should_stop()
+        generator.components.core.semantic_encoder.prefill()
+        generator.components.core.semantic_encoder.decode_patch()
+        generator._solve_patch()
+        generator._decode_stream_chunk()
+        generator.components.audio_vae.decode()
+
+    stages = profiler.result(1.0)
+    assert set(stages) == {
+        "acoustic",
+        "decoder",
+        "prompt",
+        "qwen",
+        "residual",
+        "semantic",
+    }
+    assert "prefill" not in stages
+
+
+def test_synchronized_stage_timing_cannot_change_canonical_comparison(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        profile.sys,
+        "argv",
+        [
+            "profile_dots_tts_inference.py",
+            "--output",
+            "profile.json",
+            "--comparison-contract",
+            "slice-001.md",
+            "--minimum-batch-improvement",
+            "0.35",
+            "--synchronized-stage-timing",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        profile.parse_args()
+
+
 def _patch_memory(monkeypatch, *, peak: int = 100) -> None:
     monkeypatch.setattr(mx, "get_active_memory", lambda: 20)
     monkeypatch.setattr(mx, "reset_peak_memory", lambda: None)

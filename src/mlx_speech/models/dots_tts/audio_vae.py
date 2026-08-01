@@ -742,10 +742,6 @@ class AudioVAE(nn.Module):
                 axis=1,
             )
         combined = combined.astype(self.decoder.input_dtype)
-        mx.eval(
-            combined,
-            *(tensor for layer_state in recurrent_state for tensor in layer_state),
-        )
 
         total_frames = state.total_frames + chunk_frames
         stable_frames = (

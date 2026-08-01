@@ -41,8 +41,10 @@ class _Projection:
         dtype: mx.Dtype = mx.float32,
     ):
         self.weight = mx.ones((output_size, input_size), dtype=dtype)
+        self.calls = 0
 
     def __call__(self, value: mx.array) -> mx.array:
+        self.calls += 1
         return value @ self.weight.T
 
 
@@ -193,7 +195,7 @@ def _generator(
 
 
 def test_cached_generator_compacts_full_history_after_cache_publication() -> None:
-    generator, _, _ = _generator("meanflow")
+    generator, _, _ = _generator("flow_matching")
 
     class CompactSolver:
         unit_length = 3
@@ -272,6 +274,142 @@ def test_cached_generator_compacts_full_history_after_cache_publication() -> Non
     np.testing.assert_array_equal(solver.tails[0][1], expected_current)
     assert [int(chunk.shape[1]) for chunk in state.fm_chunks] == [1]
     assert [int(chunk.shape[1]) for chunk in state.cfg_chunks] == [1]
+
+
+def test_mode_specific_history_omits_meanflow_cfg_and_reuses_soar_constant() -> None:
+    meanflow, _, _ = _generator("meanflow")
+    meanflow_fm: list[mx.array] = []
+    meanflow_cfg: list[mx.array] = []
+    meanflow._append_hidden(
+        mx.ones((1, 1, 4)),
+        meanflow_fm,
+        meanflow_cfg,
+    )
+    meanflow._append_history(
+        mx.ones((1, 2, 2)),
+        meanflow_fm,
+        meanflow_cfg,
+    )
+
+    assert len(meanflow_fm) == 2
+    assert meanflow_cfg == []
+    assert meanflow.components.core.hidden_projection.calls == 1
+
+    soar, _, _ = _generator("flow_matching")
+    soar_fm: list[mx.array] = []
+    soar_cfg: list[mx.array] = []
+    for value in (1.0, 2.0, 3.0):
+        soar._append_hidden(
+            mx.full((1, 1, 4), value),
+            soar_fm,
+            soar_cfg,
+        )
+
+    assert len(soar_fm) == len(soar_cfg) == 3
+    assert soar.components.core.hidden_projection.calls == 4
+    assert soar_cfg[0] is soar_cfg[1] is soar_cfg[2]
+
+
+def test_generation_keeps_only_eos_item_and_waveform_eval_boundaries(
+    monkeypatch,
+) -> None:
+    generator, _, _ = _generator("meanflow")
+    item_calls = 0
+    eval_calls: list[tuple[object, ...]] = []
+    original_eval = mx.eval
+
+    class StopValue:
+        def item(self):
+            nonlocal item_calls
+            item_calls += 1
+            return False
+
+    def record_eval(*values):
+        eval_calls.append(values)
+        return original_eval(*values)
+
+    monkeypatch.setattr(
+        generator.components.core.qwen,
+        "should_stop",
+        lambda *_args, **_kwargs: StopValue(),
+    )
+    monkeypatch.setattr(mx, "eval", record_eval)
+
+    result = generator.synthesize(
+        "A",
+        max_audio_patches=3,
+        solver_steps=1,
+        eos_threshold=1.0,
+    )
+
+    assert result.num_patches == 3
+    assert item_calls == 3
+    assert len(eval_calls) == 1
+    assert len(eval_calls[0]) == 2
+
+
+def test_stream_waveform_boundary_publishes_returned_recurrent_state(
+    monkeypatch,
+) -> None:
+    generator, _, _ = _generator("meanflow")
+    decoder_input = mx.ones((1, 4, 2))
+    recurrent = ((mx.ones((1, 2)), mx.zeros((1, 2))),)
+    vocoder_state = SimpleNamespace(
+        maximum_chunk_size=2,
+        decoder_input=decoder_input,
+        recurrent_state=recurrent,
+    )
+    stream_state = SimpleNamespace(
+        vocoder_state=vocoder_state,
+        vocoder_buffer=[],
+        pending_chunk_patches=0,
+        yielded_waveform=False,
+        has_non_silent_audio=False,
+    )
+    eval_calls: list[tuple[object, ...]] = []
+    original_eval = mx.eval
+
+    def record_eval(*values):
+        eval_calls.append(values)
+        return original_eval(*values)
+
+    monkeypatch.setattr(mx, "eval", record_eval)
+    chunk = generator._decode_stream_chunk(
+        stream_state,
+        [mx.ones((1, 2, 2))],
+    )
+
+    assert chunk is not None
+    assert len(eval_calls) == 1
+    assert any(value is decoder_input for value in eval_calls[0])
+    assert all(
+        any(value is tensor for value in eval_calls[0])
+        for layer_state in recurrent
+        for tensor in layer_state
+    )
+
+
+def test_stream_rejects_non_finite_audio_before_first_yield(monkeypatch) -> None:
+    generator, _, _ = _generator("meanflow")
+
+    def invalid_decode(latent, state, *, final=False):
+        del latent, final
+        return mx.full((1, 1, 2), float("nan")), state
+
+    monkeypatch.setattr(
+        generator.components.audio_vae,
+        "decode_chunk",
+        invalid_decode,
+    )
+    stream = generator.synthesize_stream(
+        "A",
+        max_audio_patches=2,
+        solver_steps=1,
+        eos_threshold=1.0,
+    )
+
+    with pytest.raises(RuntimeError, match="non-finite audio"):
+        next(stream)
 
 
 @pytest.mark.parametrize("mode", ["flow_matching", "meanflow"])
