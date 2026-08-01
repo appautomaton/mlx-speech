@@ -200,7 +200,7 @@ class DiTKvCache:
 class DiTSolverState:
     """Mutable request-local state for one cached DiT generation."""
 
-    capacity_patches: int
+    max_patches: int
     cache: DiTKvCache | None = None
     schedule: ODESchedule | None = None
     modulations_by_nfe: tuple[PreparedModulations, ...] | None = None
@@ -211,10 +211,13 @@ class DiTSolverState:
     _condition_bound: bool = field(default=False, repr=False)
 
     def __post_init__(self) -> None:
-        if self.capacity_patches not in DIT_CACHE_BUCKETS:
-            raise ValueError(
-                "DiT solver state capacity must use an official 64/128/256/512 bucket"
-            )
+        resolve_dit_cache_bucket(self.max_patches)
+
+    @property
+    def capacity_patches(self) -> int:
+        """Compatibility view of the bucket bounding this request maximum."""
+
+        return resolve_dit_cache_bucket(self.max_patches)
 
 
 def _mask_slice(
@@ -603,7 +606,8 @@ class CachedDiTSolver:
         self.unit_length = self.runner.unit_length
 
     def new_state(self, max_patches: int) -> DiTSolverState:
-        return DiTSolverState(capacity_patches=resolve_dit_cache_bucket(max_patches))
+        resolve_dit_cache_bucket(max_patches)
+        return DiTSolverState(max_patches=int(max_patches))
 
     def _validate_state_cache(
         self,
@@ -616,7 +620,7 @@ class CachedDiTSolver:
         if cache is None:
             return
         if (
-            cache.capacity_patches != state.capacity_patches
+            cache.capacity_patches > state.capacity_patches
             or cache.unit_length != self.unit_length
             or cache.nfe != nfe
             or cache.num_layers != self.runner.num_layers
@@ -637,12 +641,58 @@ class CachedDiTSolver:
         if state.cache is not None:
             raise RuntimeError("DiT solver state cache is already allocated")
         return self.runner.allocate_cache(
-            capacity_patches=state.capacity_patches,
+            capacity_patches=DIT_CACHE_BUCKETS[0],
             nfe=nfe,
             batch_size=batch_size,
             key_dtype=keys.dtype,
             value_dtype=values.dtype,
         )
+
+    @staticmethod
+    def _copy_published_cache(
+        source: DiTKvCache,
+        replacement: DiTKvCache,
+    ) -> None:
+        """Copy only offsets already published by every NFE."""
+
+        for nfe_index, offset in enumerate(source.offsets):
+            if offset:
+                replacement.cache_k[nfe_index, ..., :offset, :] = source.cache_k[
+                    nfe_index, ..., :offset, :
+                ]
+                replacement.cache_v[nfe_index, ..., :offset, :] = source.cache_v[
+                    nfe_index, ..., :offset, :
+                ]
+        replacement.offsets = list(source.offsets)
+
+    @staticmethod
+    def _materialize_cache_growth(cache: DiTKvCache) -> None:
+        mx.eval(cache.cache_k, cache.cache_v)
+
+    def _grow_projected_cache(
+        self,
+        cache: DiTKvCache,
+        *,
+        required_tokens: int,
+    ) -> DiTKvCache:
+        """Return a fully materialized larger cache without mutating the source."""
+
+        if required_tokens <= cache.capacity_tokens:
+            return cache
+        required_patches = (
+            required_tokens + self.unit_length - 1
+        ) // self.unit_length
+        capacity_patches = resolve_dit_cache_bucket(required_patches)
+        replacement = self.runner.allocate_cache(
+            capacity_patches=capacity_patches,
+            nfe=cache.nfe,
+            batch_size=cache.batch_size,
+            key_dtype=cache.cache_k.dtype,
+            value_dtype=cache.cache_v.dtype,
+        )
+        self._copy_published_cache(cache, replacement)
+        self._materialize_cache_growth(replacement)
+        return replacement
 
     def _prepare_request(
         self,
@@ -733,10 +783,10 @@ class CachedDiTSolver:
                 f"prefix={prefix_length} unit={self.unit_length}"
             )
         patch_count = prefix_length // self.unit_length + 1
-        if patch_count > state.capacity_patches:
+        if patch_count > state.max_patches:
             raise ValueError(
                 "cached DiT request exceeds its capacity: "
-                f"required_patches={patch_count} capacity={state.capacity_patches}"
+                f"required_patches={patch_count} capacity={state.max_patches}"
             )
         if self.mode == "soar":
             if cfg_sequence is None or cfg_sequence.shape != sequence.shape:
@@ -818,11 +868,11 @@ class CachedDiTSolver:
             local_prefix_length = self.unit_length
             prefix_length = _persistent_length + self.unit_length
             patch_count = prefix_length // self.unit_length + 1
-            if patch_count > state.capacity_patches:
+            if patch_count > state.max_patches:
                 raise ValueError(
                     "cached DiT request exceeds its capacity: "
                     f"required_patches={patch_count} "
-                    f"capacity={state.capacity_patches}"
+                    f"capacity={state.max_patches}"
                 )
         else:
             _fm_sequence_length, prefix_length = self._validate_inputs(
@@ -930,6 +980,7 @@ class CachedDiTSolver:
                     required_prefix_mask,
                 )
             )
+            prefill_writes: list[tuple[int, mx.array, mx.array]] = []
             for nfe_index, modulations in enumerate(modulations_by_nfe):
                 keys, values = self.runner.prefill_nfe(
                     prefix_sequence=sequence[:, :persistent_length],
@@ -942,16 +993,24 @@ class CachedDiTSolver:
                     positions=full_positions[..., :persistent_length],
                     attention_mask=prefix_mask,
                 )
-                if cache is None:
-                    cache = self._allocate_projected_cache(
-                        state,
-                        nfe=nfe,
-                        batch_size=batch_size,
-                        keys=keys,
-                        values=values,
-                    )
+                prefill_writes.append((nfe_index, keys, values))
+            _first_nfe, first_keys, first_values = prefill_writes[0]
+            cache = self._allocate_projected_cache(
+                state,
+                nfe=nfe,
+                batch_size=batch_size,
+                keys=first_keys,
+                values=first_values,
+            )
+            cache = self._grow_projected_cache(
+                cache,
+                required_tokens=persistent_length,
+            )
+            for nfe_index, keys, values in prefill_writes:
+                cache.validate_write(nfe_index, keys, values)
+            for nfe_index, keys, values in prefill_writes:
                 cache.write(nfe_index, keys, values)
-                mx.eval(cache.cache_k, cache.cache_v)
+            mx.eval(cache.cache_k, cache.cache_v)
         if cache is not None and any(
             offset != persistent_length for offset in cache.offsets
         ):
@@ -1004,6 +1063,10 @@ class CachedDiTSolver:
                 keys=first_keys,
                 values=first_values,
             )
+        cache = self._grow_projected_cache(
+            cache,
+            required_tokens=persistent_length + self.unit_length,
+        )
         for nfe_index, keys, values in pending_writes:
             cache.validate_write(nfe_index, keys, values)
         for nfe_index, keys, values in pending_writes:
@@ -1011,7 +1074,7 @@ class CachedDiTSolver:
         if cache is None:
             raise RuntimeError("cached DiT did not produce request K/V")
         mx.eval(coordinate, cache.cache_k, cache.cache_v)
-        if state.cache is None:
+        if state.cache is not cache:
             state.cache = cache
         return coordinate
 

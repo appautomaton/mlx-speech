@@ -123,6 +123,56 @@ def _soar_pair() -> tuple[SOARSolver, CachedSOARSolver]:
     )
 
 
+def _published_cache(
+    solver: CachedMeanFlowSolver | CachedSOARSolver,
+    *,
+    capacity_patches: int,
+    published_patches: int,
+) -> DiTKvCache:
+    cache = solver.runner.allocate_cache(
+        capacity_patches=capacity_patches,
+        nfe=2,
+        batch_size=1,
+        key_dtype=mx.float32,
+        value_dtype=mx.float32,
+    )
+    published_tokens = published_patches * solver.unit_length
+    for nfe_index in range(cache.nfe):
+        shape = cache.cache_k[nfe_index, ..., :published_tokens, :].shape
+        size = int(np.prod(shape))
+        values = mx.arange(size, dtype=mx.float32).reshape(shape)
+        values = values / 200.0 + nfe_index / 10.0
+        cache.cache_k[nfe_index, ..., :published_tokens, :] = values
+        cache.cache_v[nfe_index, ..., :published_tokens, :] = -values
+    cache.offsets = [published_tokens] * cache.nfe
+    mx.eval(cache.cache_k, cache.cache_v)
+    return cache
+
+
+def _copy_cache_to_capacity(
+    solver: CachedMeanFlowSolver | CachedSOARSolver,
+    source: DiTKvCache,
+    capacity_patches: int,
+) -> DiTKvCache:
+    cache = solver.runner.allocate_cache(
+        capacity_patches=capacity_patches,
+        nfe=source.nfe,
+        batch_size=source.batch_size,
+        key_dtype=source.cache_k.dtype,
+        value_dtype=source.cache_v.dtype,
+    )
+    for nfe_index, offset in enumerate(source.offsets):
+        cache.cache_k[nfe_index, ..., :offset, :] = source.cache_k[
+            nfe_index, ..., :offset, :
+        ]
+        cache.cache_v[nfe_index, ..., :offset, :] = source.cache_v[
+            nfe_index, ..., :offset, :
+        ]
+    cache.offsets = list(source.offsets)
+    mx.eval(cache.cache_k, cache.cache_v)
+    return cache
+
+
 def _oracle_meanflow(
     solver: MeanFlowSolver,
     sequence: mx.array,
@@ -603,6 +653,179 @@ def test_cache_bucket_resolution(requested: int, expected: int) -> None:
     assert resolve_dit_cache_bucket(requested) == expected
 
 
+def test_default_request_allocates_physical_bucket_on_second_patch() -> None:
+    _oracle, cached = _meanflow_pair()
+    state = cached.new_state(500)
+    speaker = mx.full((1, _HIDDEN_SIZE), 0.2)
+    noise = mx.zeros((1, _PATCH_SIZE, _LATENT_DIM))
+
+    cached.sample(
+        state,
+        sequence=_sequence([], _current(0.2)),
+        speaker_condition=speaker,
+        steps=2,
+        noise=noise,
+    )
+    assert state.max_patches == 500
+    assert state.capacity_patches == 512
+    assert state.cache is None
+
+    cached.sample(
+        state,
+        sequence=_sequence([_unit(0.4)], _current(0.6)),
+        speaker_condition=speaker,
+        steps=2,
+        noise=noise,
+    )
+    assert state.cache is not None
+    assert state.cache.capacity_patches == 64
+    assert state.cache.offsets == [_UNIT_LENGTH, _UNIT_LENGTH]
+
+
+@pytest.mark.parametrize("mode", ["meanflow", "soar"])
+@pytest.mark.parametrize(
+    ("source_capacity", "target_capacity"),
+    ((64, 128), (128, 256), (256, 512)),
+)
+def test_cache_grows_transactionally_without_changing_solver_output(
+    mode: str,
+    source_capacity: int,
+    target_capacity: int,
+) -> None:
+    _oracle, cached = _meanflow_pair() if mode == "meanflow" else _soar_pair()
+    source = _published_cache(
+        cached,
+        capacity_patches=source_capacity,
+        published_patches=source_capacity,
+    )
+    baseline = _copy_cache_to_capacity(cached, source, target_capacity)
+    source_keys = source.cache_k + 0
+    source_values = source.cache_v + 0
+    mx.eval(source_keys, source_values)
+    growing_state = cached.new_state(512)
+    baseline_state = cached.new_state(512)
+    growing_state.cache = source
+    baseline_state.cache = baseline
+    speaker = mx.full((1, _HIDDEN_SIZE), 0.2)
+    previous = _unit(0.3)
+    current = _current(0.7)
+    noise = mx.full((1, _PATCH_SIZE, _LATENT_DIM), 0.15)
+    kwargs = {
+        "previous_unit": previous,
+        "current_hidden": current,
+        "speaker_condition": speaker,
+        "steps": 2,
+        "noise": noise,
+    }
+    if mode == "soar":
+        kwargs.update(
+            cfg_previous_unit=_unit(-0.3),
+            cfg_current_hidden=_current(-0.7),
+            guidance_scale=1.3,
+        )
+
+    expected = cached.sample_tail(baseline_state, **kwargs)
+    actual = cached.sample_tail(growing_state, **kwargs)
+    grown = growing_state.cache
+    assert grown is not None
+    mx.eval(expected, actual, grown.cache_k, grown.cache_v)
+
+    np.testing.assert_array_equal(actual, expected)
+    assert grown is not source
+    assert grown.capacity_patches == target_capacity
+    assert grown.offsets == [
+        (source_capacity + 1) * _UNIT_LENGTH,
+    ] * 2
+    assert grown.cache_k.dtype == source.cache_k.dtype
+    assert grown.cache_v.dtype == source.cache_v.dtype
+    assert grown.cache_k.shape[:4] == source.cache_k.shape[:4]
+    np.testing.assert_array_equal(
+        grown.cache_k[..., : source.capacity_tokens, :],
+        source_keys,
+    )
+    np.testing.assert_array_equal(
+        grown.cache_v[..., : source.capacity_tokens, :],
+        source_values,
+    )
+    assert baseline_state.cache is not None
+    np.testing.assert_array_equal(
+        grown.cache_k[..., : grown.valid_tokens, :],
+        baseline_state.cache.cache_k[..., : baseline_state.cache.valid_tokens, :],
+    )
+    np.testing.assert_array_equal(
+        grown.cache_v[..., : grown.valid_tokens, :],
+        baseline_state.cache.cache_v[..., : baseline_state.cache.valid_tokens, :],
+    )
+
+
+@pytest.mark.parametrize("failure", ["allocation", "copy", "materialization"])
+def test_cache_growth_failure_leaves_prior_cache_usable(
+    monkeypatch,
+    failure: str,
+) -> None:
+    _oracle, cached = _meanflow_pair()
+    source = _published_cache(
+        cached,
+        capacity_patches=64,
+        published_patches=64,
+    )
+    state = cached.new_state(512)
+    state.cache = source
+    original_keys = source.cache_k + 0
+    original_values = source.cache_v + 0
+    original_offsets = list(source.offsets)
+    mx.eval(original_keys, original_values)
+
+    if failure == "allocation":
+        original = cached.runner.allocate_cache
+
+        def fail(*args, **kwargs):
+            raise RuntimeError("injected growth allocation failure")
+
+        monkeypatch.setattr(cached.runner, "allocate_cache", fail)
+    elif failure == "copy":
+        original = cached._copy_published_cache
+
+        def fail(*args, **kwargs):
+            raise RuntimeError("injected growth copy failure")
+
+        monkeypatch.setattr(cached, "_copy_published_cache", fail)
+    else:
+        original = cached._materialize_cache_growth
+
+        def fail(*args, **kwargs):
+            raise RuntimeError("injected growth materialization failure")
+
+        monkeypatch.setattr(cached, "_materialize_cache_growth", fail)
+
+    sample_kwargs = {
+        "previous_unit": _unit(0.3),
+        "current_hidden": _current(0.7),
+        "speaker_condition": mx.full((1, _HIDDEN_SIZE), 0.2),
+        "steps": 2,
+        "noise": mx.zeros((1, _PATCH_SIZE, _LATENT_DIM)),
+    }
+    with pytest.raises(RuntimeError, match=f"growth {failure} failure"):
+        cached.sample_tail(state, **sample_kwargs)
+
+    assert state.cache is source
+    assert source.capacity_patches == 64
+    assert source.offsets == original_offsets
+    np.testing.assert_array_equal(source.cache_k, original_keys)
+    np.testing.assert_array_equal(source.cache_v, original_values)
+
+    if failure == "allocation":
+        monkeypatch.setattr(cached.runner, "allocate_cache", original)
+    elif failure == "copy":
+        monkeypatch.setattr(cached, "_copy_published_cache", original)
+    else:
+        monkeypatch.setattr(cached, "_materialize_cache_growth", original)
+    cached.sample_tail(state, **sample_kwargs)
+    assert state.cache is not source
+    assert state.cache is not None
+    assert state.cache.capacity_patches == 128
+
+
 def test_cache_rejects_overflow_alignment_and_inconsistent_state() -> None:
     mx.random.seed(97)
     _oracle, cached = _meanflow_pair()
@@ -764,4 +987,6 @@ def test_cache_write_overflow_and_runner_construction_preserve_weights() -> None
     cache.write(0, full, full)
     with pytest.raises(ValueError, match="overflow"):
         cache.write(0, mx.ones((1, 1, 1, 1, 1)), mx.ones((1, 1, 1, 1, 1)))
-    assert cached.new_state(500).capacity_patches == 512
+    state = cached.new_state(500)
+    assert state.max_patches == 500
+    assert state.capacity_patches == 512

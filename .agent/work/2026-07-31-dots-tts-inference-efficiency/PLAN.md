@@ -123,6 +123,10 @@ The plan deliberately measures the current cached path once, then optimizes the 
 
 **Produces:** demand-sized request-local DiT storage with rollback-safe transitions
 
+**Status:** complete
+
+**Evidence:** [Slice 4 execution summary](slices/slice-004-summary.md)
+
 ### Slice 5: Remove full-prefix K/V concatenation
 
 **Objective:** Attend over contiguous published history plus fresh scratch tail without copying the complete DiT prefix in every layer and NFE.
