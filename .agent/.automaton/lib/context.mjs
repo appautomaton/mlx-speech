@@ -17,6 +17,19 @@ const RECEIPT_PATH = '.agent/.automaton/state/install-manifest.json'
 // Steering is deliberately unchecked. `ROADMAP.md` is the only steering file,
 // and "No active roadmap" is a legitimate steady state, so flagging it would be
 // noise forever (DD-016).
+//
+// The engagement criterion sits outside the disengaged branch because it applies
+// in both states, and it is stated here because this is the earliest surface a
+// model reads. A gate written anywhere inside a skill costs the load it exists to
+// avoid. It stays a default with a named escape rather than a cap, per LEXICON
+// Instruction Posture (DD-023).
+//
+// The FRAMEWORK.md read is deferred to first stage action, not decomposed into
+// section reads. No SKILL.md instructs reading that file: every reference in the
+// skill tree is a section pointer that assumes the whole file is already loaded,
+// and Skill Structure, Stages, and Handoff Model have no inline pointer at all.
+// Section-wise loading would drop the `**Next:**` handoff format in frame, whose
+// working set is FRAMEWORK.md plus SKILL.md and nothing else.
 
 function readIfPresent(target) {
   if (!existsSync(target)) {
@@ -122,9 +135,10 @@ export function buildSessionContext(projectRoot, options = {}) {
       messages.push(`Current state: ${STATE_PATH} (no active change recorded).`)
     }
 
-    messages.push('Read .agent/.automaton/references/FRAMEWORK.md once per session to refresh the operating model.')
+    messages.push('Before your first stage action, read all of .agent/.automaton/references/FRAMEWORK.md once: skills point at its sections and assume the whole file is loaded.')
   }
 
+  messages.push('The stage lifecycle earns its cost when work must survive a context boundary or when the outcome needs agreement before it is built. Work that one session can finish and verify does not need it: do that work directly. Naming a stage overrides this.')
   messages.push("Treat this as orientation, not a mandate. The user's latest request stays in charge.")
 
   const findings = sessionHealthFindings(projectRoot, state)

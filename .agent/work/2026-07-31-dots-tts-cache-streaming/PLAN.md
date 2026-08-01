@@ -148,6 +148,8 @@ RUN_LOCAL_INTEGRATION=1 .venv/bin/python -m pytest tests/integration/test_dots_t
 **Touches:** cache benchmark runner/tests, local integration, benchmark report, existing quality runner invocation
 **Produces:** reproducible PASS evidence for speed, first chunk, memory, waveform, and cloning quality
 
+**Plan correction:** The first measured selector disabled only DiT caching, so the reference path incorrectly benefited from the new bounded vocoder and did not represent the pre-cache runtime. The benchmark selector now uses both the full-history DiT oracle and buffered full-history vocoder. Profiling also exposed redundant full-history mask and sequence assembly on the cached generator path; Slice 5 therefore includes a fixed fresh-tail solver entry plus parity coverage in `dit_inference.py`, `generation/dots_tts.py`, and their focused tests.
+
 ### Slice 6: Documentation and final repository gate
 
 **Objective:** Publish accurate operational documentation and model-card source from the measured behavior, then run the mandatory repository checks.

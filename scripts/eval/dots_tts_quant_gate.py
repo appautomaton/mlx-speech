@@ -18,6 +18,17 @@ from typing import Any
 
 import numpy as np
 
+try:
+    from scripts.eval.dots_tts_comparison_contract import (
+        load_comparison_contract,
+        update_comparison_contract,
+    )
+except ModuleNotFoundError:  # Direct ``python scripts/eval/...`` execution.
+    from dots_tts_comparison_contract import (  # type: ignore[no-redef]
+        load_comparison_contract,
+        update_comparison_contract,
+    )
+
 
 ROOT = Path(__file__).resolve().parents[2]
 BUILD_MATRIX = (
@@ -31,6 +42,25 @@ WEIGHT_FILES = (
     "vocoder.safetensors",
     "speaker.safetensors",
     "latent_stats.safetensors",
+)
+QUALITY_RECORD_FIELDS = (
+    "key",
+    "variant",
+    "artifact_class",
+    "reference_id",
+    "language",
+    "mode",
+    "artifact_digest",
+    "reference_sha256",
+    "reference_text",
+    "target_text",
+    "sample_rate",
+    "waveform_samples",
+    "num_patches",
+    "asr_errors",
+    "asr_tokens",
+    "wer",
+    "speaker_cosine",
 )
 
 
@@ -324,6 +354,160 @@ def _record_key(record: dict[str, Any]) -> str:
     )
 
 
+def resolve_case_keys(
+    manifest: dict[str, Any],
+    requested: list[str] | tuple[str, ...],
+) -> tuple[str, ...] | None:
+    if not requested:
+        return None
+    valid = {
+        "/".join((variant, artifact_class, reference["id"], mode))
+        for variant, artifact_class in BUILD_MATRIX
+        for reference in manifest["references"]
+        for mode in manifest["modes"]
+    }
+    if len(set(requested)) != len(requested):
+        raise ValueError("dots.tts selected quality cases must be unique")
+    unexpected = sorted(set(requested) - valid)
+    if unexpected:
+        raise ValueError(f"unknown dots.tts quality cases: {unexpected}")
+    return tuple(requested)
+
+
+def freeze_quality_evidence(report_path: str | Path) -> dict[str, Any]:
+    path = Path(report_path)
+    report = load_manifest(path)
+    if report.get("schema_version") != 1:
+        raise ValueError("unsupported dots.tts frozen quality report schema")
+    records = report.get("records")
+    if not isinstance(records, list) or not records:
+        raise ValueError("dots.tts frozen quality report has no records")
+    compact_records = []
+    for record in records:
+        missing = [field for field in QUALITY_RECORD_FIELDS if field not in record]
+        if missing:
+            raise ValueError(
+                f"dots.tts frozen quality record is missing fields: {missing}"
+            )
+        compact_records.append({field: record[field] for field in QUALITY_RECORD_FIELDS})
+    artifacts = {}
+    for key, artifact in report.get("artifacts", {}).items():
+        artifacts[key] = {
+            "digest": artifact["digest"],
+            "artifact_class": artifact["artifact_class"],
+            "source": artifact["source"],
+            "files": artifact["files"],
+        }
+    if not artifacts:
+        raise ValueError("dots.tts frozen quality report has no artifact identities")
+    return {
+        "report_sha256": _sha256(path),
+        "manifest": report["manifest"],
+        "corpus_lock": report["corpus_lock"],
+        "asr": {
+            "path": report["asr"]["path"],
+            "weights_sha256": report["asr"]["weights_sha256"],
+        },
+        "artifacts": artifacts,
+        "thresholds": report["gate"]["thresholds"],
+        "records": sorted(compact_records, key=_record_key),
+    }
+
+
+def _quality_aggregate(records: list[dict[str, Any]]) -> dict[str, float | int]:
+    if not records:
+        raise ValueError("dots.tts quality comparison aggregate is empty")
+    errors = sum(int(record["asr_errors"]) for record in records)
+    tokens = sum(int(record["asr_tokens"]) for record in records)
+    if tokens <= 0:
+        raise ValueError("dots.tts quality comparison has no ASR tokens")
+    return {
+        "asr_errors": errors,
+        "asr_tokens": tokens,
+        "wer": errors / tokens,
+        "speaker_cosine": float(
+            np.mean([float(record["speaker_cosine"]) for record in records])
+        ),
+    }
+
+
+def compare_quality_payload(
+    payload: dict[str, Any],
+    contract_path: str | Path,
+    *,
+    selected_case_keys: tuple[str, ...] | None = None,
+) -> dict[str, Any]:
+    contract = load_comparison_contract(contract_path)
+    baseline = contract["quality"]
+    if payload["manifest"]["sha256"] != baseline.get("manifest", {}).get("sha256"):
+        raise ValueError("dots.tts quality manifest differs from baseline")
+    if payload["corpus_lock"]["sha256"] != baseline.get("corpus_lock", {}).get(
+        "sha256"
+    ):
+        raise ValueError("dots.tts quality corpus differs from baseline")
+    if payload["asr"]["weights_sha256"] != baseline.get("asr", {}).get(
+        "weights_sha256"
+    ):
+        raise ValueError("dots.tts quality ASR evaluator differs from baseline")
+    for key, artifact in payload["artifacts"].items():
+        if artifact["digest"] != baseline.get("artifacts", {}).get(key, {}).get(
+            "digest"
+        ):
+            raise ValueError(f"dots.tts quality artifact differs from baseline: {key}")
+    current_records = {_record_key(record): record for record in payload["records"]}
+    baseline_records = {
+        _record_key(record): record for record in baseline.get("records", [])
+    }
+    expected_keys = (
+        set(selected_case_keys)
+        if selected_case_keys is not None
+        else set(baseline_records)
+    )
+    if set(current_records) != expected_keys:
+        raise ValueError("dots.tts current quality case set differs from requested scope")
+    if not expected_keys.issubset(baseline_records):
+        raise ValueError("dots.tts quality contract is missing requested cases")
+    for key in sorted(expected_keys):
+        current = current_records[key]
+        frozen = baseline_records[key]
+        if current["reference_sha256"] != frozen["reference_sha256"]:
+            raise ValueError(f"dots.tts quality reference differs from baseline: {key}")
+        if current["target_text"] != frozen["target_text"]:
+            raise ValueError(f"dots.tts quality target differs from baseline: {key}")
+    thresholds = baseline["thresholds"]
+    groups: dict[str, dict[str, Any]] = {}
+    grouped_keys: dict[str, list[str]] = {}
+    for key in sorted(expected_keys):
+        record = current_records[key]
+        group = f"{record['variant']}/{record['artifact_class']}"
+        grouped_keys.setdefault(group, []).append(key)
+    for group, keys in grouped_keys.items():
+        current = _quality_aggregate([current_records[key] for key in keys])
+        frozen = _quality_aggregate([baseline_records[key] for key in keys])
+        wer_regression = float(current["wer"]) - float(frozen["wer"])
+        speaker_regression = float(frozen["speaker_cosine"]) - float(
+            current["speaker_cosine"]
+        )
+        groups[group] = {
+            "case_keys": keys,
+            "baseline": frozen,
+            "current": current,
+            "wer_regression": wer_regression,
+            "speaker_cosine_regression": speaker_regression,
+            "passed": wer_regression
+            <= float(thresholds["max_absolute_wer_regression"])
+            and speaker_regression
+            <= float(thresholds["max_speaker_cosine_regression"]),
+        }
+    return {
+        "contract": str(contract_path),
+        "scope": "selected_cases" if selected_case_keys is not None else "full_matrix",
+        "thresholds": thresholds,
+        "groups": groups,
+        "passed": all(bool(group["passed"]) for group in groups.values()),
+    }
+
+
 def _load_records(path: Path) -> dict[str, dict[str, Any]]:
     if not path.is_file():
         return {}
@@ -349,6 +533,7 @@ def generate_build(
     records: dict[str, dict[str, Any]],
     force: bool,
     peak_limit_bytes: int,
+    selected_case_keys: set[str] | None = None,
 ) -> None:
     import mlx.core as mx
 
@@ -373,6 +558,8 @@ def generate_build(
                 "mode": mode,
             }
             key = _record_key(candidate)
+            if selected_case_keys is not None and key not in selected_case_keys:
+                continue
             output = (
                 output_dir
                 / "generated"
@@ -527,7 +714,7 @@ def transcribe_outputs(
 
 def render_report(payload: dict[str, Any]) -> str:
     gate = payload["gate"]
-    status = "PASS" if gate["passed"] else "FAIL"
+    status = "PASS" if payload.get("passed", gate["passed"]) else "FAIL"
     lines = [
         f"# dots.tts Quantization Gate — {payload['date']}",
         "",
@@ -652,6 +839,53 @@ def render_report(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_focused_report(payload: dict[str, Any]) -> str:
+    comparison = payload["comparison"]
+    status = "PASS" if comparison["passed"] else "FAIL"
+    lines = [
+        f"# dots.tts Decoder Precision Gate — {payload['date']}",
+        "",
+        f"**Verdict: {status}**",
+        "",
+        "This focused subset settles the decoder precision boundary before later "
+        "optimization slices. The complete base-versus-int8 matrix remains a final gate.",
+        "",
+        "| Artifact | Cases | Δ WER | Δ speaker cosine | Gate |",
+        "| --- | ---: | ---: | ---: | --- |",
+    ]
+    for name, result in sorted(comparison["groups"].items()):
+        lines.append(
+            f"| {name} | {len(result['case_keys'])} | "
+            f"{result['wer_regression']:+.4f} | "
+            f"{result['speaker_cosine_regression']:+.4f} | "
+            f"{'PASS' if result['passed'] else 'FAIL'} |"
+        )
+    lines.extend(
+        (
+            "",
+            "## Per-case evidence",
+            "",
+            "| Case | Patches | WER | Speaker cosine |",
+            "| --- | ---: | ---: | ---: |",
+        )
+    )
+    for record in payload["records"]:
+        lines.append(
+            f"| {record['key']} | {record['num_patches']} | "
+            f"{record['wer']:.4f} | {record['speaker_cosine']:.4f} |"
+        )
+    lines.extend(
+        (
+            "",
+            f"- Comparison contract: `{comparison['contract']}`",
+            f"- Command: `{payload['command']}`",
+            "- These are local acceptance measurements, not benchmark claims.",
+            "",
+        )
+    )
+    return "\n".join(lines)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -688,29 +922,77 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--peak-memory-limit-gib", type=float, default=16.0)
-    return parser.parse_args()
+    parser.add_argument("--case", dest="cases", action="append", default=[])
+    parser.add_argument("--comparison-contract", type=Path)
+    parser.add_argument("--freeze-comparison-report", type=Path)
+    args = parser.parse_args()
+    if args.peak_memory_limit_gib <= 0:
+        parser.error("--peak-memory-limit-gib must be positive")
+    if args.freeze_comparison_report is not None and args.comparison_contract is None:
+        parser.error("--freeze-comparison-report requires --comparison-contract")
+    if args.freeze_comparison_report is not None and args.cases:
+        parser.error("quality baseline freeze does not accept --case")
+    return args
 
 
 def main() -> None:
     args = parse_args()
+    if args.freeze_comparison_report is not None:
+        evidence = freeze_quality_evidence(args.freeze_comparison_report)
+        update_comparison_contract(
+            args.comparison_contract,
+            section="quality",
+            evidence=evidence,
+        )
+        print(
+            json.dumps(
+                {
+                    "comparison_contract": str(args.comparison_contract),
+                    "quality_report_sha256": evidence["report_sha256"],
+                    "record_count": len(evidence["records"]),
+                },
+                indent=2,
+            )
+        )
+        return
     manifest = load_manifest(args.manifest)
     validate_manifest(manifest)
+    selected_case_keys = resolve_case_keys(manifest, args.cases)
+    selected_case_set = (
+        None if selected_case_keys is None else set(selected_case_keys)
+    )
     corpus_lock = _validate_corpus_lock(args.manifest, args.corpus_dir)
+    selected_builds = (
+        BUILD_MATRIX
+        if selected_case_keys is None
+        else tuple(
+            item
+            for item in BUILD_MATRIX
+            if any(
+                key.startswith(f"{item[0]}/{item[1]}/")
+                for key in selected_case_keys
+            )
+        )
+    )
     artifacts = {
         f"{variant}/{artifact_class}": _artifact_inventory(
             args.model_root / variant / f"mlx-{artifact_class}"
         )
-        for variant, artifact_class in BUILD_MATRIX
+        for variant, artifact_class in selected_builds
     }
     records_path = args.output_dir / "records.json"
     records = _load_records(records_path)
+    if selected_case_set is not None:
+        records = {
+            key: value for key, value in records.items() if key in selected_case_set
+        }
     peak_limit_bytes = round(args.peak_memory_limit_gib * 1024**3)
 
     import mlx.core as mx
 
     mx.set_memory_limit(peak_limit_bytes)
     mx.set_cache_limit(2 * 1024**3)
-    for variant, artifact_class in BUILD_MATRIX:
+    for variant, artifact_class in selected_builds:
         generate_build(
             variant=variant,
             artifact_class=artifact_class,
@@ -721,6 +1003,7 @@ def main() -> None:
             records=records,
             force=args.force,
             peak_limit_bytes=peak_limit_bytes,
+            selected_case_keys=selected_case_set,
         )
     asr_inventory = transcribe_outputs(
         asr_model=args.asr_model,
@@ -729,13 +1012,27 @@ def main() -> None:
         force=args.force,
     )
     gate_config = manifest["quality_gate"]
-    gate = summarize_gate(
-        list(records.values()),
-        max_wer_regression=float(gate_config["max_absolute_wer_regression"]),
-        max_speaker_regression=float(
-            gate_config["max_speaker_cosine_regression"]
-        ),
-    )
+    if selected_case_keys is None:
+        gate = summarize_gate(
+            list(records.values()),
+            max_wer_regression=float(gate_config["max_absolute_wer_regression"]),
+            max_speaker_regression=float(
+                gate_config["max_speaker_cosine_regression"]
+            ),
+        )
+    else:
+        gate = {
+            "scope": "selected_cases",
+            "thresholds": {
+                "max_absolute_wer_regression": float(
+                    gate_config["max_absolute_wer_regression"]
+                ),
+                "max_speaker_cosine_regression": float(
+                    gate_config["max_speaker_cosine_regression"]
+                ),
+            },
+            "passed": True,
+        }
     payload = {
         "schema_version": 1,
         "date": date.today().isoformat(),
@@ -754,13 +1051,32 @@ def main() -> None:
         "host": f"{platform.platform()} / {platform.machine()}",
         "command": " ".join(sys.argv),
     }
+    if args.comparison_contract is not None:
+        payload["comparison"] = compare_quality_payload(
+            payload,
+            args.comparison_contract,
+            selected_case_keys=selected_case_keys,
+        )
+    payload["passed"] = bool(gate["passed"]) and bool(
+        payload.get("comparison", {"passed": True})["passed"]
+    )
     _write_json(args.output_dir / "report.json", payload)
     args.report.parent.mkdir(parents=True, exist_ok=True)
-    args.report.write_text(render_report(payload), encoding="utf-8")
-    print(json.dumps(gate, indent=2))
+    rendered = (
+        render_report(payload)
+        if selected_case_keys is None
+        else render_focused_report(payload)
+    )
+    args.report.write_text(rendered, encoding="utf-8")
+    print(
+        json.dumps(
+            payload.get("comparison", gate),
+            indent=2,
+        )
+    )
     print(f"Report: {args.report}")
-    if not gate["passed"]:
-        raise SystemExit("dots.tts int8 quality gate failed")
+    if not payload["passed"]:
+        raise SystemExit("dots.tts quality gate failed")
 
 
 if __name__ == "__main__":

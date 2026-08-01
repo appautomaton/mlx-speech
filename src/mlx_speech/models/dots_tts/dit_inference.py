@@ -786,16 +786,53 @@ class CachedDiTSolver:
         guidance_scale: float = 1.2,
         steps: int | None = None,
         noise: mx.array | None = None,
+        _persistent_length: int | None = None,
     ) -> mx.array:
         """Generate one patch and commit only the preceding finalized unit."""
 
-        _fm_sequence_length, prefix_length = self._validate_inputs(
-            state,
-            sequence=sequence,
-            cfg_sequence=cfg_sequence,
-            attention_mask=attention_mask,
-            positions=positions,
-        )
+        compact_tail = _persistent_length is not None
+        if compact_tail:
+            if attention_mask is not None or positions is not None:
+                raise ValueError("compact cached DiT tails derive mask and positions")
+            if (
+                _persistent_length < 0
+                or _persistent_length % self.unit_length
+            ):
+                raise ValueError("compact cached DiT history must be unit-aligned")
+            expected_length = 2 * self.unit_length
+            if (
+                sequence.ndim != 3
+                or int(sequence.shape[1]) != expected_length
+                or int(sequence.shape[-1]) != self.runner.dit.input_size
+            ):
+                raise ValueError(
+                    "compact cached DiT sequence must contain previous and current units"
+                )
+            if self.mode == "soar":
+                if cfg_sequence is None or cfg_sequence.shape != sequence.shape:
+                    raise ValueError(
+                        "compact cached SOAR tails require matching CFG state"
+                    )
+            elif cfg_sequence is not None:
+                raise ValueError("compact cached MeanFlow tails do not accept CFG state")
+            local_prefix_length = self.unit_length
+            prefix_length = _persistent_length + self.unit_length
+            patch_count = prefix_length // self.unit_length + 1
+            if patch_count > state.capacity_patches:
+                raise ValueError(
+                    "cached DiT request exceeds its capacity: "
+                    f"required_patches={patch_count} "
+                    f"capacity={state.capacity_patches}"
+                )
+        else:
+            _fm_sequence_length, prefix_length = self._validate_inputs(
+                state,
+                sequence=sequence,
+                cfg_sequence=cfg_sequence,
+                attention_mask=attention_mask,
+                positions=positions,
+            )
+            local_prefix_length = prefix_length
         batch_size = int(sequence.shape[0])
         expected_noise = (batch_size, self.patch_size, self.latent_dim)
         coordinate = (
@@ -814,18 +851,25 @@ class CachedDiTSolver:
         )
         nfe = int(schedule.times.shape[0])
         self._validate_state_cache(state, nfe=nfe, batch_size=batch_size)
-        current_start = prefix_length
+        current_start = local_prefix_length
         current_end = current_start + self.hidden_patch_size
         current_hidden = sequence[:, current_start:current_end]
         cfg_current_hidden = (
             None if cfg_sequence is None else cfg_sequence[:, current_start:current_end]
         )
-        total_length = int(sequence.shape[1])
-        full_positions = (
-            mx.arange(total_length, dtype=mx.float32)[None]
-            if positions is None
-            else positions
-        )
+        total_length = prefix_length + self.unit_length
+        if compact_tail:
+            full_positions = mx.arange(
+                prefix_length - self.unit_length,
+                total_length,
+                dtype=mx.float32,
+            )[None]
+        else:
+            full_positions = (
+                mx.arange(total_length, dtype=mx.float32)[None]
+                if positions is None
+                else positions
+            )
         full_positions = _expand_branch_positions(
             full_positions,
             batch_size=batch_size,
@@ -856,13 +900,21 @@ class CachedDiTSolver:
             return coordinate
 
         persistent_length = prefix_length - self.unit_length
-        previous_unit = sequence[:, persistent_length:prefix_length]
+        previous_unit = sequence[:, : self.unit_length] if compact_tail else sequence[
+            :, persistent_length:prefix_length
+        ]
         cfg_previous_unit = (
             None
             if cfg_sequence is None
-            else cfg_sequence[:, persistent_length:prefix_length]
+            else (
+                cfg_sequence[:, : self.unit_length]
+                if compact_tail
+                else cfg_sequence[:, persistent_length:prefix_length]
+            )
         )
         cache = state.cache
+        if compact_tail and persistent_length and cache is None:
+            raise ValueError("compact cached DiT history requires an existing cache")
         if cache is None and persistent_length:
             required_prefix_mask = _causal_mask(persistent_length)
             prefix_mask = (
@@ -921,7 +973,11 @@ class CachedDiTSolver:
                 required_tail_mask,
             )
         )
-        tail_positions = full_positions[..., persistent_length:total_length]
+        tail_positions = (
+            full_positions
+            if compact_tail
+            else full_positions[..., persistent_length:total_length]
+        )
         pending_writes: list[tuple[int, mx.array, mx.array]] = []
         for nfe_index, modulations in enumerate(modulations_by_nfe):
             velocity, keys, values = self.runner.next_velocity(
@@ -958,6 +1014,71 @@ class CachedDiTSolver:
         if state.cache is None:
             state.cache = cache
         return coordinate
+
+    def sample_tail(
+        self,
+        state: DiTSolverState,
+        *,
+        previous_unit: mx.array,
+        current_hidden: mx.array,
+        cfg_previous_unit: mx.array | None = None,
+        cfg_current_hidden: mx.array | None = None,
+        speaker_condition: mx.array | None = None,
+        guidance_scale: float = 1.2,
+        steps: int | None = None,
+        noise: mx.array | None = None,
+    ) -> mx.array:
+        """Generate from the fixed fresh tail while persistent history stays cached."""
+
+        batch_size = int(previous_unit.shape[0])
+        expected_previous = (
+            batch_size,
+            self.unit_length,
+            self.runner.dit.input_size,
+        )
+        expected_hidden = (
+            batch_size,
+            self.hidden_patch_size,
+            self.runner.dit.input_size,
+        )
+        if previous_unit.shape != expected_previous:
+            raise ValueError(
+                f"cached DiT previous unit must have shape {expected_previous}"
+            )
+        if current_hidden.shape != expected_hidden:
+            raise ValueError(
+                f"cached DiT current hidden must have shape {expected_hidden}"
+            )
+        padding = mx.zeros(
+            (batch_size, self.patch_size, self.runner.dit.input_size),
+            dtype=current_hidden.dtype,
+        )
+        sequence = mx.concatenate((previous_unit, current_hidden, padding), axis=1)
+        cfg_sequence = None
+        if self.mode == "soar":
+            if cfg_previous_unit is None or cfg_current_hidden is None:
+                raise ValueError("cached SOAR tail requires conditional and CFG units")
+            if (
+                cfg_previous_unit.shape != expected_previous
+                or cfg_current_hidden.shape != expected_hidden
+            ):
+                raise ValueError("cached SOAR tail CFG shapes differ from conditional")
+            cfg_sequence = mx.concatenate(
+                (cfg_previous_unit, cfg_current_hidden, padding), axis=1
+            )
+        elif cfg_previous_unit is not None or cfg_current_hidden is not None:
+            raise ValueError("cached MeanFlow tail does not accept CFG units")
+        persistent_length = 0 if state.cache is None else state.cache.valid_tokens
+        return self.sample(
+            state,
+            sequence=sequence,
+            cfg_sequence=cfg_sequence,
+            speaker_condition=speaker_condition,
+            guidance_scale=guidance_scale,
+            steps=steps,
+            noise=noise,
+            _persistent_length=persistent_length,
+        )
 
 
 class CachedMeanFlowSolver(CachedDiTSolver):

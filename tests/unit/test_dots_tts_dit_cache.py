@@ -184,6 +184,71 @@ def test_meanflow_cache_matches_first_and_multiple_full_history_patches() -> Non
     assert state.cache.offsets == [2 * _UNIT_LENGTH] * 2
 
 
+@pytest.mark.parametrize("mode", ["meanflow", "soar"])
+def test_compact_tail_matches_full_history_after_cache_creation(mode: str) -> None:
+    mx.random.seed(75)
+    if mode == "meanflow":
+        _oracle, cached = _meanflow_pair()
+    else:
+        _oracle, cached = _soar_pair()
+    full_state = cached.new_state(64)
+    compact_state = cached.new_state(64)
+    speaker = mx.full((1, _HIDDEN_SIZE), 0.2)
+    first_previous = _unit(0.2)
+    second_previous = _unit(0.6)
+    first_cfg = _unit(-0.2)
+    second_cfg = _unit(-0.6)
+    second_sequence = _sequence([first_previous], _current(0.4))
+    second_cfg_sequence = _sequence([first_cfg], _current(-0.4))
+    second_noise = mx.full((1, _PATCH_SIZE, _LATENT_DIM), 0.15)
+    seed_kwargs = {
+        "sequence": second_sequence,
+        "speaker_condition": speaker,
+        "steps": 2,
+        "noise": second_noise,
+    }
+    if mode == "soar":
+        seed_kwargs.update(
+            cfg_sequence=second_cfg_sequence,
+            guidance_scale=1.3,
+        )
+    cached.sample(full_state, **seed_kwargs)
+    cached.sample(compact_state, **seed_kwargs)
+
+    current = _current(0.9)
+    cfg_current = _current(-0.9)
+    noise = mx.full((1, _PATCH_SIZE, _LATENT_DIM), 0.25)
+    full_kwargs = {
+        "sequence": _sequence([first_previous, second_previous], current),
+        "speaker_condition": speaker,
+        "steps": 2,
+        "noise": noise,
+    }
+    tail_kwargs = {
+        "previous_unit": second_previous,
+        "current_hidden": current,
+        "speaker_condition": speaker,
+        "steps": 2,
+        "noise": noise,
+    }
+    if mode == "soar":
+        full_kwargs.update(
+            cfg_sequence=_sequence([first_cfg, second_cfg], cfg_current),
+            guidance_scale=1.3,
+        )
+        tail_kwargs.update(
+            cfg_previous_unit=second_cfg,
+            cfg_current_hidden=cfg_current,
+            guidance_scale=1.3,
+        )
+    expected = cached.sample(full_state, **full_kwargs)
+    actual = cached.sample_tail(compact_state, **tail_kwargs)
+    mx.eval(expected, actual)
+    np.testing.assert_allclose(actual, expected, atol=3e-5, rtol=3e-5)
+    assert full_state.cache is not None and compact_state.cache is not None
+    assert compact_state.cache.offsets == full_state.cache.offsets
+
+
 def test_continuation_prefill_is_per_nfe_and_commits_the_final_prompt_unit() -> None:
     mx.random.seed(79)
     oracle, cached = _meanflow_pair()

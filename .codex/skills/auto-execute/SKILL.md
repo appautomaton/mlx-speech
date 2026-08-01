@@ -158,4 +158,4 @@ Read `references/stop-examples.md` when uncertain whether a situation qualifies 
 
 ## Rules
 
-- If the user asks for a quick fix outside the plan, reframe through `auto-frame` rather than bypassing it.
+- If the user asks for work outside the plan, reframe through `auto-frame` rather than bypassing it. The boundary is the change's evidence: slice evidence and per-slice commits have to describe what the plan approved, so an unplanned edit landing in the same diff makes the record wrong. The engagement criterion governs what starts a change, never what an active one absorbs.

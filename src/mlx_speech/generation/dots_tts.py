@@ -135,6 +135,29 @@ def _build_fm_positions(fm_sequence_length: int, patch_size: int) -> mx.array:
     return mx.arange(fm_sequence_length + patch_size, dtype=mx.float32)[None]
 
 
+def _concatenate_suffix(chunks: list[mx.array], length: int) -> mx.array:
+    """Materialize exactly the newest DiT tokens without joining full history."""
+
+    if length <= 0:
+        raise ValueError("DiT suffix length must be positive")
+    selected: list[mx.array] = []
+    remaining = length
+    for chunk in reversed(chunks):
+        chunk_length = int(chunk.shape[1])
+        if chunk_length <= 0:
+            continue
+        take = min(remaining, chunk_length)
+        selected.append(chunk[:, chunk_length - take :])
+        remaining -= take
+        if remaining == 0:
+            break
+    if remaining:
+        raise RuntimeError(
+            f"dots.tts DiT history has {length - remaining} tokens; needs {length}"
+        )
+    return mx.concatenate(tuple(reversed(selected)), axis=1)
+
+
 def _sample_rate(value: int, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, Integral) or value <= 0:
         raise ValueError(f"{name} must be a positive integer sample rate")
@@ -689,15 +712,11 @@ class DotsTTSGenerator:
         solver_steps: int | None,
         guidance_scale: float,
     ) -> mx.array:
-        fm_sequence = mx.concatenate(state.fm_chunks, axis=1)
-        fm_sequence_length = int(fm_sequence.shape[1])
+        fm_sequence_length = sum(int(chunk.shape[1]) for chunk in state.fm_chunks)
         padding = mx.zeros(
             (1, self.config.patch_size, self.config.dit.hidden_size),
             dtype=self._activation_dtype,
         )
-        sequence = mx.concatenate((fm_sequence, padding), axis=1)
-        mask = _build_fm_attention_mask(fm_sequence_length, self.config.patch_size)
-        positions = _build_fm_positions(fm_sequence_length, self.config.patch_size)
         noise = mx.random.normal(
             (1, self.config.patch_size, self.config.latent_dim),
             key=state.rng.next_key(),
@@ -705,24 +724,59 @@ class DotsTTSGenerator:
         if state.dit_solver is not None:
             if state.dit_state is None:
                 raise RuntimeError("dots.tts request is missing its DiT solver state")
-            cfg_sequence = (
-                None
-                if self.config.mode == "meanflow"
-                else mx.concatenate(
+            fresh_length = (
+                state.dit_solver.unit_length
+                + state.dit_solver.hidden_patch_size
+            )
+            cache = state.dit_state.cache
+            if fm_sequence_length == fresh_length or cache is not None:
+                fresh = _concatenate_suffix(state.fm_chunks, fresh_length)
+                cfg_fresh = (
+                    None
+                    if self.config.mode == "meanflow"
+                    else _concatenate_suffix(state.cfg_chunks, fresh_length)
+                )
+                return state.dit_solver.sample_tail(
+                    state.dit_state,
+                    previous_unit=fresh[:, : state.dit_solver.unit_length],
+                    current_hidden=fresh[:, state.dit_solver.unit_length :],
+                    cfg_previous_unit=(
+                        None
+                        if cfg_fresh is None
+                        else cfg_fresh[:, : state.dit_solver.unit_length]
+                    ),
+                    cfg_current_hidden=(
+                        None
+                        if cfg_fresh is None
+                        else cfg_fresh[:, state.dit_solver.unit_length :]
+                    ),
+                    speaker_condition=speaker_condition,
+                    guidance_scale=guidance_scale,
+                    steps=solver_steps,
+                    noise=noise,
+                )
+            fm_sequence = mx.concatenate(state.fm_chunks, axis=1)
+            sequence = mx.concatenate((fm_sequence, padding), axis=1)
+            cfg_sequence = None
+            if self.config.mode != "meanflow":
+                cfg_sequence = mx.concatenate(
                     (mx.concatenate(state.cfg_chunks, axis=1), padding), axis=1
                 )
-            )
             return state.dit_solver.sample(
                 state.dit_state,
                 sequence=sequence,
                 cfg_sequence=cfg_sequence,
-                attention_mask=mask,
-                positions=positions,
+                attention_mask=None,
+                positions=None,
                 speaker_condition=speaker_condition,
                 guidance_scale=guidance_scale,
                 steps=solver_steps,
                 noise=noise,
             )
+        fm_sequence = mx.concatenate(state.fm_chunks, axis=1)
+        sequence = mx.concatenate((fm_sequence, padding), axis=1)
+        mask = _build_fm_attention_mask(fm_sequence_length, self.config.patch_size)
+        positions = _build_fm_positions(fm_sequence_length, self.config.patch_size)
         if self.config.mode == "meanflow":
             solver = MeanFlowSolver(
                 self.components.core.dit,

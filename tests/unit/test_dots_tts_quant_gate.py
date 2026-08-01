@@ -10,9 +10,23 @@ import pytest
 
 from scripts.eval import dots_tts_quant_gate as gate
 from scripts.eval import materialize_clone_eval_macos as materializer
+from scripts.eval.dots_tts_comparison_contract import update_comparison_contract
 
 
 MANIFEST = Path("examples/clone_eval/dots_tts_macos_multilingual_v1.json")
+CONTRACT = """# Evidence
+
+## Canonical comparison data
+
+```json
+{
+  "schema_version": 1,
+  "status": "pending",
+  "performance": null,
+  "quality": null
+}
+```
+"""
 
 
 def _record(
@@ -160,3 +174,158 @@ def test_report_records_prompts_artifact_digests_and_revisions() -> None:
     for artifact in artifacts.values():
         assert artifact["digest"] in report
         assert artifact["source"]["revision"] in report
+
+
+def test_selected_quality_cases_are_exact_unique_manifest_keys() -> None:
+    manifest = gate.load_manifest(MANIFEST)
+    selected = (
+        "mf/base/samantha_en_us/continuation",
+        "soar/base/tingting_zh_cn/speaker_only",
+    )
+    assert gate.resolve_case_keys(manifest, selected) == selected
+    assert gate.resolve_case_keys(manifest, ()) is None
+    with pytest.raises(ValueError, match="unique"):
+        gate.resolve_case_keys(manifest, (selected[0], selected[0]))
+    with pytest.raises(ValueError, match="unknown"):
+        gate.resolve_case_keys(manifest, ("mf/base/missing/continuation",))
+
+
+def _comparison_record(
+    key: str,
+    *,
+    errors: int = 1,
+    speaker: float = 0.8,
+) -> dict:
+    variant, artifact_class, reference_id, mode = key.split("/")
+    return {
+        "key": key,
+        "variant": variant,
+        "artifact_class": artifact_class,
+        "reference_id": reference_id,
+        "language": "en",
+        "mode": mode,
+        "artifact_digest": f"digest-{variant}-{artifact_class}",
+        "reference_sha256": f"reference-{reference_id}",
+        "reference_text": "Reference words.",
+        "target_text": "Target words.",
+        "sample_rate": 48_000,
+        "waveform_samples": 96_000,
+        "num_patches": 2,
+        "asr_errors": errors,
+        "asr_tokens": 10,
+        "wer": errors / 10,
+        "speaker_cosine": speaker,
+    }
+
+
+def _quality_evidence(records: list[dict]) -> dict:
+    artifact_keys = {
+        f"{record['variant']}/{record['artifact_class']}" for record in records
+    }
+    return {
+        "report_sha256": "report",
+        "manifest": {"sha256": "manifest"},
+        "corpus_lock": {"sha256": "corpus"},
+        "asr": {"path": "asr", "weights_sha256": "asr"},
+        "artifacts": {
+            key: {
+                "digest": f"digest-{key.replace('/', '-')}",
+                "artifact_class": key.split("/")[1],
+                "source": {"revision": "upstream"},
+                "files": {},
+            }
+            for key in artifact_keys
+        },
+        "thresholds": {
+            "max_absolute_wer_regression": 0.01,
+            "max_speaker_cosine_regression": 0.02,
+        },
+        "records": records,
+    }
+
+
+def _quality_payload(records: list[dict]) -> dict:
+    artifact_keys = {
+        f"{record['variant']}/{record['artifact_class']}" for record in records
+    }
+    return {
+        "manifest": {"sha256": "manifest"},
+        "corpus_lock": {"sha256": "corpus"},
+        "asr": {"weights_sha256": "asr"},
+        "artifacts": {
+            key: {"digest": f"digest-{key.replace('/', '-')}"}
+            for key in artifact_keys
+        },
+        "records": records,
+    }
+
+
+def test_quality_comparison_supports_focused_scope_and_fails_regression(
+    tmp_path: Path,
+) -> None:
+    key = "mf/base/samantha_en_us/continuation"
+    baseline_record = _comparison_record(key)
+    contract = tmp_path / "slice.md"
+    contract.write_text(CONTRACT, encoding="utf-8")
+    update_comparison_contract(
+        contract,
+        section="performance",
+        evidence={"baseline": {}},
+    )
+    update_comparison_contract(
+        contract,
+        section="quality",
+        evidence=_quality_evidence([baseline_record]),
+    )
+    comparison = gate.compare_quality_payload(
+        _quality_payload([_comparison_record(key, speaker=0.79)]),
+        contract,
+        selected_case_keys=(key,),
+    )
+    assert comparison["passed"]
+    assert comparison["groups"]["mf/base"]["speaker_cosine_regression"] == pytest.approx(
+        0.01
+    )
+
+    failed = gate.compare_quality_payload(
+        _quality_payload([_comparison_record(key, errors=2, speaker=0.79)]),
+        contract,
+        selected_case_keys=(key,),
+    )
+    assert not failed["passed"]
+
+
+def test_freeze_quality_evidence_is_compact_and_complete(tmp_path: Path) -> None:
+    key = "soar/base/tingting_zh_cn/speaker_only"
+    record = _comparison_record(key)
+    report = tmp_path / "report.json"
+    report.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "manifest": {"path": "manifest", "sha256": "manifest"},
+                "corpus_lock": {"path": "corpus", "sha256": "corpus"},
+                "asr": {"path": "asr", "weights_sha256": "asr"},
+                "artifacts": {
+                    "soar/base": {
+                        "digest": "digest-soar-base",
+                        "artifact_class": "base",
+                        "source": {"revision": "upstream"},
+                        "files": {},
+                    }
+                },
+                "gate": {
+                    "thresholds": {
+                        "max_absolute_wer_regression": 0.01,
+                        "max_speaker_cosine_regression": 0.02,
+                    }
+                },
+                "records": [{**record, "output_path": "ignored.wav"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    evidence = gate.freeze_quality_evidence(report)
+    assert evidence["records"] == [record]
+    assert "output_path" not in evidence["records"][0]
+    assert len(evidence["report_sha256"]) == 64

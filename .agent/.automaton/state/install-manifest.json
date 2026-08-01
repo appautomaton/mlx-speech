@@ -1,260 +1,35 @@
 {
   "schema": 1,
-  "automaton_version": "0.4.1",
-  "installed_at": "2026-07-30T19:52:16.568Z",
+  "automaton_version": "0.4.4",
+  "installed_at": "2026-07-31T22:10:58.582Z",
   "owners": {
     "project": {
-      "automaton_version": "0.4.1",
-      "installed_at": "2026-07-30T19:52:16.548Z"
+      "automaton_version": "0.4.4",
+      "installed_at": "2026-07-31T22:10:58.563Z"
     },
     "claude": {
-      "automaton_version": "0.4.1",
-      "installed_at": "2026-07-30T19:52:16.568Z"
+      "automaton_version": "0.4.4",
+      "installed_at": "2026-07-31T22:10:54.840Z"
     },
     "codex": {
-      "automaton_version": "0.4.1",
-      "installed_at": "2026-07-30T19:52:13.227Z"
+      "automaton_version": "0.4.4",
+      "installed_at": "2026-07-31T22:10:58.582Z"
     }
   },
   "files": [
     {
-      "path": ".codex/skills/auto-eng-review/SKILL.md",
-      "hash": "f4328ab5c82ef04054ad93f2510e90fe90846e844e4787c2405901ae6810fe6c",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-eng-review/references/engineering-sections.md",
-      "hash": "c8be8f3e1b15209c1d7b5a8b77ff1e89731bb77a193969ae58a7ff13bfaafcec",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-eng-review/references/implementation-alternatives.md",
-      "hash": "61a06fc27d6eaf8f6f4ac9f77af9583056643a1972c138d6d9a21e9f3914de0c",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-eng-review/references/outside-voice.md",
-      "hash": "abdfd246d4f0114098c097b32bab437286feab550757a436de1b8f590d9c83c6",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-eng-review/references/prime-directives.md",
-      "hash": "6ee2e7483a02ffb2b67a9eed96e09086223b7b7d14092cf2aa5b492d12e7bdbb",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-eng-review/references/quality.md",
-      "hash": "5de43a0c3eacba28254f0fce7d918f92b4593e16ccf94a414789ae29ba371e58",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-eng-review/references/review-template.md",
-      "hash": "d36bb48e1dd6eca6e3d45109da93a8120d380ef9f13c81cc37dad5f1b3012b89",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-execute/SKILL.md",
-      "hash": "7105cbb5cc8c0736c0b8680869f055f3634089f63e34b694464cc2a147b41002",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-execute/references/content-execution.md",
-      "hash": "63b71447497f22aad11da991d20a2bff3b93eedaf9d70dca48a4f71411282484",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-execute/references/debug-protocol.md",
-      "hash": "0296e16c0c92a5598b0aefc306c04afd957f23d943e2d00022ae713b44ddfc48",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-execute/references/git-rhythm.md",
-      "hash": "dc930749e5e4b9aced3c4f0f6b8e1f53396fce23ae2d5b52b93f0520efdc193d",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-execute/references/implementer-prompt.md",
-      "hash": "d056e98e0c87397a9e32bb4459c661bfa1d017d65bea55bcd77c4ac275fd05e4",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-execute/references/quality-reviewer-prompt.md",
-      "hash": "8d9dd6c1d6be6fe789aaab30220f120f1cbb27ec688741eee61e9ae2295e45f5",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-execute/references/quality.md",
-      "hash": "17b491b19c76cbb1ca2e17a09824709563466c45812b970703930b167790f039",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-execute/references/spec-reviewer-prompt.md",
-      "hash": "54dc0227ffd8d457d0d54ebe75623c436e344edb84ba376092d7f472781935b8",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-execute/references/stop-examples.md",
-      "hash": "5a9dcf0e5a15eb84fdfb32ec2938fd34ec3cd444afd27201797cc495db57d8de",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/SKILL.md",
-      "hash": "d3c2e0ac0c0e6e270a17966dc5556235d733a6725ceb33952b45c71d78cd66c6",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/alternatives-format.md",
-      "hash": "4b7277d027f66d417712cf496e4910d9a6a7b1eaf4ac2b3495310ca3381b8883",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/content-framing.md",
-      "hash": "33114658c2959e8075c9f90c784c9c3ddd3b6cefeef3946c592ac90276e4a7da",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/diagnostic-calibration.md",
-      "hash": "76e320d9851d45f8c408fa4d342788888dc37285cc7d21ef7d273d049c877544",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/diagnostic.md",
-      "hash": "7df9d7cae2efd93ff43950682ab9caae427b18b0ed8eda1392e61608cca19f52",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/landscape-awareness.md",
-      "hash": "e1b7b91e430edf2bfc1ddd420ae9768a605398a0c0ce0a16ded91333ce049283",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/quality.md",
-      "hash": "f751b7d5867ec7c5904b65a8fe072b7a9604ad1a2ba3bf25914f62ebe77e63bb",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/shape-questions.md",
-      "hash": "7fcec38e4bdddb95fa47d0e7f53e04a59baacd8caae2bc3057de22a44ba60c7a",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/spec-shape.md",
-      "hash": "d6102ed4acbd3ca712152878952d4486240386003ad83944c01e10a75d780fb9",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-plan/SKILL.md",
-      "hash": "e45eddc7ddd2755c138b94c55103d20d460e65108d274dd468c363f74b3e03af",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-plan/references/content-planning.md",
-      "hash": "992099e374e4970a9ebebeb4e2eb652a6aa717bfc76c827ca843aa31cecf1971",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-plan/references/quality.md",
-      "hash": "1d71d106981f96cd071d685620613a8c681b38c508c389d8df738cce9301b948",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-plan/references/slice-examples.md",
-      "hash": "41ee3a2d46ab64617d36d919a2b3c3c40ba986f994bff3e713da25b42a01c168",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-resume/SKILL.md",
-      "hash": "5c14213efb6376b0959109579eeeecce84d37e9742de169d0e6f3b190671e82c",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-resume/references/artifact-order.md",
-      "hash": "a2f7ba5e7dd861bf8b3e5a53512f162ee8df6eb67b88412864f5f09e3505ad54",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-resume/references/quality.md",
-      "hash": "6aee8a5b47355e5b2937a9645305d17b430bc5b8abc19f2a1946beb3fe549cb1",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-resume/references/recovery-scenarios.md",
-      "hash": "9ab7668b4031c75838119b802c76aa4125b35948e2bc97b9b0827717e429774f",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-verify/SKILL.md",
-      "hash": "b9fdafefe77a3e62ffad6c2a7e0a146604234fc1e6be74a49b356971945a7013",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-verify/references/content-verification.md",
-      "hash": "621a85e0392c2139a2f8da7260ef33c0d8395c6c170ebd269921e08619bf4ef0",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-verify/references/quality.md",
-      "hash": "e88a96329aa485178a1bb8ee1daa53800329f823df77aa12e0f7aab782cb6517",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-verify/references/verification-template.md",
-      "hash": "105b0355c1dba214f44aa026e75afbfd11397603f25deca207213f6b4a2b3b59",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-execute/references/HOST-TOOLS.md",
-      "hash": "5de71c0992f84ed3c051443f2d09bdc544ad9d50d1d35d63c6940158353e9d89",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/HOST-TOOLS.md",
-      "hash": "5de71c0992f84ed3c051443f2d09bdc544ad9d50d1d35d63c6940158353e9d89",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-plan/references/HOST-TOOLS.md",
-      "hash": "5de71c0992f84ed3c051443f2d09bdc544ad9d50d1d35d63c6940158353e9d89",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/agents/automaton-implementer.toml",
-      "hash": "c5f48c284d5eade82dd4db34fecaa89d9f89f1196d9e60fe79a9aedd45e321b2",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/agents/automaton-spec-reviewer.toml",
-      "hash": "83601c9c657dc745ecd26f7aa801069adbd3174603f9979fcc6463e45cd49cf6",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/agents/automaton-quality-reviewer.toml",
-      "hash": "671bfcc19aa5d7c30e2826ff8c9d8e88a635f9e31111bd24c53efbdd8a6e65ac",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/agents/automaton-librarian.toml",
-      "hash": "fe0450ee2580b4edaa84a94825fa39f8a4a8d7a5df81a5cd9bc4884d343c2d46",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/hooks/session-start.mjs",
-      "hash": "b34f2143e87396acadf4e6424a4989fc25ff3c8ee2e11eccd40740c6c17923d2",
-      "owner": "codex"
-    },
-    {
       "path": ".claude/skills/auto-eng-review/SKILL.md",
-      "hash": "f4328ab5c82ef04054ad93f2510e90fe90846e844e4787c2405901ae6810fe6c",
+      "hash": "366c3bb954496a59c769e6c467927e2d25c86a004d396f6ccfd522a247971b01",
       "owner": "claude"
     },
     {
       "path": ".claude/skills/auto-eng-review/references/engineering-sections.md",
-      "hash": "c8be8f3e1b15209c1d7b5a8b77ff1e89731bb77a193969ae58a7ff13bfaafcec",
+      "hash": "ab3b27f29e455071277c36473e9724bcd7fe1fda76c14ff62ab7692faf16a48b",
       "owner": "claude"
     },
     {
       "path": ".claude/skills/auto-eng-review/references/implementation-alternatives.md",
-      "hash": "61a06fc27d6eaf8f6f4ac9f77af9583056643a1972c138d6d9a21e9f3914de0c",
+      "hash": "e49f2d0123fd84f807a0861718204ed07871051b93f11f13adcb4dbbe8a6ab45",
       "owner": "claude"
     },
     {
@@ -264,7 +39,7 @@
     },
     {
       "path": ".claude/skills/auto-eng-review/references/prime-directives.md",
-      "hash": "6ee2e7483a02ffb2b67a9eed96e09086223b7b7d14092cf2aa5b492d12e7bdbb",
+      "hash": "8a9e084139e380eac52796626c962396afbcdb823c09ac0f00a88dafa2cd3e65",
       "owner": "claude"
     },
     {
@@ -279,7 +54,7 @@
     },
     {
       "path": ".claude/skills/auto-execute/SKILL.md",
-      "hash": "7105cbb5cc8c0736c0b8680869f055f3634089f63e34b694464cc2a147b41002",
+      "hash": "6687b3e64c43eb6222a2aa35326aa8d87650bad2b955656d8f373e317aa725a6",
       "owner": "claude"
     },
     {
@@ -324,12 +99,12 @@
     },
     {
       "path": ".claude/skills/auto-frame/SKILL.md",
-      "hash": "d3c2e0ac0c0e6e270a17966dc5556235d733a6725ceb33952b45c71d78cd66c6",
+      "hash": "1c5309b11101f0797b10942062979e46bba5e512e391a54b606f1a796ab9477f",
       "owner": "claude"
     },
     {
       "path": ".claude/skills/auto-frame/references/alternatives-format.md",
-      "hash": "4b7277d027f66d417712cf496e4910d9a6a7b1eaf4ac2b3495310ca3381b8883",
+      "hash": "6bbded4ea53217e6aa3a4cff213834aab7d934e9ae888f8d8c254e4d0dffea87",
       "owner": "claude"
     },
     {
@@ -384,7 +159,7 @@
     },
     {
       "path": ".claude/skills/auto-plan/references/slice-examples.md",
-      "hash": "41ee3a2d46ab64617d36d919a2b3c3c40ba986f994bff3e713da25b42a01c168",
+      "hash": "23cfcac0b3be5e6e43d9c4ad8f1094e24ed276534233fce6a9e410e347544f38",
       "owner": "claude"
     },
     {
@@ -394,7 +169,7 @@
     },
     {
       "path": ".claude/skills/auto-resume/references/artifact-order.md",
-      "hash": "a2f7ba5e7dd861bf8b3e5a53512f162ee8df6eb67b88412864f5f09e3505ad54",
+      "hash": "60f5959cdbdf9e1b972992d427ce8e42727b9f834bf91b378d9c5c4f704a968a",
       "owner": "claude"
     },
     {
@@ -466,77 +241,234 @@
       "path": ".claude/hooks/session-start.mjs",
       "hash": "b34f2143e87396acadf4e6424a4989fc25ff3c8ee2e11eccd40740c6c17923d2",
       "owner": "claude"
+    },
+    {
+      "path": ".codex/skills/auto-eng-review/SKILL.md",
+      "hash": "366c3bb954496a59c769e6c467927e2d25c86a004d396f6ccfd522a247971b01",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-eng-review/references/engineering-sections.md",
+      "hash": "ab3b27f29e455071277c36473e9724bcd7fe1fda76c14ff62ab7692faf16a48b",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-eng-review/references/implementation-alternatives.md",
+      "hash": "e49f2d0123fd84f807a0861718204ed07871051b93f11f13adcb4dbbe8a6ab45",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-eng-review/references/outside-voice.md",
+      "hash": "abdfd246d4f0114098c097b32bab437286feab550757a436de1b8f590d9c83c6",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-eng-review/references/prime-directives.md",
+      "hash": "8a9e084139e380eac52796626c962396afbcdb823c09ac0f00a88dafa2cd3e65",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-eng-review/references/quality.md",
+      "hash": "5de43a0c3eacba28254f0fce7d918f92b4593e16ccf94a414789ae29ba371e58",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-eng-review/references/review-template.md",
+      "hash": "d36bb48e1dd6eca6e3d45109da93a8120d380ef9f13c81cc37dad5f1b3012b89",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-execute/SKILL.md",
+      "hash": "6687b3e64c43eb6222a2aa35326aa8d87650bad2b955656d8f373e317aa725a6",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-execute/references/content-execution.md",
+      "hash": "63b71447497f22aad11da991d20a2bff3b93eedaf9d70dca48a4f71411282484",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-execute/references/debug-protocol.md",
+      "hash": "0296e16c0c92a5598b0aefc306c04afd957f23d943e2d00022ae713b44ddfc48",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-execute/references/git-rhythm.md",
+      "hash": "dc930749e5e4b9aced3c4f0f6b8e1f53396fce23ae2d5b52b93f0520efdc193d",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-execute/references/implementer-prompt.md",
+      "hash": "d056e98e0c87397a9e32bb4459c661bfa1d017d65bea55bcd77c4ac275fd05e4",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-execute/references/quality-reviewer-prompt.md",
+      "hash": "8d9dd6c1d6be6fe789aaab30220f120f1cbb27ec688741eee61e9ae2295e45f5",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-execute/references/quality.md",
+      "hash": "17b491b19c76cbb1ca2e17a09824709563466c45812b970703930b167790f039",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-execute/references/spec-reviewer-prompt.md",
+      "hash": "54dc0227ffd8d457d0d54ebe75623c436e344edb84ba376092d7f472781935b8",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-execute/references/stop-examples.md",
+      "hash": "5a9dcf0e5a15eb84fdfb32ec2938fd34ec3cd444afd27201797cc495db57d8de",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-frame/SKILL.md",
+      "hash": "1c5309b11101f0797b10942062979e46bba5e512e391a54b606f1a796ab9477f",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-frame/references/alternatives-format.md",
+      "hash": "6bbded4ea53217e6aa3a4cff213834aab7d934e9ae888f8d8c254e4d0dffea87",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-frame/references/content-framing.md",
+      "hash": "33114658c2959e8075c9f90c784c9c3ddd3b6cefeef3946c592ac90276e4a7da",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-frame/references/diagnostic-calibration.md",
+      "hash": "76e320d9851d45f8c408fa4d342788888dc37285cc7d21ef7d273d049c877544",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-frame/references/diagnostic.md",
+      "hash": "7df9d7cae2efd93ff43950682ab9caae427b18b0ed8eda1392e61608cca19f52",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-frame/references/landscape-awareness.md",
+      "hash": "e1b7b91e430edf2bfc1ddd420ae9768a605398a0c0ce0a16ded91333ce049283",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-frame/references/quality.md",
+      "hash": "f751b7d5867ec7c5904b65a8fe072b7a9604ad1a2ba3bf25914f62ebe77e63bb",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-frame/references/shape-questions.md",
+      "hash": "7fcec38e4bdddb95fa47d0e7f53e04a59baacd8caae2bc3057de22a44ba60c7a",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-frame/references/spec-shape.md",
+      "hash": "d6102ed4acbd3ca712152878952d4486240386003ad83944c01e10a75d780fb9",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-plan/SKILL.md",
+      "hash": "e45eddc7ddd2755c138b94c55103d20d460e65108d274dd468c363f74b3e03af",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-plan/references/content-planning.md",
+      "hash": "992099e374e4970a9ebebeb4e2eb652a6aa717bfc76c827ca843aa31cecf1971",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-plan/references/quality.md",
+      "hash": "1d71d106981f96cd071d685620613a8c681b38c508c389d8df738cce9301b948",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-plan/references/slice-examples.md",
+      "hash": "23cfcac0b3be5e6e43d9c4ad8f1094e24ed276534233fce6a9e410e347544f38",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-resume/SKILL.md",
+      "hash": "5c14213efb6376b0959109579eeeecce84d37e9742de169d0e6f3b190671e82c",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-resume/references/artifact-order.md",
+      "hash": "60f5959cdbdf9e1b972992d427ce8e42727b9f834bf91b378d9c5c4f704a968a",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-resume/references/quality.md",
+      "hash": "6aee8a5b47355e5b2937a9645305d17b430bc5b8abc19f2a1946beb3fe549cb1",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-resume/references/recovery-scenarios.md",
+      "hash": "9ab7668b4031c75838119b802c76aa4125b35948e2bc97b9b0827717e429774f",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-verify/SKILL.md",
+      "hash": "b9fdafefe77a3e62ffad6c2a7e0a146604234fc1e6be74a49b356971945a7013",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-verify/references/content-verification.md",
+      "hash": "621a85e0392c2139a2f8da7260ef33c0d8395c6c170ebd269921e08619bf4ef0",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-verify/references/quality.md",
+      "hash": "e88a96329aa485178a1bb8ee1daa53800329f823df77aa12e0f7aab782cb6517",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-verify/references/verification-template.md",
+      "hash": "105b0355c1dba214f44aa026e75afbfd11397603f25deca207213f6b4a2b3b59",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-execute/references/HOST-TOOLS.md",
+      "hash": "5de71c0992f84ed3c051443f2d09bdc544ad9d50d1d35d63c6940158353e9d89",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-frame/references/HOST-TOOLS.md",
+      "hash": "5de71c0992f84ed3c051443f2d09bdc544ad9d50d1d35d63c6940158353e9d89",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-plan/references/HOST-TOOLS.md",
+      "hash": "5de71c0992f84ed3c051443f2d09bdc544ad9d50d1d35d63c6940158353e9d89",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/agents/automaton-implementer.toml",
+      "hash": "c5f48c284d5eade82dd4db34fecaa89d9f89f1196d9e60fe79a9aedd45e321b2",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/agents/automaton-spec-reviewer.toml",
+      "hash": "83601c9c657dc745ecd26f7aa801069adbd3174603f9979fcc6463e45cd49cf6",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/agents/automaton-quality-reviewer.toml",
+      "hash": "671bfcc19aa5d7c30e2826ff8c9d8e88a635f9e31111bd24c53efbdd8a6e65ac",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/agents/automaton-librarian.toml",
+      "hash": "fe0450ee2580b4edaa84a94825fa39f8a4a8d7a5df81a5cd9bc4884d343c2d46",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/hooks/session-start.mjs",
+      "hash": "b34f2143e87396acadf4e6424a4989fc25ff3c8ee2e11eccd40740c6c17923d2",
+      "owner": "codex"
     }
   ],
   "created_dirs": [
-    {
-      "path": ".codex/skills/auto-eng-review",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-eng-review/references",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-execute",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-execute/references",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-plan",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-plan/references",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-resume",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-resume/references",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-verify",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-verify/references",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/.claude",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/.claude/.cc-writes",
-      "owner": "codex"
-    },
-    {
-      "path": ".agent/.automaton/lib",
-      "owner": "project"
-    },
-    {
-      "path": ".agent/.automaton/references",
-      "owner": "project"
-    },
-    {
-      "path": ".agent/.automaton/scripts",
-      "owner": "project"
-    },
     {
       "path": ".claude/skills/auto-eng-review",
       "owner": "claude"
@@ -592,9 +524,85 @@
     {
       "path": ".claude/skills/.claude/.cc-writes",
       "owner": "claude"
+    },
+    {
+      "path": ".agent/.automaton/lib",
+      "owner": "project"
+    },
+    {
+      "path": ".agent/.automaton/references",
+      "owner": "project"
+    },
+    {
+      "path": ".agent/.automaton/scripts",
+      "owner": "project"
+    },
+    {
+      "path": ".codex/skills/auto-eng-review",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-eng-review/references",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-execute",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-execute/references",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-frame",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-frame/references",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-plan",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-plan/references",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-resume",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-resume/references",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-verify",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/auto-verify/references",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/.claude",
+      "owner": "codex"
+    },
+    {
+      "path": ".codex/skills/.claude/.cc-writes",
+      "owner": "codex"
     }
   ],
   "merges": [
+    {
+      "path": ".claude/settings.json",
+      "owner": "claude",
+      "fragments": [
+        ".claude/hooks/session-start.mjs"
+      ],
+      "added_lines": []
+    },
     {
       "path": ".codex/config.toml",
       "owner": "codex",
@@ -606,14 +614,6 @@
       "owner": "codex",
       "fragments": [
         ".codex/hooks/session-start.mjs"
-      ],
-      "added_lines": []
-    },
-    {
-      "path": ".claude/settings.json",
-      "owner": "claude",
-      "fragments": [
-        ".claude/hooks/session-start.mjs"
       ],
       "added_lines": []
     }

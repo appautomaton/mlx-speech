@@ -1,6 +1,6 @@
 ---
 name: auto-frame
-description: Turn a request into a bounded SPEC.md, with as much conversation as it needs. Use to start any change.
+description: Turn a request into a bounded SPEC.md, with as much conversation as it needs. Use to start a change that spans sessions or needs agreed scope.
 metadata:
   stage: frame
 ---
@@ -45,6 +45,12 @@ Classify three axes and hold them internally:
 Confirm the read in plain language grounded in the user's words. If the user corrects a dimension, adjust before continuing.
 
 Read `.agent/steering/ROADMAP.md` when it exists. If the objective matches a pending phase, say so and scope the work around that phase.
+
+### Check Engagement
+
+Apply the engagement criterion from the session reminder here, where the request is read and nothing else is spent yet. Work this session can finish and verify does not need a spec: say so in one line and do it directly, because a spec that only restates a request is a record nobody reads again.
+
+The user naming a stage, or asking for a spec, settles this. Frame.
 
 ### Choose Depth
 
@@ -128,4 +134,4 @@ Report what the spec bounds, what it excludes, and any assumption worth rejectin
 
 - If the user's framing shifts, reclassify and say so in plain language rather than re-routing silently.
 - If the user expresses impatience, ask the two most critical unresolved questions. If they push back again, present alternatives with explicit assumptions.
-- If the user tries to skip spec writing, write the smallest useful SPEC and ask them to confirm or edit it.
+- If the user tries to skip spec writing on work that spans sessions, write the smallest useful SPEC and ask them to confirm or edit it. Work below the engagement criterion left at Check Engagement and never reaches this rule.

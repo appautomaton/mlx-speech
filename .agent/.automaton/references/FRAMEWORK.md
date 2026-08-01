@@ -14,20 +14,6 @@ Five lifecycle stages: `frame → plan → execute → verify → verified`. `re
 | `verify` | Independent audit against acceptance criteria | Verification report, `VERIFY-GAP` on fail |
 | `verified` | Terminal. Change is complete. | Completion summary |
 
-## Skill Structure
-
-Every skill follows this skeleton:
-
-```
-Preamble        -> identity, "does not" boundary, loading discipline
-Quality Gate    -> checks before finalizing. Each skill ships a quality.md reference
-Do              -> skill-specific procedure, ending in the stop-issuing step when the skill stops
-Output          -> artifacts produced and state changes
-Rules           -> guardrails
-```
-
-Conditional reference reads (`Read references/X.md when Y`) appear inline at their procedural trigger points.
-
 ## State Contract
 
 - Machine state lives in `.agent/.automaton/state/current.json`.
