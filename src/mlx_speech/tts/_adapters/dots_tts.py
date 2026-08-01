@@ -23,6 +23,32 @@ class DotsTTSAdapter:
     def from_dir(cls, model_dir: Path) -> "DotsTTSAdapter":
         return cls(DotsTTSGenerator.from_dir(model_dir))
 
+    @staticmethod
+    def _patch_budget(
+        max_new_tokens: int | None,
+        max_audio_patches: int | None,
+    ) -> int:
+        if (
+            max_new_tokens is not None
+            and max_audio_patches is not None
+            and max_new_tokens != max_audio_patches
+        ):
+            raise ValueError(
+                "max_new_tokens and max_audio_patches must match when both are set"
+            )
+        budget = max_audio_patches if max_audio_patches is not None else max_new_tokens
+        return DEFAULT_MAX_AUDIO_PATCHES if budget is None else budget
+
+    @staticmethod
+    def _stream_chunk_size(stream_chunk_patches: int) -> int:
+        if (
+            isinstance(stream_chunk_patches, bool)
+            or not isinstance(stream_chunk_patches, Integral)
+            or stream_chunk_patches <= 0
+        ):
+            raise ValueError("stream_chunk_patches must be a positive integer")
+        return int(stream_chunk_patches)
+
     def generate(
         self,
         text: str,
@@ -42,27 +68,27 @@ class DotsTTSAdapter:
         stream_chunk_patches: int = 4,
         **kwargs,
     ) -> TTSOutput:
-        chunks = list(
-            self.generate_stream(
-                text,
-                reference_audio=reference_audio,
-                reference_text=reference_text,
-                max_new_tokens=max_new_tokens,
-                max_audio_patches=max_audio_patches,
-                reference_sample_rate=reference_sample_rate,
-                solver_steps=solver_steps,
-                guidance_scale=guidance_scale,
-                speaker_scale=speaker_scale,
-                language=language,
-                seed=seed,
-                eos_threshold=eos_threshold,
-                template=template,
-                stream_chunk_patches=stream_chunk_patches,
-                **kwargs,
-            )
+        del kwargs
+        output = self._generator.synthesize(
+            text,
+            reference_audio=reference_audio,
+            reference_text=reference_text,
+            reference_sample_rate=reference_sample_rate,
+            max_audio_patches=self._patch_budget(
+                max_new_tokens,
+                max_audio_patches,
+            ),
+            solver_steps=solver_steps,
+            guidance_scale=guidance_scale,
+            speaker_scale=speaker_scale,
+            language=language,
+            seed=seed,
+            eos_threshold=eos_threshold,
+            template=template,
+            stream_chunk_patches=self._stream_chunk_size(stream_chunk_patches),
         )
         return TTSOutput(
-            waveform=mx.concatenate([chunk.waveform for chunk in chunks]),
+            waveform=output.waveform,
             sample_rate=self._generator.sample_rate,
         )
 
@@ -85,32 +111,15 @@ class DotsTTSAdapter:
         stream_chunk_patches: int = 4,
         **kwargs,
     ) -> Iterator[TTSOutput]:
-        if (
-            max_new_tokens is not None
-            and max_audio_patches is not None
-            and max_new_tokens != max_audio_patches
-        ):
-            raise ValueError(
-                "max_new_tokens and max_audio_patches must match when both are set"
-            )
-        if (
-            isinstance(stream_chunk_patches, bool)
-            or not isinstance(stream_chunk_patches, Integral)
-            or stream_chunk_patches <= 0
-        ):
-            raise ValueError("stream_chunk_patches must be a positive integer")
-        patch_budget = (
-            max_audio_patches
-            if max_audio_patches is not None
-            else max_new_tokens
-        )
+        del kwargs
         chunks = self._generator.synthesize_stream(
             text,
             reference_audio=reference_audio,
             reference_text=reference_text,
             reference_sample_rate=reference_sample_rate,
-            max_audio_patches=(
-                DEFAULT_MAX_AUDIO_PATCHES if patch_budget is None else patch_budget
+            max_audio_patches=self._patch_budget(
+                max_new_tokens,
+                max_audio_patches,
             ),
             solver_steps=solver_steps,
             guidance_scale=guidance_scale,
@@ -119,7 +128,7 @@ class DotsTTSAdapter:
             seed=seed,
             eos_threshold=eos_threshold,
             template=template,
-            stream_chunk_patches=int(stream_chunk_patches),
+            stream_chunk_patches=self._stream_chunk_size(stream_chunk_patches),
         )
         for chunk in chunks:
             yield TTSOutput(

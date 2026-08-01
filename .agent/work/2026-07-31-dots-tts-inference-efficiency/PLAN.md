@@ -63,6 +63,10 @@ The plan deliberately measures the current cached path once, then optimizes the 
 
 **Produces:** one acoustic producer with distinct latency and streaming decode sinks
 
+**Status:** complete
+
+**Evidence:** [Slice 2 execution summary](slices/slice-002-summary.md)
+
 ### Slice 3: Correct decoder precision and compile the vocoder step
 
 **Objective:** Keep BigVGAN in its checkpoint dtype and reuse compiled common-shape SLSTM/decoder execution without sharing request state.

@@ -17,8 +17,19 @@ class _Generator:
 
     def __init__(self):
         self.kwargs = None
+        self.synthesize_calls = 0
+        self.stream_calls = 0
+
+    def synthesize(self, text, **kwargs):
+        self.synthesize_calls += 1
+        self.kwargs = {"text": text, **kwargs}
+        return SimpleNamespace(
+            waveform=mx.arange(6, dtype=mx.float32),
+            num_patches=3,
+        )
 
     def synthesize_stream(self, text, **kwargs):
+        self.stream_calls += 1
         self.kwargs = {"text": text, **kwargs}
         yield SimpleNamespace(waveform=mx.ones((3,)), num_patches=1)
         yield SimpleNamespace(waveform=mx.ones((5,)) * 2, num_patches=2)
@@ -43,8 +54,10 @@ def test_adapter_keeps_model_controls_in_backend_kwargs() -> None:
     assert output.sample_rate == 48_000
     np.testing.assert_array_equal(
         output.waveform,
-        mx.concatenate((mx.ones((3,)), mx.ones((5,)) * 2)),
+        mx.arange(6, dtype=mx.float32),
     )
+    assert generator.synthesize_calls == 1
+    assert generator.stream_calls == 0
     assert generator.kwargs["max_audio_patches"] == 7
     assert generator.kwargs["reference_sample_rate"] == 24_000
     assert generator.kwargs["solver_steps"] == 3
@@ -69,6 +82,8 @@ def test_adapter_streams_unified_outputs_and_keeps_patch_metadata_private() -> N
     assert [int(chunk.waveform.size) for chunk in chunks] == [3, 5]
     assert all(chunk.sample_rate == 48_000 for chunk in chunks)
     assert all(not hasattr(chunk, "num_patches") for chunk in chunks)
+    assert generator.synthesize_calls == 0
+    assert generator.stream_calls == 1
     assert generator.kwargs["stream_chunk_patches"] == 3
     with pytest.raises(ValueError, match="positive integer"):
         list(adapter.generate_stream("hello", stream_chunk_patches=0))

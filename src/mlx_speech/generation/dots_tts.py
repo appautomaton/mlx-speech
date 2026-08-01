@@ -91,7 +91,7 @@ class _DotsTTSRequestRNG:
 
 @dataclass
 class _DotsTTSRequestState:
-    """All mutable caches and decode buffers owned by one synthesis request."""
+    """All mutable acoustic-generation state owned by one synthesis request."""
 
     fm_chunks: list[mx.array]
     cfg_chunks: list[mx.array]
@@ -99,11 +99,26 @@ class _DotsTTSRequestState:
     semantic_state: SemanticEncoderState | None
     dit_solver: CachedDiTSolver | None
     dit_state: DiTSolverState | None
+    rng: _DotsTTSRequestRNG | None
+    generated_patches: int = 0
+
+    def close(self) -> None:
+        self.fm_chunks.clear()
+        self.cfg_chunks.clear()
+        self.qwen_cache = None
+        self.semantic_state = None
+        self.dit_solver = None
+        self.dit_state = None
+        self.rng = None
+
+
+@dataclass
+class _DotsTTSStreamState:
+    """Mutable recurrent-vocoder state owned only by a streaming sink."""
+
     vocoder_state: Any
     vocoder_buffer: list[mx.array]
-    rng: _DotsTTSRequestRNG
     pending_chunk_patches: int = 0
-    generated_patches: int = 0
     yielded_waveform: bool = False
     has_non_silent_audio: bool = False
 
@@ -692,9 +707,7 @@ class DotsTTSGenerator:
         if getattr(dit, "_dots_tts_full_history_test_double", False):
             return None, None
         solver_type = (
-            CachedMeanFlowSolver
-            if self.config.mode == "meanflow"
-            else CachedSOARSolver
+            CachedMeanFlowSolver if self.config.mode == "meanflow" else CachedSOARSolver
         )
         solver = solver_type(
             dit,
@@ -717,6 +730,8 @@ class DotsTTSGenerator:
             (1, self.config.patch_size, self.config.dit.hidden_size),
             dtype=self._activation_dtype,
         )
+        if state.rng is None:
+            raise RuntimeError("dots.tts request RNG was released before completion")
         noise = mx.random.normal(
             (1, self.config.patch_size, self.config.latent_dim),
             key=state.rng.next_key(),
@@ -725,8 +740,7 @@ class DotsTTSGenerator:
             if state.dit_state is None:
                 raise RuntimeError("dots.tts request is missing its DiT solver state")
             fresh_length = (
-                state.dit_solver.unit_length
-                + state.dit_solver.hidden_patch_size
+                state.dit_solver.unit_length + state.dit_solver.hidden_patch_size
             )
             cache = state.dit_state.cache
             if fm_sequence_length == fresh_length or cache is not None:
@@ -812,9 +826,9 @@ class DotsTTSGenerator:
             noise=noise,
         )
 
-    def _decode_request_chunk(
+    def _decode_stream_chunk(
         self,
-        state: _DotsTTSRequestState,
+        state: _DotsTTSStreamState,
         patches: list[mx.array],
         *,
         final: bool = False,
@@ -855,7 +869,30 @@ class DotsTTSGenerator:
             num_patches=num_patches,
         )
 
-    def _synthesize_segment_stream(
+    @staticmethod
+    def _validate_max_audio_patches(max_audio_patches: int) -> int:
+        if (
+            isinstance(max_audio_patches, bool)
+            or not isinstance(max_audio_patches, Integral)
+            or max_audio_patches <= 0
+        ):
+            raise ValueError("max_audio_patches must be positive")
+        max_audio_patches = int(max_audio_patches)
+        if max_audio_patches > _MAX_AUDIO_PATCHES:
+            raise ValueError(f"max_audio_patches must not exceed {_MAX_AUDIO_PATCHES}")
+        return max_audio_patches
+
+    @staticmethod
+    def _validate_stream_chunk_patches(stream_chunk_patches: int) -> int:
+        if (
+            isinstance(stream_chunk_patches, bool)
+            or not isinstance(stream_chunk_patches, Integral)
+            or stream_chunk_patches <= 0
+        ):
+            raise ValueError("stream_chunk_patches must be a positive integer")
+        return int(stream_chunk_patches)
+
+    def _generate_latent_patches(
         self,
         text: str,
         *,
@@ -870,9 +907,8 @@ class DotsTTSGenerator:
         seed: int = 42,
         eos_threshold: float = 0.8,
         template: Literal["tts", "tts_interleave"] = "tts",
-        stream_chunk_patches: int = 4,
-    ) -> Iterator[_DotsTTSStreamChunk]:
-        """Stream one unsplit text segment within a strict patch budget.
+    ) -> Iterator[mx.array]:
+        """Yield payload latent patches from one request-local acoustic core.
 
         Transcript-backed references consume leading schedule spans for continuation
         prefill. Audio-only references leave the target-only schedule unchanged and
@@ -881,24 +917,7 @@ class DotsTTSGenerator:
         for the released multi-speaker checkpoints.
         """
 
-        if (
-            isinstance(max_audio_patches, bool)
-            or not isinstance(max_audio_patches, Integral)
-            or max_audio_patches <= 0
-        ):
-            raise ValueError("max_audio_patches must be positive")
-        max_audio_patches = int(max_audio_patches)
-        if max_audio_patches > _MAX_AUDIO_PATCHES:
-            raise ValueError(
-                f"max_audio_patches must not exceed {_MAX_AUDIO_PATCHES}"
-            )
-        if (
-            isinstance(stream_chunk_patches, bool)
-            or not isinstance(stream_chunk_patches, Integral)
-            or stream_chunk_patches <= 0
-        ):
-            raise ValueError("stream_chunk_patches must be a positive integer")
-        stream_chunk_patches = int(stream_chunk_patches)
+        max_audio_patches = self._validate_max_audio_patches(max_audio_patches)
         if not 0.0 <= eos_threshold <= 1.0:
             raise ValueError("eos_threshold must be in [0, 1]")
         if not math.isfinite(guidance_scale):
@@ -941,9 +960,6 @@ class DotsTTSGenerator:
             )
 
         dit_solver, dit_state = self._new_dit_request(max_audio_patches)
-        maximum_vocoder_chunk = (
-            min(stream_chunk_patches, max_audio_patches) * self.config.patch_size
-        )
         state = _DotsTTSRequestState(
             fm_chunks=[],
             cfg_chunks=[],
@@ -951,133 +967,181 @@ class DotsTTSGenerator:
             semantic_state=None,
             dit_solver=dit_solver,
             dit_state=dit_state,
-            vocoder_state=self.components.audio_vae.init_decode_state(
-                maximum_chunk_size=maximum_vocoder_chunk
-            ),
-            vocoder_buffer=[],
             rng=rng,
         )
-        position, hidden = self._prefill(
-            schedule,
-            prompt,
-            state,
-        )
-        audio_ids = {
-            self.tokenizer.audio_gen_span_id,
-            self.tokenizer.audio_comp_span_id,
-        }
-        discard_regenerated_prompt_tail = prompt.prompt_patch_count > 0
-        schedule_ids = schedule.token_ids
-        while position < len(schedule_ids):
-            if schedule_ids[position] not in audio_ids:
-                next_audio = next(
-                    (
-                        index
-                        for index in range(position, len(schedule_ids))
-                        if schedule_ids[index] in audio_ids
-                    ),
-                    len(schedule_ids),
+        try:
+            position, hidden = self._prefill(
+                schedule,
+                prompt,
+                state,
+            )
+            audio_ids = {
+                self.tokenizer.audio_gen_span_id,
+                self.tokenizer.audio_comp_span_id,
+            }
+            discard_regenerated_prompt_tail = prompt.prompt_patch_count > 0
+            schedule_ids = schedule.token_ids
+            while position < len(schedule_ids):
+                if schedule_ids[position] not in audio_ids:
+                    next_audio = next(
+                        (
+                            index
+                            for index in range(position, len(schedule_ids))
+                            if schedule_ids[index] in audio_ids
+                        ),
+                        len(schedule_ids),
+                    )
+                    output = self.components.core.qwen.step(
+                        input_ids=mx.array(
+                            schedule_ids[position:next_audio], dtype=mx.int32
+                        )[None],
+                        cache=state.qwen_cache,
+                        cache_capacity=len(schedule_ids),
+                    )
+                    hidden, state.qwen_cache = output.last_hidden_state, output.cache
+                    self._append_hidden(hidden, state.fm_chunks, state.cfg_chunks)
+                    position = next_audio
+                    continue
+
+                stop_after = False
+                if not discard_regenerated_prompt_tail:
+                    stop_after = bool(
+                        self.components.core.qwen.should_stop(
+                            hidden[:, -1:], threshold=eos_threshold
+                        ).item()
+                    )
+                patch = self._solve_patch(
+                    state,
+                    speaker_condition=prompt.speaker_condition,
+                    solver_steps=solver_steps,
+                    guidance_scale=guidance_scale,
                 )
+                mx.eval(patch)
+                self._append_history(patch, state.fm_chunks, state.cfg_chunks)
+                denormalized = self.components.latent_io.denormalize(patch)
+                if state.semantic_state is None:
+                    patch_embedding, state.semantic_state = (
+                        self.components.core.semantic_encoder.prefill(
+                            denormalized,
+                            max_audio_patches=schedule.audio_patch_budget,
+                        )
+                    )
+                else:
+                    patch_embedding, state.semantic_state = (
+                        self.components.core.semantic_encoder.decode_patch(
+                            denormalized,
+                            state.semantic_state,
+                        )
+                    )
                 output = self.components.core.qwen.step(
-                    input_ids=mx.array(
-                        schedule_ids[position:next_audio], dtype=mx.int32
-                    )[None],
+                    inputs_embeds=patch_embedding.astype(self._activation_dtype),
                     cache=state.qwen_cache,
                     cache_capacity=len(schedule_ids),
                 )
                 hidden, state.qwen_cache = output.last_hidden_state, output.cache
-                self._append_hidden(hidden, state.fm_chunks, state.cfg_chunks)
-                position = next_audio
-                continue
+                if (
+                    position + 1 < len(schedule_ids)
+                    and schedule_ids[position + 1] in audio_ids
+                ):
+                    self._append_hidden(hidden, state.fm_chunks, state.cfg_chunks)
+                position += 1
+                if discard_regenerated_prompt_tail:
+                    discard_regenerated_prompt_tail = False
+                else:
+                    state.generated_patches += 1
+                    yield denormalized
+                if stop_after:
+                    break
 
-            stop_after = False
-            if not discard_regenerated_prompt_tail:
-                stop_after = bool(
-                    self.components.core.qwen.should_stop(
-                        hidden[:, -1:], threshold=eos_threshold
-                    ).item()
+            if not state.generated_patches:
+                raise RuntimeError(
+                    "dots.tts generation produced no payload latent patches"
                 )
-            patch = self._solve_patch(
-                state,
-                speaker_condition=prompt.speaker_condition,
-                solver_steps=solver_steps,
-                guidance_scale=guidance_scale,
-            )
-            mx.eval(patch)
-            self._append_history(patch, state.fm_chunks, state.cfg_chunks)
-            denormalized = self.components.latent_io.denormalize(patch)
-            if state.semantic_state is None:
-                patch_embedding, state.semantic_state = (
-                    self.components.core.semantic_encoder.prefill(
-                        denormalized,
-                        max_audio_patches=schedule.audio_patch_budget,
-                    )
-                )
-            else:
-                patch_embedding, state.semantic_state = (
-                    self.components.core.semantic_encoder.decode_patch(
-                        denormalized,
-                        state.semantic_state,
-                    )
-                )
-            output = self.components.core.qwen.step(
-                inputs_embeds=patch_embedding.astype(self._activation_dtype),
-                cache=state.qwen_cache,
-                cache_capacity=len(schedule_ids),
-            )
-            hidden, state.qwen_cache = output.last_hidden_state, output.cache
-            if (
-                position + 1 < len(schedule_ids)
-                and schedule_ids[position + 1] in audio_ids
-            ):
-                self._append_hidden(hidden, state.fm_chunks, state.cfg_chunks)
-            position += 1
-            if discard_regenerated_prompt_tail:
-                discard_regenerated_prompt_tail = False
-            else:
-                state.generated_patches += 1
-                if state.generated_patches <= 2:
-                    chunk = self._decode_request_chunk(state, [denormalized])
+        finally:
+            state.close()
+
+    def synthesize_stream(
+        self,
+        text: str,
+        *,
+        reference_audio: str | Path | mx.array | None = None,
+        reference_text: str | None = None,
+        reference_sample_rate: int | None = None,
+        max_audio_patches: int = DEFAULT_MAX_AUDIO_PATCHES,
+        solver_steps: int | None = None,
+        guidance_scale: float = 1.2,
+        speaker_scale: float = 1.5,
+        language: str | None = None,
+        seed: int = 42,
+        eos_threshold: float = 0.8,
+        template: Literal["tts", "tts_interleave"] = "tts",
+        stream_chunk_patches: int = 4,
+    ) -> Iterator[_DotsTTSStreamChunk]:
+        """Yield waveform chunks for one text segment without sentence splitting."""
+
+        stream_chunk_patches = self._validate_stream_chunk_patches(stream_chunk_patches)
+        max_audio_patches = self._validate_max_audio_patches(max_audio_patches)
+        maximum_vocoder_chunk = (
+            min(stream_chunk_patches, max_audio_patches) * self.config.patch_size
+        )
+        state = _DotsTTSStreamState(
+            vocoder_state=self.components.audio_vae.init_decode_state(
+                maximum_chunk_size=maximum_vocoder_chunk
+            ),
+            vocoder_buffer=[],
+        )
+        patches = self._generate_latent_patches(
+            text,
+            reference_audio=reference_audio,
+            reference_text=reference_text,
+            reference_sample_rate=reference_sample_rate,
+            max_audio_patches=max_audio_patches,
+            solver_steps=solver_steps,
+            guidance_scale=guidance_scale,
+            speaker_scale=speaker_scale,
+            language=language,
+            seed=seed,
+            eos_threshold=eos_threshold,
+            template=template,
+        )
+        try:
+            generated_patches = 0
+            for patch in patches:
+                generated_patches += 1
+                if generated_patches <= 2:
+                    chunk = self._decode_stream_chunk(state, [patch])
                     if chunk is not None:
                         yield chunk
                 else:
-                    state.vocoder_buffer.append(denormalized)
+                    state.vocoder_buffer.append(patch)
                     if len(state.vocoder_buffer) == stream_chunk_patches:
-                        chunk = self._decode_request_chunk(
+                        chunk = self._decode_stream_chunk(
                             state,
                             state.vocoder_buffer,
                         )
                         state.vocoder_buffer = []
                         if chunk is not None:
                             yield chunk
-            if stop_after:
-                break
-
-        if not state.generated_patches:
-            raise RuntimeError("dots.tts generation produced no payload latent patches")
-        if state.vocoder_buffer:
-            chunk = self._decode_request_chunk(state, state.vocoder_buffer)
-            state.vocoder_buffer = []
-            if chunk is not None:
-                yield chunk
-        tail = self._decode_request_chunk(state, [], final=True)
-        if tail is not None:
-            yield tail
-        if state.pending_chunk_patches:
-            raise RuntimeError("dots.tts vocoder produced no audio for payload patches")
-        if not state.yielded_waveform:
-            raise RuntimeError("dots.tts generation produced empty audio")
-        if not state.has_non_silent_audio:
-            raise RuntimeError("dots.tts generation produced silent audio")
-
-    def synthesize_stream(
-        self,
-        text: str,
-        **kwargs,
-    ) -> Iterator[_DotsTTSStreamChunk]:
-        """Yield waveform chunks for one text segment without sentence splitting."""
-
-        yield from self._synthesize_segment_stream(text, **kwargs)
+            if state.vocoder_buffer:
+                chunk = self._decode_stream_chunk(state, state.vocoder_buffer)
+                state.vocoder_buffer = []
+                if chunk is not None:
+                    yield chunk
+            tail = self._decode_stream_chunk(state, [], final=True)
+            if tail is not None:
+                yield tail
+            if state.pending_chunk_patches:
+                raise RuntimeError(
+                    "dots.tts vocoder produced no audio for payload patches"
+                )
+            if not state.yielded_waveform:
+                raise RuntimeError("dots.tts generation produced empty audio")
+            if not state.has_non_silent_audio:
+                raise RuntimeError("dots.tts generation produced silent audio")
+        finally:
+            patches.close()
+            state.vocoder_buffer.clear()
+            state.vocoder_state = None
 
     def synthesize(
         self,
@@ -1096,10 +1160,11 @@ class DotsTTSGenerator:
         template: Literal["tts", "tts_interleave"] = "tts",
         stream_chunk_patches: int = 4,
     ) -> DotsTTSSynthesisOutput:
-        """Drain the default stream into the existing low-level result type."""
+        """Generate all payload latents and decode one complete waveform."""
 
-        chunks = list(
-            self.synthesize_stream(
+        self._validate_stream_chunk_patches(stream_chunk_patches)
+        patches = list(
+            self._generate_latent_patches(
                 text,
                 reference_audio=reference_audio,
                 reference_text=reference_text,
@@ -1112,13 +1177,29 @@ class DotsTTSGenerator:
                 seed=seed,
                 eos_threshold=eos_threshold,
                 template=template,
-                stream_chunk_patches=stream_chunk_patches,
             )
         )
+        latent = mx.concatenate(patches, axis=1).transpose(0, 2, 1)
+        decoded = self.components.audio_vae.decode(latent)
+        if decoded.ndim != 3 or tuple(int(size) for size in decoded.shape[:2]) != (
+            1,
+            1,
+        ):
+            raise RuntimeError(
+                f"dots.tts AudioVAE returned invalid waveform {decoded.shape}"
+            )
+        waveform = decoded[0, 0].astype(mx.float32)
+        mx.eval(waveform)
+        if not bool(mx.all(mx.isfinite(waveform)).item()):
+            raise RuntimeError("dots.tts generation produced non-finite audio")
+        if int(waveform.size) == 0:
+            raise RuntimeError("dots.tts generation produced empty audio")
+        if not bool(mx.any(mx.abs(waveform) > 0).item()):
+            raise RuntimeError("dots.tts generation produced silent audio")
         return DotsTTSSynthesisOutput(
-            waveform=mx.concatenate([chunk.waveform for chunk in chunks]),
+            waveform=waveform,
             sample_rate=self.sample_rate,
-            num_patches=sum(chunk.num_patches for chunk in chunks),
+            num_patches=len(patches),
         )
 
 
