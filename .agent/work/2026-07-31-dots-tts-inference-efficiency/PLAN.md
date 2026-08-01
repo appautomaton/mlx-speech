@@ -272,6 +272,12 @@ git diff --check
 
 **Produces:** an evidence-backed residual-stage implementation or explicit no-change closure
 
+**Status:** complete — measured no-change decision
+
+**Evidence:** Independently recomputed from the synchronized diagnostic medians in `outputs/dots_tts/inference_efficiency/slice-8.json`. MF total was `8.223876875s`: Qwen `0.348897669s` / `4.242496%`, semantic `0.197840916s` / `2.405689%`, combined `0.546738586s` / `6.648185%`. SOAR total was `11.421045959s`: Qwen `0.384230162s` / `3.364229%`, semantic `0.255232336s` / `2.234754%`, combined `0.639462498s` / `5.598984%`. Neither combined share exceeds `15%`, and no individual share exceeds `10%`; shared Qwen/semantic runtime code remains unchanged. Planned Qwen/semantic/VibeVoice verification passed (17), and Automaton spec and quality reviews approved the no-change closure.
+
+**Risks / next:** Synchronized stage timing is diagnostic attribution only; canonical totals remain the default lazy-boundary measurements. No Slice 9 profiler rerun is warranted. Proceed to Slice 10 verification with the committed Slice 8 runtime.
+
 ### Slice 10: Prove performance, memory, quality, and repository gates
 
 **Objective:** Verify the completed default path against the canonical comparison contract and every behavioral invariant without introducing new implementation, test, evaluator, or documentation changes.
