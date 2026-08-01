@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
+from collections import OrderedDict
 from dataclasses import dataclass
 from numbers import Integral
 from pathlib import Path
+from threading import Lock
 from typing import Any, Iterator, Literal
 
 import mlx.core as mx
@@ -40,6 +43,7 @@ _RESAMPLE_ROLLOFF = 0.95
 _RESAMPLE_KAISER_BETA = 14.769656459379492
 _RESAMPLE_WORKSPACE_BYTES = 32 * 1024 * 1024
 _RESAMPLE_MAX_OUTPUT_BYTES = 256 * 1024 * 1024
+_PROMPT_FEATURE_CACHE_LIMIT = 256
 
 
 @dataclass(frozen=True)
@@ -121,6 +125,14 @@ class _DotsTTSStreamState:
     pending_chunk_patches: int = 0
     yielded_waveform: bool = False
     has_non_silent_audio: bool = False
+
+
+@dataclass(frozen=True)
+class _PromptFeatureCacheEntry:
+    """Materialized, seed-independent features for one normalized reference."""
+
+    speaker_embedding: mx.array
+    prompt_distribution: mx.array | None
 
 
 def _build_fm_attention_mask(fm_sequence_length: int, patch_size: int) -> mx.array:
@@ -384,6 +396,10 @@ class DotsTTSGenerator:
         self.speaker_frontend = SpeakerFrontend(
             max_audio_seconds=self.config.xvec_max_audio_seconds
         )
+        self._prompt_cache: OrderedDict[tuple[str, str], _PromptFeatureCacheEntry] = (
+            OrderedDict()
+        )
+        self._prompt_cache_lock = Lock()
 
     @classmethod
     def from_dir(cls, model_dir: str | Path) -> "DotsTTSGenerator":
@@ -469,40 +485,60 @@ class DotsTTSGenerator:
         encoded_patch_count = math.ceil(sample_count / samples_per_patch)
         return encoded_patch_count - 1
 
-    def _speaker_condition(
+    def _speaker_embedding(
         self,
         waveform: mx.array,
+    ) -> mx.array:
+        features, length = self.speaker_frontend.features(
+            np.asarray(waveform, dtype=np.float32),
+            sample_rate=self.sample_rate,
+        )
+        return self.components.speaker_encoder(
+            mx.array(features[None], dtype=mx.float32),
+            lengths=mx.array([length], dtype=mx.int32),
+        )
+
+    def _project_speaker_embedding(
+        self,
+        embedding: mx.array,
         *,
         speaker_scale: float,
     ) -> mx.array:
         if not math.isfinite(speaker_scale):
             raise ValueError("speaker_scale must be finite")
-        features, length = self.speaker_frontend.features(
-            np.asarray(waveform, dtype=np.float32),
-            sample_rate=self.sample_rate,
-        )
-        embedding = self.components.speaker_encoder(
-            mx.array(features[None], dtype=mx.float32),
-            lengths=mx.array([length], dtype=mx.int32),
-        )
         core = self.components.core
         condition = core.speaker_projection_norm(
             core.speaker_projection(embedding * float(speaker_scale))
         )
         return condition.astype(self._activation_dtype)
 
-    def _prompt_latents(
+    def _speaker_condition(
         self,
         waveform: mx.array,
         *,
-        key: mx.array,
-    ) -> tuple[mx.array, mx.array]:
+        speaker_scale: float,
+    ) -> mx.array:
+        """Prepare uncached speaker conditioning for focused callers/tests."""
+
+        return self._project_speaker_embedding(
+            self._speaker_embedding(waveform),
+            speaker_scale=speaker_scale,
+        )
+
+    def _prompt_distribution(self, waveform: mx.array) -> mx.array:
         samples_per_patch = self.config.patch_size * self.config.vocoder.hop_size
         sample_count = int(waveform.shape[0])
         padded_count = math.ceil(sample_count / samples_per_patch) * samples_per_patch
         if padded_count > sample_count:
             waveform = mx.pad(waveform, (0, padded_count - sample_count))
-        distribution = self.components.audio_vae.encode(waveform[None, None])
+        return self.components.audio_vae.encode(waveform[None, None])
+
+    def _sample_prompt_distribution(
+        self,
+        distribution: mx.array,
+        *,
+        key: mx.array,
+    ) -> tuple[mx.array, mx.array]:
         noise_shape = (
             int(distribution.shape[0]),
             self.config.latent_dim,
@@ -535,6 +571,72 @@ class DotsTTSGenerator:
             prompt_latents.astype(self._activation_dtype),
         )
 
+    def _prompt_latents(
+        self,
+        waveform: mx.array,
+        *,
+        key: mx.array,
+    ) -> tuple[mx.array, mx.array]:
+        """Prepare uncached prompt latents for focused callers/tests."""
+
+        return self._sample_prompt_distribution(
+            self._prompt_distribution(waveform),
+            key=key,
+        )
+
+    @staticmethod
+    def _prompt_cache_key(
+        waveform: mx.array,
+        *,
+        prompt_mode: Literal["continuation", "speaker_only"],
+    ) -> tuple[str, str]:
+        normalized = np.ascontiguousarray(np.asarray(waveform, dtype=np.float32))
+        digest = hashlib.sha256()
+        digest.update(b"dots.tts.prompt-features.v1\0")
+        digest.update(prompt_mode.encode("ascii"))
+        digest.update(b"\0")
+        digest.update(np.asarray(normalized.shape, dtype=np.int64).tobytes())
+        digest.update(normalized.tobytes())
+        return prompt_mode, digest.hexdigest()
+
+    def _cached_prompt_features(
+        self,
+        key: tuple[str, str],
+    ) -> _PromptFeatureCacheEntry | None:
+        with self._prompt_cache_lock:
+            entry = self._prompt_cache.get(key)
+            if entry is not None:
+                self._prompt_cache.move_to_end(key)
+            return entry
+
+    def _store_prompt_features(
+        self,
+        key: tuple[str, str],
+        entry: _PromptFeatureCacheEntry,
+    ) -> _PromptFeatureCacheEntry:
+        with self._prompt_cache_lock:
+            existing = self._prompt_cache.get(key)
+            if existing is None:
+                self._prompt_cache[key] = entry
+                existing = entry
+            self._prompt_cache.move_to_end(key)
+            while len(self._prompt_cache) > _PROMPT_FEATURE_CACHE_LIMIT:
+                self._prompt_cache.popitem(last=False)
+            return existing
+
+    def clear_prompt_cache(self) -> None:
+        """Release all materialized reference features owned by this model."""
+
+        with self._prompt_cache_lock:
+            self._prompt_cache.clear()
+
+    @property
+    def prompt_cache_size(self) -> int:
+        """Return the bounded reference-feature count for diagnostics."""
+
+        with self._prompt_cache_lock:
+            return len(self._prompt_cache)
+
     def prepare_prompt(
         self,
         reference_audio: str | Path | mx.array | None,
@@ -555,6 +657,8 @@ class DotsTTSGenerator:
             if reference_text is not None and reference_text.strip():
                 raise ValueError("dots.tts reference_text requires reference_audio")
             return DotsTTSPromptConditioning(None, None, None)
+        if not math.isfinite(speaker_scale):
+            raise ValueError("speaker_scale must be finite")
         has_reference_text = reference_text is not None and bool(reference_text.strip())
         speaker_sample_limit = round(
             self.sample_rate * self.speaker_frontend.max_audio_seconds
@@ -582,15 +686,38 @@ class DotsTTSGenerator:
                     f"prompt_patches={prompt_patch_count}, "
                     f"budget={max_audio_patches}, minimum={minimum_budget}"
                 )
-        speaker_condition = self._speaker_condition(
-            waveform,
+        prompt_mode: Literal["continuation", "speaker_only"] = (
+            "continuation" if has_reference_text else "speaker_only"
+        )
+        cache_key = self._prompt_cache_key(waveform, prompt_mode=prompt_mode)
+        features = self._cached_prompt_features(cache_key)
+        if features is None:
+            speaker_embedding = self._speaker_embedding(waveform)
+            prompt_distribution = (
+                self._prompt_distribution(waveform) if has_reference_text else None
+            )
+            materialized = [speaker_embedding]
+            if prompt_distribution is not None:
+                materialized.append(prompt_distribution)
+            mx.eval(*materialized)
+            features = self._store_prompt_features(
+                cache_key,
+                _PromptFeatureCacheEntry(
+                    speaker_embedding=speaker_embedding,
+                    prompt_distribution=prompt_distribution,
+                ),
+            )
+        speaker_condition = self._project_speaker_embedding(
+            features.speaker_embedding,
             speaker_scale=speaker_scale,
         )
         if not has_reference_text:
             return DotsTTSPromptConditioning(speaker_condition, None, None)
+        if features.prompt_distribution is None:
+            raise RuntimeError("dots.tts continuation cache is missing prompt features")
         rng = _DotsTTSRequestRNG(mx.random.key(0)) if _rng is None else _rng
-        prompt_patches, prompt_latents = self._prompt_latents(
-            waveform,
+        prompt_patches, prompt_latents = self._sample_prompt_distribution(
+            features.prompt_distribution,
             key=rng.next_key(),
         )
         if int(prompt_patches.shape[1]) != prompt_patch_count:
@@ -745,12 +872,8 @@ class DotsTTSGenerator:
             ):
                 return patch
             tail_length = state.dit_solver.hidden_patch_size
-            state.fm_chunks[:] = [
-                _concatenate_suffix(state.fm_chunks, tail_length)
-            ]
-            state.cfg_chunks[:] = [
-                _concatenate_suffix(state.cfg_chunks, tail_length)
-            ]
+            state.fm_chunks[:] = [_concatenate_suffix(state.fm_chunks, tail_length)]
+            state.cfg_chunks[:] = [_concatenate_suffix(state.cfg_chunks, tail_length)]
             return patch
 
         if state.dit_solver is not None:

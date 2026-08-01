@@ -209,6 +209,10 @@ The plan deliberately measures the current cached path once, then optimizes the 
 
 **Produces:** deterministic warm-reference conditioning reuse
 
+**Status:** complete
+
+**Evidence:** [Slice 7 execution summary](slices/slice-007-summary.md)
+
 ### Slice 8: Remove redundant synchronization and mode-dead work
 
 **Objective:** Minimize host/device boundaries and residual orchestration work after the dominant vocoder and DiT paths are fixed.

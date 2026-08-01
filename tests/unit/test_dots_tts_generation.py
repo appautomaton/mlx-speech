@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier, Lock
 from types import SimpleNamespace
 
 import mlx.core as mx
@@ -9,6 +11,7 @@ import pytest
 from mlx_speech.generation.dots_tts import (
     DEFAULT_MAX_AUDIO_PATCHES,
     _RESAMPLE_WORKSPACE_BYTES,
+    _DotsTTSRequestRNG,
     _DotsTTSRequestState,
     DotsTTSGenerator,
     DotsTTSPromptConditioning,
@@ -699,16 +702,30 @@ def test_prepare_prompt_only_encodes_latents_for_transcript_backed_reference(
     monkeypatch.setattr(generator, "_load_reference", lambda *args, **kwargs: waveform)
     monkeypatch.setattr(
         generator,
-        "_speaker_condition",
+        "_speaker_embedding",
         lambda *args, **kwargs: mx.ones((1, 4)),
     )
+    monkeypatch.setattr(
+        generator,
+        "_project_speaker_embedding",
+        lambda embedding, **kwargs: embedding,
+    )
 
-    def prompt_latents(value, **kwargs):
-        assert kwargs["key"].shape == (2,)
+    def prompt_distribution(value):
         calls.append(value)
+        return mx.ones((1, 2, 2))
+
+    def sample_prompt_distribution(value, **kwargs):
+        assert value.shape == (1, 2, 2)
+        assert kwargs["key"].shape == (2,)
         return mx.ones((1, 1, 2, 2)), mx.ones((1, 2, 2))
 
-    monkeypatch.setattr(generator, "_prompt_latents", prompt_latents)
+    monkeypatch.setattr(generator, "_prompt_distribution", prompt_distribution)
+    monkeypatch.setattr(
+        generator,
+        "_sample_prompt_distribution",
+        sample_prompt_distribution,
+    )
     speaker_only = generator.prepare_prompt(
         waveform,
         reference_text=None,
@@ -723,6 +740,232 @@ def test_prepare_prompt_only_encodes_latents_for_transcript_backed_reference(
     assert len(calls) == 1
     with pytest.raises(ValueError, match="requires reference_audio"):
         generator.prepare_prompt(None, reference_text="transcript")
+
+
+def test_prompt_feature_cache_preserves_scale_seed_mode_and_content(
+    monkeypatch,
+) -> None:
+    generator, _, _ = _generator("flow_matching")
+    calls = {"speaker": 0, "distribution": 0, "sample": 0}
+    monkeypatch.setattr(
+        generator,
+        "_load_reference",
+        lambda audio, **kwargs: audio.astype(mx.float32),
+    )
+
+    def speaker_embedding(waveform):
+        calls["speaker"] += 1
+        return mx.full((1, 4), mx.mean(waveform), dtype=mx.float32)
+
+    def project_speaker(embedding, *, speaker_scale):
+        return embedding * float(speaker_scale)
+
+    def prompt_distribution(waveform):
+        calls["distribution"] += 1
+        return mx.full((1, 2, 2), mx.mean(waveform), dtype=mx.float32)
+
+    def sample_distribution(distribution, *, key):
+        calls["sample"] += 1
+        latents = distribution + mx.random.normal(distribution.shape, key=key)
+        return latents.reshape(1, 1, 2, 2), latents
+
+    monkeypatch.setattr(generator, "_speaker_embedding", speaker_embedding)
+    monkeypatch.setattr(generator, "_project_speaker_embedding", project_speaker)
+    monkeypatch.setattr(generator, "_prompt_distribution", prompt_distribution)
+    monkeypatch.setattr(
+        generator,
+        "_sample_prompt_distribution",
+        sample_distribution,
+    )
+
+    reference = mx.arange(8, dtype=mx.float32)
+    first = generator.prepare_prompt(
+        reference,
+        reference_text="transcript",
+        speaker_scale=1.0,
+        _rng=_DotsTTSRequestRNG(mx.random.key(17)),
+    )
+    scaled_and_reseeded = generator.prepare_prompt(
+        mx.array(np.asarray(reference)),
+        reference_text="another transcript",
+        speaker_scale=2.0,
+        _rng=_DotsTTSRequestRNG(mx.random.key(19)),
+    )
+    repeated_seed = generator.prepare_prompt(
+        reference,
+        reference_text="transcript",
+        speaker_scale=1.0,
+        _rng=_DotsTTSRequestRNG(mx.random.key(17)),
+    )
+    mx.eval(
+        first.speaker_condition,
+        first.prompt_latents,
+        scaled_and_reseeded.speaker_condition,
+        scaled_and_reseeded.prompt_latents,
+        repeated_seed.prompt_latents,
+    )
+
+    assert calls == {"speaker": 1, "distribution": 1, "sample": 3}
+    assert generator.prompt_cache_size == 1
+    np.testing.assert_array_equal(
+        scaled_and_reseeded.speaker_condition,
+        first.speaker_condition * 2.0,
+    )
+    assert not np.array_equal(
+        np.asarray(scaled_and_reseeded.prompt_latents),
+        np.asarray(first.prompt_latents),
+    )
+    np.testing.assert_array_equal(repeated_seed.prompt_latents, first.prompt_latents)
+
+    speaker_only = generator.prepare_prompt(
+        reference,
+        reference_text=None,
+        speaker_scale=3.0,
+    )
+    assert speaker_only.prompt_latents is None
+    assert calls["speaker"] == 2
+    assert calls["distribution"] == 1
+    assert generator.prompt_cache_size == 2
+
+    changed = reference + 1.0
+    generator.prepare_prompt(changed, reference_text="transcript")
+    assert calls["speaker"] == 3
+    assert calls["distribution"] == 2
+    assert generator.prompt_cache_size == 3
+
+    generator.clear_prompt_cache()
+    assert generator.prompt_cache_size == 0
+
+
+def test_prompt_feature_cache_same_path_misses_when_normalized_content_changes(
+    monkeypatch,
+) -> None:
+    generator, _, _ = _generator("flow_matching")
+    current = [mx.arange(8, dtype=mx.float32)]
+    calls = {"speaker": 0, "distribution": 0}
+    monkeypatch.setattr(
+        generator,
+        "_load_reference",
+        lambda *args, **kwargs: current[0],
+    )
+
+    def speaker_embedding(_waveform):
+        calls["speaker"] += 1
+        return mx.ones((1, 4))
+
+    def prompt_distribution(_waveform):
+        calls["distribution"] += 1
+        return mx.ones((1, 2, 2))
+
+    monkeypatch.setattr(generator, "_speaker_embedding", speaker_embedding)
+    monkeypatch.setattr(
+        generator,
+        "_project_speaker_embedding",
+        lambda embedding, **kwargs: embedding,
+    )
+    monkeypatch.setattr(generator, "_prompt_distribution", prompt_distribution)
+    monkeypatch.setattr(
+        generator,
+        "_sample_prompt_distribution",
+        lambda distribution, **kwargs: (
+            distribution.reshape(1, 1, 2, 2),
+            distribution,
+        ),
+    )
+
+    generator.prepare_prompt("reference.wav", reference_text="transcript")
+    generator.prepare_prompt("reference.wav", reference_text="transcript")
+    assert calls == {"speaker": 1, "distribution": 1}
+
+    current[0] = current[0] + 0.25
+    generator.prepare_prompt("reference.wav", reference_text="transcript")
+    assert calls == {"speaker": 2, "distribution": 2}
+
+
+def test_prompt_feature_cache_is_bounded_lru(monkeypatch) -> None:
+    generator, _, _ = _generator("flow_matching")
+    calls = []
+    monkeypatch.setattr(
+        generator,
+        "_load_reference",
+        lambda audio, **kwargs: audio.astype(mx.float32),
+    )
+
+    def speaker_embedding(waveform):
+        calls.append(float(waveform[0].item()))
+        return mx.ones((1, 4))
+
+    monkeypatch.setattr(generator, "_speaker_embedding", speaker_embedding)
+    monkeypatch.setattr(
+        generator,
+        "_project_speaker_embedding",
+        lambda embedding, **kwargs: embedding,
+    )
+
+    references = [mx.array([float(index)]) for index in range(257)]
+    for reference in references:
+        generator.prepare_prompt(reference, reference_text=None)
+    assert generator.prompt_cache_size == 256
+    assert len(calls) == 257
+
+    generator.prepare_prompt(references[1], reference_text=None)
+    assert len(calls) == 257
+    generator.prepare_prompt(references[0], reference_text=None)
+    assert len(calls) == 258
+    generator.prepare_prompt(references[2], reference_text=None)
+    assert len(calls) == 259
+    assert generator.prompt_cache_size == 256
+
+
+def test_prompt_feature_cache_allows_duplicate_concurrent_computation(
+    monkeypatch,
+) -> None:
+    generator, _, _ = _generator("flow_matching")
+    barrier = Barrier(2)
+    calls_lock = Lock()
+    calls = []
+    reference = mx.arange(8, dtype=mx.float32)
+    embeddings = [mx.full((1, 4), marker, dtype=mx.float32) for marker in (1, 2)]
+    mx.eval(reference, *embeddings)
+    monkeypatch.setattr(
+        generator,
+        "_load_reference",
+        lambda audio, **kwargs: audio,
+    )
+
+    def speaker_embedding(_waveform):
+        with calls_lock:
+            marker = len(calls) + 1
+            calls.append(marker)
+        barrier.wait()
+        assert generator._prompt_cache_lock.acquire(blocking=False)
+        generator._prompt_cache_lock.release()
+        return embeddings[marker - 1]
+
+    monkeypatch.setattr(generator, "_speaker_embedding", speaker_embedding)
+    monkeypatch.setattr(
+        generator,
+        "_project_speaker_embedding",
+        lambda embedding, **kwargs: embedding,
+    )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(
+                generator.prepare_prompt,
+                reference,
+                reference_text=None,
+            )
+            for _ in range(2)
+        ]
+        results = [future.result() for future in futures]
+
+    assert sorted(calls) == [1, 2]
+    assert generator.prompt_cache_size == 1
+    np.testing.assert_array_equal(
+        results[0].speaker_condition,
+        results[1].speaker_condition,
+    )
 
 
 @pytest.mark.parametrize(
@@ -975,8 +1218,13 @@ def test_speaker_only_resamples_only_the_configured_prefix(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         generator,
-        "_speaker_condition",
+        "_speaker_embedding",
         lambda value, **kwargs: mx.ones((1, 4)),
+    )
+    monkeypatch.setattr(
+        generator,
+        "_project_speaker_embedding",
+        lambda embedding, **kwargs: embedding,
     )
     prompt = generator.prepare_prompt(
         waveform,
@@ -1001,15 +1249,20 @@ def test_prompt_budget_rejects_before_audio_encoder_and_leaves_speaker_only_unch
     monkeypatch.setattr(generator, "_load_reference", lambda *args, **kwargs: waveform)
     monkeypatch.setattr(
         generator,
-        "_speaker_condition",
+        "_speaker_embedding",
         lambda *args, **kwargs: mx.ones((1, 4)),
+    )
+    monkeypatch.setattr(
+        generator,
+        "_project_speaker_embedding",
+        lambda embedding, **kwargs: embedding,
     )
 
     def guarded_encoder(value):
         calls.append(value)
         raise AssertionError("AudioVAE prompt encoder must not run")
 
-    monkeypatch.setattr(generator, "_prompt_latents", guarded_encoder)
+    monkeypatch.setattr(generator, "_prompt_distribution", guarded_encoder)
     with pytest.raises(ValueError, match="regenerated prompt tail"):
         generator.synthesize(
             "payload",
@@ -1045,12 +1298,12 @@ def test_over_budget_continuation_rejects_before_resampling_or_conditioning(
     )
     monkeypatch.setattr(
         generator,
-        "_speaker_condition",
+        "_speaker_embedding",
         lambda *args, **kwargs: calls.append("speaker"),
     )
     monkeypatch.setattr(
         generator,
-        "_prompt_latents",
+        "_prompt_distribution",
         lambda *args, **kwargs: calls.append("audio_vae"),
     )
     with pytest.raises(ValueError, match="regenerated prompt tail"):
@@ -1075,12 +1328,12 @@ def test_too_short_continuation_rejects_before_resampling_or_conditioning(
     )
     monkeypatch.setattr(
         generator,
-        "_speaker_condition",
+        "_speaker_embedding",
         lambda *args, **kwargs: calls.append("speaker"),
     )
     monkeypatch.setattr(
         generator,
-        "_prompt_latents",
+        "_prompt_distribution",
         lambda *args, **kwargs: calls.append("audio_vae"),
     )
     with pytest.raises(ValueError, match="too short"):
@@ -1101,7 +1354,7 @@ def test_too_short_prompt_rejects_before_audio_encoder(monkeypatch) -> None:
     monkeypatch.setattr(generator, "_load_reference", lambda *args, **kwargs: waveform)
     monkeypatch.setattr(
         generator,
-        "_prompt_latents",
+        "_prompt_distribution",
         lambda value: calls.append(value),
     )
     with pytest.raises(ValueError, match="too short"):
