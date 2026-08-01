@@ -183,6 +183,10 @@ The plan deliberately measures the current cached path once, then optimizes the 
 
 **Produces:** faster reusable DiT inference kernels with unchanged artifacts
 
+**Status:** complete — rejected as regressive; no runtime change retained
+
+**Evidence:** [Slice 6 execution summary](slices/slice-006-summary.md)
+
 ### Slice 7: Reuse prompt features safely
 
 **Objective:** Reduce repeated-reference TTFC with a bounded content-aware cache that preserves scale and seed semantics.
