@@ -39,6 +39,7 @@ models/*
 .worktrees/
 
 # Misc local noise
+/tmp/
 *.log
 *.swp
 *.swo

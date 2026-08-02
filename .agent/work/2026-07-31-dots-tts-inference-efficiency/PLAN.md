@@ -359,3 +359,24 @@ Checkpoints: none. Continue through all approved slices; execution windows are c
 - Concern: Slice 5 writes fresh K/V into unpublished cache storage before lazy MLX evaluation completes, so an incorrect alias or slice bound could corrupt published history even when offsets do not advance.
 - Action: Require Slice 5's injected mid-NFE test to snapshot and exactly compare the published prefix and offsets before failure, after failure, and after retry before committing the slice.
 - Verified: Traced the current batch and stream decoder flow, AudioVAE precision boundaries, selective int8 policy, DiT cache mutation, quality-runner matrix, canonical-contract lifecycle, slice dependencies, and final verification commands.
+
+## Verification
+
+- **Slice 1 — PASS (7/7):** The canonical contract was read in full. Fresh comparison-contract and quant-gate coverage was included in the focused pytest run (`165 passed`), and direct `jq -e` checks accepted the frozen identities in `final.json` and the full 16-record quality matrix.
+- **Slice 2 — PASS (4/4):** Fresh adapter, shared-generation, and streaming-vocoder coverage passed within the focused pytest run; direct source inspection confirmed that batch and stream consume `_generate_latent_patches` through separate decode sinks.
+- **Slice 3 — PASS (5/5):** Fresh AudioVAE, vocoder, streaming, runtime, and end-to-end waveform checks passed (`165 passed`; separate integration run `2 passed`); the quality artifact remained inside both regression limits.
+- **Slice 4 — PASS (4/4):** Fresh DiT cache tests passed, and `final.json` proved both 512-request smokes used physical bucket 64, emitted two patches, and stayed below 30 GiB.
+- **Slice 5 — PASS (5/5):** Fresh cache failure/retry and generation coverage passed; direct source inspection confirmed layer-local two-unit scratch, atomic publication, and materialized transactional growth before replacement.
+- **Slice 6 — PASS (5/5):** `git show --stat 4c788dc` confirmed the regressive packing experiment left no runtime source change; the retained cache/runtime path passed the focused suite and final performance gate.
+- **Slice 7 — PASS (4/4):** Fresh generation, prompt reuse/interleaving, Qwen, and semantic coverage passed; direct source inspection confirmed model-owned seed-independent reuse without request-state sharing.
+- **Slice 8 — PASS (5/5):** Fresh generation/vocoder/Qwen/semantic checks passed. A derived `jq -e` audit of `slice-8.json` confirmed synchronized timing was diagnostic-only and MF/SOAR Qwen, semantic, and combined shares stayed below their thresholds. Content review of `docs/dots-tts.md` confirmed batch/stream sinks, prompt caching, progressive DiT buckets, compiled warmup, `1 / 1 / 4`, and 500/512 long-text limits.
+- **Slice 9 — PASS (5/5):** The derived Slice 8 share audit confirmed neither the 15% combined nor 10% individual trigger fired, so the no-change decision was correct; fresh shared Qwen/semantic tests passed.
+- **Slice 10 — PASS (5/5):** Fresh focused correctness verification passed (`165 passed in 14.02s`) and the separate waveform integration passed (`2 passed in 2.52s`). Derived `jq -e` audits confirmed the default-lazy 1-warmup/3-cached-run contract, MF improvement 42.71%, SOAR improvement 41.09%, four healthy 128-patch cases, both maximum-budget smokes, and all quality gates. The upload dry-run enumerated all four expected artifacts, and `git diff --check` passed.
+
+The expensive profiler and quality generators were not repeated during verification. They had just produced the terminal Slice 10 artifacts, which were independently re-evaluated with fresh fail-closed assertions; this avoids adding uncached or ceremonial inference work. Repository-wide Ruff still reports 21 pre-existing findings outside dots.tts, while a fresh Ruff run over every changed source, evaluator, adapter, and test file passed.
+
+### Summary
+
+**Overall:** PASS
+**Passed:** 49 of 49 criteria
+**Remaining gaps:** none

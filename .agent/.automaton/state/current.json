@@ -1,8 +1,8 @@
 {
-  "active_change": "2026-07-31-dots-tts-inference-efficiency",
+  "active_change": "2026-08-01-dots-tts-mlx-runtime-redesign",
   "stage": "execute",
-  "canonical_spec": ".agent/work/2026-07-31-dots-tts-inference-efficiency/SPEC.md",
-  "canonical_design": ".agent/work/2026-07-31-dots-tts-inference-efficiency/DESIGN.md",
-  "canonical_plan": ".agent/work/2026-07-31-dots-tts-inference-efficiency/PLAN.md",
+  "canonical_spec": ".agent/work/2026-08-01-dots-tts-mlx-runtime-redesign/SPEC.md",
+  "canonical_design": ".agent/work/2026-08-01-dots-tts-mlx-runtime-redesign/DESIGN.md",
+  "canonical_plan": ".agent/work/2026-08-01-dots-tts-mlx-runtime-redesign/PLAN.md",
   "engineering_review": "approved_with_risks"
 }
