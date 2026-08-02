@@ -178,6 +178,10 @@ git diff --check
 **Touches:** focused completion/quality tests and minimal timing output only
 **Produces:** final speed and waveform evidence without a benchmark framework
 
+**Status:** complete
+**Evidence:** Ran the locked final timer once to `/tmp/dots-tts-after.json` and compared it with the preserved starting report without rerunning the starting path. MF batch improved 9.8% (`8.847s` to `7.978s`) and stream 54.3% (`14.870s` to `6.801s`); SOAR batch improved 24.3% (`12.108s` to `9.171s`) and stream 52.3% (`18.557s` to `8.846s`). Streaming first audio improved from `2.737s`/`2.783s` to `2.328s`/`2.384s`; all four cells passed, stopped by EOS, produced matching batch/stream sample counts, and used less peak memory. MF produced one more patch than the starting observation and SOAR two fewer, while per-patch time still improved materially, so the gain is not explained by earlier truncation. The one final integration run passed 16 cases. The base/int8 English/Mandarin speaker-only/continuation quality gate passed with zero WER regression, speaker-cosine regression inside threshold, and a 7.47 GiB maximum observed peak. Unit 851 passed; checkpoint/runtime reported 67 passed and 34 skipped plus the corrected SOAR tail case passed in isolation. The Hugging Face upload dry-run passed, the deleted-platform search returned no matches, scoped dots.tts Ruff and `git diff --check` passed.
+**Risks / next:** The plan-wide Ruff command also scans unrelated Dramabox, Fish, and Gemma tests and surfaced 12 pre-existing unused-import/variable findings outside this change; the owned dots.tts scope is clean. Proceed to the independent verification audit.
+
 ## Aggregate Verification Commands
 
 | Gate | Command | When |
