@@ -125,6 +125,12 @@ git diff --check
 
 **Produces:** a prepared hot path with one-time structural validation
 
+**Plan correction:** The prepared SDPA path and once-per-NFE tail-callable resolution were implemented together because both change only repeated host dispatch around the same attention call. Their production A/B was exact but 3.06% slower. The candidate was removed before GPU capture; capturing a rejected path would not affect the retention decision. Existing fast SDPA, prepared bias/rotary geometry, and per-layer validation remain because deleting them did not improve request time.
+
+**Status:** complete
+**Evidence:** One same-loaded production MF 36-patch pair measured 0.903 s for the retained generic host path and 0.931 s for the prepared candidate, with array-equal outputs and one stable compiled-tail key. Candidate code and temporary timing script were removed; focused attention/cache/compile/interleaving/failure tests passed 48 cases before removal.
+**Risks / next:** Python dispatch remains visible in static structure, but this bounded removal attempt shows it is not an independently profitable target at current MLX costs. Slice 5 decides the combined retained Slice 1-2 result end to end.
+
 ### Slice 5: Final production inference gate
 
 **Objective:** Prove the combined retained implementation lowers real inference time without waveform or memory regression.
