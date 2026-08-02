@@ -274,6 +274,85 @@ def test_compiled_common_and_residual_shapes_reuse_pure_tensor_helpers(
     assert tuple(name for name, _ in tree_flatten(model.parameters())) == parameter_names
 
 
+def test_recurrent_tile_failure_leaves_caller_state_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _model(133)
+    model.set_dtype(mx.bfloat16)
+    mx.random.seed(135)
+    latent = mx.random.normal((1, model.latent_dim, 20))
+    state = model.init_decode_state(maximum_chunk_size=20)
+    original_step = model._execute_recurrent_step
+    calls = 0
+
+    def fail_second_tile(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("injected recurrent tile failure")
+        return original_step(*args, **kwargs)
+
+    monkeypatch.setattr(model, "_execute_recurrent_step", fail_second_tile)
+    with pytest.raises(RuntimeError, match="injected recurrent tile failure"):
+        model.decode_chunk(latent, state, final=True)
+    assert calls == 2
+    assert state.total_frames == state.emitted_frames == 0
+    assert not bool(mx.any(state.decoder_input).item())
+    assert all(
+        not bool(mx.any(tensor).item())
+        for layer_state in state.recurrent_state
+        for tensor in layer_state
+    )
+
+    monkeypatch.setattr(model, "_execute_recurrent_step", original_step)
+    retried, retried_state = model.decode_chunk(latent, state, final=True)
+    expected, expected_state = model.decode_chunk(
+        latent,
+        model.init_decode_state(maximum_chunk_size=20),
+        final=True,
+    )
+    np.testing.assert_allclose(retried, expected, atol=0.0, rtol=0.0)
+    _assert_state_close(retried_state, expected_state)
+
+
+def test_compiled_recurrent_tiles_isolate_interleaved_requests() -> None:
+    model = _model(134)
+    model.set_dtype(mx.bfloat16)
+    mx.random.seed(136)
+    latents = {
+        "a": mx.random.normal((1, model.latent_dim, 9)),
+        "b": mx.random.normal((1, model.latent_dim, 9)),
+    }
+
+    expected = {
+        request: _stream_chunks(model, latent, (3, 2, 4))[:2]
+        for request, latent in latents.items()
+    }
+    states = {
+        request: model.init_decode_state(maximum_chunk_size=4)
+        for request in latents
+    }
+    chunks = {request: [] for request in latents}
+    offsets = {request: 0 for request in latents}
+    for size in (3, 3, 2, 2, 4, 4):
+        request = "a" if len(chunks["a"]) == len(chunks["b"]) else "b"
+        start = offsets[request]
+        end = start + size
+        output, states[request] = model.decode_chunk(
+            latents[request][:, :, start:end],
+            states[request],
+            final=end == 9,
+        )
+        chunks[request].append(output)
+        offsets[request] = end
+
+    for request in latents:
+        actual = mx.concatenate(chunks[request], axis=-1)
+        expected_output, expected_state = expected[request]
+        np.testing.assert_allclose(actual, expected_output, atol=0.0, rtol=0.0)
+        _assert_state_close(states[request], expected_state)
+
+
 def test_compiled_helpers_observe_same_dtype_weight_replacement() -> None:
     model = _model(137)
     model.set_dtype(mx.bfloat16)

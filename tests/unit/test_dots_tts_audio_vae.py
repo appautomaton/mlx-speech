@@ -63,6 +63,75 @@ def test_audio_vae_decode_is_deterministic() -> None:
     np.testing.assert_allclose(first, second, atol=0.0, rtol=0.0)
 
 
+def test_tiled_batch_decode_matches_the_full_recurrent_bridge() -> None:
+    model = _model()
+    model.set_dtype(mx.bfloat16)
+    mx.random.seed(38)
+    latent = mx.random.normal((1, model.latent_dim, 19)).astype(mx.bfloat16)
+    projected = model.post_proj(latent.transpose(0, 2, 1))
+    bridged = model.dec_mi_layer(projected).astype(model.decoder.input_dtype)
+    padding = model.decoder.stream_left_context + model.decoder.stream_lookahead
+    decoder_input = mx.concatenate(
+        (
+            bridged,
+            mx.zeros((1, padding, model.latent_dim), dtype=bridged.dtype),
+        ),
+        axis=1,
+    )
+    expected = model.decoder(decoder_input)[:, : 19 * model.hop_size]
+    expected = expected.astype(mx.float32).transpose(0, 2, 1)
+    actual = model.decode(latent)
+    mx.eval(expected, actual)
+    np.testing.assert_allclose(actual, expected, atol=1e-5, rtol=1e-5)
+
+
+def test_padded_recurrent_tile_does_not_advance_state_past_valid_length() -> None:
+    model = _model()
+    model.set_dtype(mx.bfloat16)
+    mx.random.seed(38)
+    latent = mx.random.normal((1, model.latent_dim, 3)).astype(mx.bfloat16)
+    initial = model.init_decode_state(maximum_chunk_size=4).recurrent_state
+    tiled, tiled_state = model._execute_recurrent_tiles(
+        latent,
+        initial,
+        use_compiled=True,
+    )
+    projected = model.post_proj(latent.transpose(0, 2, 1))
+    expected, expected_state = model.dec_mi_layer.execute_chunk(projected, initial)
+    mx.eval(tiled, tiled_state, expected, expected_state)
+    np.testing.assert_allclose(tiled, expected, atol=0.0, rtol=0.0)
+    for (actual_h, actual_c), (expected_h, expected_c) in zip(
+        tiled_state,
+        expected_state,
+        strict=True,
+    ):
+        np.testing.assert_allclose(actual_h, expected_h, atol=0.0, rtol=0.0)
+        np.testing.assert_allclose(actual_c, expected_c, atol=0.0, rtol=0.0)
+    recurrent_keys = [
+        key for key in model._compiled_vocoder_functions if key.operation == "recurrent"
+    ]
+    assert len(recurrent_keys) == 1
+    assert recurrent_keys[0].shapes[:2] == (
+        (1, model.latent_dim, 4),
+        (),
+    )
+    compiled_function = model._compiled_vocoder_functions[recurrent_keys[0]]
+    shorter = latent[:, :, :1]
+    shorter_state = model.init_decode_state(maximum_chunk_size=4).recurrent_state
+    shorter_output, _ = model._execute_recurrent_tiles(
+        shorter,
+        shorter_state,
+        use_compiled=True,
+    )
+    mx.eval(shorter_output)
+    recurrent_cache = {
+        key: function
+        for key, function in model._compiled_vocoder_functions.items()
+        if key.operation == "recurrent"
+    }
+    assert recurrent_cache == {recurrent_keys[0]: compiled_function}
+
+
 def test_slstm_chunk_execution_matches_zero_state_full_call() -> None:
     mx.random.seed(39)
     recurrent = SLSTM(5, 2)

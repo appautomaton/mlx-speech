@@ -121,6 +121,10 @@ git diff --check
 **Touches:** AudioVAE bridge/recurrent projection code and focused tests
 **Produces:** one bounded compiled bridge used by batch and stream
 
+**Status:** complete
+**Evidence:** Read the pinned PyTorch AudioVAE and strict streaming LSTM source, including the FP32 recurrent and BF16 decoder boundaries. Fixed-row projections now use one batched block matmul rather than a Python block loop. Batch and stream share compiled 4/8/16-frame recurrent tiles with tensor `valid_length`; padded frames produce no recurrent-state advance, arbitrary larger inputs split into bounded tiles, and zero-frame flush skips recurrence. Generation materializes candidate waveform/state before publishing vocoder or pending-patch state. Real-checkpoint 140-frame bridge timing showed a 27.0% warm improvement, 30 ms compile-plus-first execution versus 20 ms eager, and `1.9e-6` maximum difference. Focused bridge/vocoder/generation tests 85 passed, full unit 840 passed, dots.tts checkpoint/runtime 9 passed, and scoped Ruff plus `git diff --check` passed.
+**Risks / next:** First-use bridge compilation costs about 9 ms on the focused case; the single final default-path comparison decides the net result. Slice 5 owns the still-dominant rolling BigVGAN window recomputation and must preserve alignment/flush semantics.
+
 ### Slice 5: Eliminate rolling BigVGAN recomputation in streaming
 
 **Objective:** Decode only new frames plus required overlap/lookahead instead of repeatedly decoding the full rolling context.

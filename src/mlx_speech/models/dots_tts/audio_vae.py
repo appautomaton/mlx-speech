@@ -19,8 +19,9 @@ from .vocoder import (
 
 
 DECODER_STREAM_PROJECTION_BLOCK = 16
+DECODER_RECURRENT_TILES = (4, 8, 16)
 _COMPILED_VOCODER_CACHE_LIMIT = 12
-_COMPILED_VOCODER_WARM_FRAMES = (4, 16)
+_COMPILED_VOCODER_WARM_FRAMES = DECODER_RECURRENT_TILES
 
 
 def _leaky_relu(value: mx.array, slope: float) -> mx.array:
@@ -82,25 +83,22 @@ def _fixed_row_matmul(
     output_features = int(right.shape[-1])
     leading_shape = tuple(int(size) for size in value.shape[:-1])
     rows = value.reshape(-1, input_features)
-    outputs = []
-    for start in range(0, int(rows.shape[0]), block_size):
-        block = rows[start : start + block_size]
-        valid_rows = int(block.shape[0])
-        if valid_rows < block_size:
-            block = mx.concatenate(
-                (
-                    block,
-                    mx.zeros(
-                        (block_size - valid_rows, input_features),
-                        dtype=block.dtype,
-                    ),
+    row_count = int(rows.shape[0])
+    padded_rows = ((row_count + block_size - 1) // block_size) * block_size
+    if padded_rows > row_count:
+        rows = mx.concatenate(
+            (
+                rows,
+                mx.zeros(
+                    (padded_rows - row_count, input_features),
+                    dtype=rows.dtype,
                 ),
-                axis=0,
-            )
-        outputs.append((block @ right)[:valid_rows])
-    return mx.concatenate(outputs, axis=0).reshape(
-        (*leading_shape, output_features)
-    )
+            ),
+            axis=0,
+        )
+    blocks = rows.reshape(-1, block_size, input_features)
+    output = (blocks @ right).reshape(-1, output_features)[:row_count]
+    return output.reshape((*leading_shape, output_features))
 
 
 def _stream_linear(
@@ -199,6 +197,8 @@ class SLSTM(nn.Module):
         self,
         value: mx.array,
         state: tuple[tuple[mx.array, mx.array], ...],
+        *,
+        valid_length: mx.array | None = None,
     ) -> tuple[mx.array, tuple[tuple[mx.array, mx.array], ...]]:
         if value.ndim != 3 or int(value.shape[-1]) != self.dimension:
             raise ValueError(
@@ -245,9 +245,17 @@ class SLSTM(nn.Module):
                 forget_gate = mx.sigmoid(forget_gate)
                 candidate = mx.tanh(candidate)
                 output_gate = mx.sigmoid(output_gate)
-                cell = forget_gate * cell + input_gate * candidate
-                h = output_gate * mx.tanh(cell)
-                outputs.append(h)
+                next_cell = forget_gate * cell + input_gate * candidate
+                next_h = output_gate * mx.tanh(next_cell)
+                if valid_length is None:
+                    cell = next_cell
+                    h = next_h
+                    outputs.append(h)
+                else:
+                    active = mx.array(index, dtype=valid_length.dtype) < valid_length
+                    cell = mx.where(active, next_cell, cell)
+                    h = mx.where(active, next_h, h)
+                    outputs.append(mx.where(active, h, mx.zeros_like(h)))
             value = mx.stack(outputs, axis=1)
             next_state.append((h, cell))
         return value + residual, tuple(next_state)
@@ -385,11 +393,17 @@ class _MIBridge(nn.Module):
         self,
         value: mx.array,
         state: tuple[tuple[mx.array, mx.array], ...],
+        *,
+        valid_length: mx.array | None = None,
     ) -> tuple[mx.array, tuple[tuple[mx.array, mx.array], ...]]:
         if self.recurrent_dtype is not None:
             value = value.astype(self.recurrent_dtype)
         value = self._project(value, self.input)
-        value, state = self.recurrent.execute_chunk(value, state)
+        value, state = self.recurrent.execute_chunk(
+            value,
+            state,
+            valid_length=valid_length,
+        )
         value = self._project(value, self.output)
         return value, state
 
@@ -490,10 +504,18 @@ class AudioVAE(nn.Module):
             )
         if int(latent.shape[-1]) <= 0:
             raise ValueError("AudioVAE decode latent must not be empty")
-        value = self.post_proj(
-            latent.astype(self.post_proj.weight.dtype).transpose(0, 2, 1)
+        recurrent_dtype = self.dec_mi_layer.recurrent_dtype
+        if recurrent_dtype is None:
+            recurrent_dtype = self.dec_mi_layer.input.weight.dtype
+        recurrent_state = self.dec_mi_layer.recurrent.initial_state(
+            int(latent.shape[0]),
+            dtype=recurrent_dtype,
         )
-        value = self.dec_mi_layer(value)
+        value, _recurrent_state = self._execute_recurrent_tiles(
+            latent,
+            recurrent_state,
+            use_compiled=True,
+        )
         value = value.astype(self.decoder.input_dtype)
         frames = int(value.shape[1])
         decoder_padding = (
@@ -615,6 +637,7 @@ class AudioVAE(nn.Module):
     def _recurrent_step_tensors(
         self,
         latent: mx.array,
+        valid_length: mx.array,
         *flat_state: mx.array,
     ) -> tuple[mx.array, ...]:
         recurrent_state = tuple(
@@ -625,7 +648,9 @@ class AudioVAE(nn.Module):
             latent.astype(self.post_proj.weight.dtype).transpose(0, 2, 1)
         )
         decoder_chunk, recurrent_state = self.dec_mi_layer.execute_chunk(
-            value, recurrent_state
+            value,
+            recurrent_state,
+            valid_length=valid_length,
         )
         return (
             decoder_chunk,
@@ -638,11 +663,14 @@ class AudioVAE(nn.Module):
         recurrent_state: tuple[tuple[mx.array, mx.array], ...],
         *,
         use_compiled: bool,
+        valid_length: mx.array | None = None,
     ) -> tuple[mx.array, tuple[tuple[mx.array, mx.array], ...]]:
+        if valid_length is None:
+            valid_length = mx.array(int(latent.shape[-1]), dtype=mx.int32)
         flat_state = tuple(
             tensor for layer_state in recurrent_state for tensor in layer_state
         )
-        tensors = (latent, *flat_state)
+        tensors = (latent, valid_length, *flat_state)
         if use_compiled:
             result = self._compiled_function("recurrent", tensors)(*tensors)
         else:
@@ -655,6 +683,63 @@ class AudioVAE(nn.Module):
             for index in range(0, len(next_flat_state), 2)
         )
         return result[0], next_state
+
+    @staticmethod
+    def _recurrent_tile_size(frame_count: int) -> int:
+        for tile_size in DECODER_RECURRENT_TILES:
+            if frame_count <= tile_size:
+                return tile_size
+        return DECODER_RECURRENT_TILES[-1]
+
+    def _execute_recurrent_tiles(
+        self,
+        latent: mx.array,
+        recurrent_state: tuple[tuple[mx.array, mx.array], ...],
+        *,
+        use_compiled: bool,
+    ) -> tuple[mx.array, tuple[tuple[mx.array, mx.array], ...]]:
+        """Execute bounded recurrent tiles without publishing padded state."""
+
+        frame_count = int(latent.shape[-1])
+        if frame_count == 0:
+            return (
+                mx.zeros(
+                    (int(latent.shape[0]), 0, self.latent_dim),
+                    dtype=self.decoder.input_dtype,
+                ),
+                recurrent_state,
+            )
+        outputs = []
+        offset = 0
+        maximum_tile = DECODER_RECURRENT_TILES[-1]
+        while offset < frame_count:
+            valid_frames = min(maximum_tile, frame_count - offset)
+            tile_size = self._recurrent_tile_size(valid_frames)
+            tile = latent[:, :, offset : offset + valid_frames]
+            if valid_frames < tile_size:
+                tile = mx.concatenate(
+                    (
+                        tile,
+                        mx.zeros(
+                            (
+                                int(tile.shape[0]),
+                                self.latent_dim,
+                                tile_size - valid_frames,
+                            ),
+                            dtype=tile.dtype,
+                        ),
+                    ),
+                    axis=-1,
+                )
+            decoded, recurrent_state = self._execute_recurrent_step(
+                tile,
+                recurrent_state,
+                use_compiled=use_compiled,
+                valid_length=mx.array(valid_frames, dtype=mx.int32),
+            )
+            outputs.append(decoded[:, :valid_frames])
+            offset += valid_frames
+        return mx.concatenate(outputs, axis=1), recurrent_state
 
     def _decode_window_tensor(self, decoder_input: mx.array) -> mx.array:
         return self.decoder(decoder_input)
@@ -713,7 +798,7 @@ class AudioVAE(nn.Module):
             dtype=self.decoder.input_dtype,
         )
         if chunk_frames:
-            decoder_chunk, recurrent_state = self._execute_recurrent_step(
+            decoder_chunk, recurrent_state = self._execute_recurrent_tiles(
                 latent,
                 recurrent_state,
                 use_compiled=use_compiled,
@@ -759,9 +844,7 @@ class AudioVAE(nn.Module):
         )
         if stable_frames <= state.emitted_frames:
             return (
-                mx.zeros(
-                    (int(latent.shape[0]), 1, 0), dtype=mx.float32
-                ),
+                mx.zeros((int(latent.shape[0]), 1, 0), dtype=mx.float32),
                 next_state,
             )
 

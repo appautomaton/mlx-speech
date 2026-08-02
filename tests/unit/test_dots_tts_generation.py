@@ -420,6 +420,47 @@ def test_stream_waveform_boundary_publishes_returned_recurrent_state(
     )
 
 
+def test_stream_waveform_failure_preserves_vocoder_and_patch_state(monkeypatch) -> None:
+    generator, _, _ = _generator("meanflow")
+    original_vocoder_state = SimpleNamespace(
+        maximum_chunk_size=2,
+        decoder_input=mx.zeros((1, 4, 2)),
+        recurrent_state=((mx.zeros((1, 2)), mx.zeros((1, 2))),),
+    )
+    candidate_vocoder_state = SimpleNamespace(
+        maximum_chunk_size=2,
+        decoder_input=mx.ones((1, 4, 2)),
+        recurrent_state=((mx.ones((1, 2)), mx.ones((1, 2))),),
+    )
+    stream_state = SimpleNamespace(
+        vocoder_state=original_vocoder_state,
+        vocoder_buffer=[],
+        pending_chunk_patches=0,
+        yielded_waveform=False,
+        has_non_silent_audio=False,
+    )
+
+    def invalid_decode(latent, state, *, final=False):
+        del latent, state, final
+        return mx.full((1, 1, 2), float("nan")), candidate_vocoder_state
+
+    monkeypatch.setattr(
+        generator.components.audio_vae,
+        "decode_chunk",
+        invalid_decode,
+    )
+    with pytest.raises(RuntimeError, match="non-finite audio"):
+        generator._decode_stream_chunk(
+            stream_state,
+            [mx.ones((1, 2, 2))],
+        )
+
+    assert stream_state.vocoder_state is original_vocoder_state
+    assert stream_state.pending_chunk_patches == 0
+    assert not stream_state.yielded_waveform
+    assert not stream_state.has_non_silent_audio
+
+
 def test_stream_rejects_non_finite_audio_before_first_yield(monkeypatch) -> None:
     generator, _, _ = _generator("meanflow")
 

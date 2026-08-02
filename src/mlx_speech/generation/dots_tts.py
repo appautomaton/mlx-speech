@@ -1037,7 +1037,7 @@ class DotsTTSGenerator:
             latent = mx.zeros(
                 (1, self.config.latent_dim, 0), dtype=self._activation_dtype
             )
-        decoded, state.vocoder_state = self.components.audio_vae.decode_chunk(
+        decoded, next_vocoder_state = self.components.audio_vae.decode_chunk(
             latent,
             state.vocoder_state,
             final=final,
@@ -1049,14 +1049,15 @@ class DotsTTSGenerator:
             raise RuntimeError(
                 f"dots.tts AudioVAE returned invalid waveform {decoded.shape}"
             )
-        state.pending_chunk_patches += patch_count
         waveform = decoded[0, 0].astype(mx.float32)
         finite, non_silent = _materialize_waveform_health(
             waveform,
-            *_vocoder_state_arrays(state.vocoder_state),
+            *_vocoder_state_arrays(next_vocoder_state),
         )
         if not finite:
             raise RuntimeError("dots.tts generation produced non-finite audio")
+        state.vocoder_state = next_vocoder_state
+        state.pending_chunk_patches += patch_count
         if int(waveform.size) == 0:
             return None
         num_patches = state.pending_chunk_patches
