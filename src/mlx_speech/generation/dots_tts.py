@@ -801,7 +801,9 @@ class DotsTTSGenerator:
         schedule: DotsTTSSchedule,
         prompt: DotsTTSPromptConditioning,
         state: _DotsTTSRequestState,
-    ) -> tuple[int, mx.array]:
+        *,
+        request_eos: bool,
+    ) -> tuple[int, mx.array, mx.array | None]:
         prompt_count = prompt.prompt_patch_count
         if schedule.audio_patch_budget <= prompt_count:
             raise ValueError(
@@ -828,6 +830,7 @@ class DotsTTSGenerator:
             inputs_embeds=inputs_embeds,
             cache=None,
             cache_capacity=len(schedule.token_ids),
+            request_eos=request_eos,
         )
         state.qwen_cache = qwen_output.cache
         hidden = qwen_output.last_hidden_state
@@ -861,7 +864,12 @@ class DotsTTSGenerator:
                 state.fm_chunks,
                 state.cfg_chunks,
             )
-        return prefill_end, hidden[:, -1:]
+        eos_logits = qwen_output.eos_logits
+        return (
+            prefill_end,
+            hidden[:, -1:],
+            None if eos_logits is None else eos_logits[:, -1:],
+        )
 
     def _new_dit_request(
         self,
@@ -1114,6 +1122,7 @@ class DotsTTSGenerator:
             raise ValueError("eos_threshold must be in [0, 1]")
         if not math.isfinite(guidance_scale):
             raise ValueError("guidance_scale must be finite")
+        request_eos = eos_threshold < 1.0
         rng = _DotsTTSRequestRNG(mx.random.key(int(seed)))
         prompt = self.prepare_prompt(
             reference_audio,
@@ -1162,10 +1171,11 @@ class DotsTTSGenerator:
             rng=rng,
         )
         try:
-            position, hidden = self._prefill(
+            position, hidden, eos_logits = self._prefill(
                 schedule,
                 prompt,
                 state,
+                request_eos=request_eos,
             )
             audio_ids = {
                 self.tokenizer.audio_gen_span_id,
@@ -1189,18 +1199,24 @@ class DotsTTSGenerator:
                         )[None],
                         cache=state.qwen_cache,
                         cache_capacity=len(schedule_ids),
+                        request_eos=request_eos,
                     )
                     hidden, state.qwen_cache = output.last_hidden_state, output.cache
+                    eos_logits = (
+                        None
+                        if output.eos_logits is None
+                        else output.eos_logits[:, -1:]
+                    )
                     self._append_hidden(hidden, state.fm_chunks, state.cfg_chunks)
                     position = next_audio
                     continue
 
-                stop_after = False
-                if not discard_regenerated_prompt_tail:
-                    stop_after = bool(
-                        self.components.core.qwen.should_stop(
-                            hidden[:, -1:], threshold=eos_threshold
-                        ).item()
+                stop_decision = None
+                if not discard_regenerated_prompt_tail and request_eos:
+                    if eos_logits is None:
+                        raise RuntimeError("dots.tts Qwen omitted requested EOS logits")
+                    stop_decision = (
+                        mx.softmax(eos_logits, axis=-1)[..., 1] > eos_threshold
                     )
                 patch = self._solve_patch(
                     state,
@@ -1229,8 +1245,14 @@ class DotsTTSGenerator:
                     inputs_embeds=patch_embedding.astype(self._activation_dtype),
                     cache=state.qwen_cache,
                     cache_capacity=len(schedule_ids),
+                    request_eos=request_eos,
                 )
                 hidden, state.qwen_cache = output.last_hidden_state, output.cache
+                next_eos_logits = (
+                    None
+                    if output.eos_logits is None
+                    else output.eos_logits[:, -1:]
+                )
                 if (
                     position + 1 < len(schedule_ids)
                     and schedule_ids[position + 1] in audio_ids
@@ -1241,9 +1263,16 @@ class DotsTTSGenerator:
                     discard_regenerated_prompt_tail = False
                 else:
                     state.generated_patches += 1
+                    stop_after = False
+                    if stop_decision is not None:
+                        # The reference decides EOS from the previous Qwen hidden,
+                        # but stops only after this patch has been consumed.
+                        mx.eval(stop_decision, denormalized, hidden)
+                        stop_after = bool(stop_decision.item())
                     yield denormalized
-                if stop_after:
-                    break
+                    if stop_after:
+                        break
+                eos_logits = next_eos_logits
 
             if not state.generated_patches:
                 raise RuntimeError(

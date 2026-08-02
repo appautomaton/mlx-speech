@@ -69,6 +69,10 @@ git diff --check
 **Touches:** `src/mlx_speech/generation/dots_tts.py`, Qwen/cache code, focused tests
 **Produces:** one retained acoustic feedback path with correct stop ordering
 
+**Status:** complete
+**Evidence:** `DotsTTSQwen.step` can skip EOS projection, and generation reuses returned EOS logits, co-materializes the current patch transaction before the scalar decision, yields the patch, then stops. Focused EOS/cache tests 14 passed; the combined tier run completed its 828-unit phase, and isolated dots.tts checkpoint/runtime verification reported 9 passed; scoped Ruff and `git diff --check` passed.
+**Risks / next:** none; the one discarded full multi-model tier process lost its final exit status after unit completion, so only the relevant dots.tts higher tiers were rerun.
+
 ### Slice 3: Make DiT execution reuse stable MLX work
 
 **Objective:** Replace fragmented and repeated DiT inference work with bounded stable MLX execution without changing MF/SOAR solver math.

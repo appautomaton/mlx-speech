@@ -26,7 +26,7 @@ class DotsTTSEOSHead(nn.Module):
 @dataclass(frozen=True)
 class DotsTTSQwenOutput:
     last_hidden_state: mx.array
-    eos_logits: mx.array
+    eos_logits: mx.array | None
     cache: Qwen2KVCache
     logits: mx.array | None = None
 
@@ -85,6 +85,7 @@ class DotsTTSQwen(nn.Module):
         cache: Qwen2KVCache | None = None,
         cache_capacity: int | None = None,
         request_logits: bool = True,
+        request_eos: bool = True,
     ) -> DotsTTSQwenOutput:
         output = self.model(
             input_ids=input_ids,
@@ -96,7 +97,7 @@ class DotsTTSQwen(nn.Module):
         logits = self.project_logits(hidden_states) if request_logits else None
         return DotsTTSQwenOutput(
             last_hidden_state=hidden_states,
-            eos_logits=self.eos_logits(hidden_states),
+            eos_logits=self.eos_logits(hidden_states) if request_eos else None,
             cache=output.cache,
             logits=logits,
         )
@@ -109,6 +110,7 @@ class DotsTTSQwen(nn.Module):
         cache: Qwen2KVCache | None = None,
         cache_capacity: int | None = None,
         request_logits: bool = False,
+        request_eos: bool = True,
     ) -> DotsTTSQwenOutput:
         """Run a cache-aware contextual step without vocabulary logits by default."""
 
@@ -118,6 +120,7 @@ class DotsTTSQwen(nn.Module):
             cache=cache,
             cache_capacity=cache_capacity,
             request_logits=request_logits,
+            request_eos=request_eos,
         )
 
 

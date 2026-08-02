@@ -53,6 +53,7 @@ class _Qwen:
         self.hidden_size = hidden_size
         self.stop = False
         self.steps = 0
+        self.request_eos: list[bool] = []
 
     def get_input_embeddings(self):
         return lambda ids: mx.repeat(
@@ -66,14 +67,21 @@ class _Qwen:
         inputs_embeds=None,
         cache=None,
         cache_capacity=None,
+        request_eos=True,
     ):
         del cache_capacity
         value = inputs_embeds
         if value is None:
             value = self.get_input_embeddings()(input_ids)
         self.steps += 1
+        self.request_eos.append(bool(request_eos))
         return SimpleNamespace(
             last_hidden_state=value + 0.01,
+            eos_logits=(
+                mx.array([[[0.0, 10.0 if self.stop else -10.0]]])
+                if request_eos
+                else None
+            ),
             cache=[] if cache is None else cache,
         )
 
@@ -310,28 +318,24 @@ def test_mode_specific_history_omits_meanflow_cfg_and_reuses_soar_constant() -> 
     assert soar_cfg[0] is soar_cfg[1] is soar_cfg[2]
 
 
-def test_generation_keeps_only_eos_item_and_waveform_eval_boundaries(
+def test_generation_threshold_one_bypasses_eos_and_per_patch_sync(
     monkeypatch,
 ) -> None:
     generator, _, _ = _generator("meanflow")
-    item_calls = 0
     eval_calls: list[tuple[object, ...]] = []
     original_eval = mx.eval
-
-    class StopValue:
-        def item(self):
-            nonlocal item_calls
-            item_calls += 1
-            return False
 
     def record_eval(*values):
         eval_calls.append(values)
         return original_eval(*values)
 
+    def unexpected_stop(*_args, **_kwargs):
+        raise AssertionError("disabled EOS called should_stop")
+
     monkeypatch.setattr(
         generator.components.core.qwen,
         "should_stop",
-        lambda *_args, **_kwargs: StopValue(),
+        unexpected_stop,
     )
     monkeypatch.setattr(mx, "eval", record_eval)
 
@@ -343,9 +347,36 @@ def test_generation_keeps_only_eos_item_and_waveform_eval_boundaries(
     )
 
     assert result.num_patches == 3
-    assert item_calls == 3
+    assert generator.components.core.qwen.request_eos
+    assert not any(generator.components.core.qwen.request_eos)
     assert len(eval_calls) == 1
     assert len(eval_calls[0]) == 2
+
+
+def test_generation_reuses_qwen_eos_and_stops_after_current_patch(
+    monkeypatch,
+) -> None:
+    generator, _, dit = _generator("meanflow")
+    generator.components.core.qwen.stop = True
+    eval_calls: list[tuple[object, ...]] = []
+    original_eval = mx.eval
+
+    def record_eval(*values):
+        eval_calls.append(values)
+        return original_eval(*values)
+
+    monkeypatch.setattr(mx, "eval", record_eval)
+    result = generator.synthesize(
+        "A",
+        max_audio_patches=3,
+        solver_steps=1,
+        eos_threshold=0.5,
+    )
+
+    assert result.num_patches == 1
+    assert dit.calls == 1
+    assert all(generator.components.core.qwen.request_eos)
+    assert any(len(values) == 3 for values in eval_calls)
 
 
 def test_stream_waveform_boundary_publishes_returned_recurrent_state(
@@ -633,9 +664,14 @@ def test_request_state_is_released_after_normal_completion(monkeypatch) -> None:
     states = []
     original_prefill = generator._prefill
 
-    def capture_state(schedule, prompt, state):
+    def capture_state(schedule, prompt, state, *, request_eos):
         states.append(state)
-        return original_prefill(schedule, prompt, state)
+        return original_prefill(
+            schedule,
+            prompt,
+            state,
+            request_eos=request_eos,
+        )
 
     monkeypatch.setattr(generator, "_prefill", capture_state)
     generator.synthesize(
@@ -654,9 +690,14 @@ def test_request_state_is_released_after_generation_failure(monkeypatch) -> None
     states = []
     original_prefill = generator._prefill
 
-    def capture_state(schedule, prompt, state):
+    def capture_state(schedule, prompt, state, *, request_eos):
         states.append(state)
-        return original_prefill(schedule, prompt, state)
+        return original_prefill(
+            schedule,
+            prompt,
+            state,
+            request_eos=request_eos,
+        )
 
     def fail_solver(*args, **kwargs):
         del args, kwargs
@@ -683,9 +724,14 @@ def test_early_stream_close_does_not_flush_or_retain_request_state(
     states = []
     original_prefill = generator._prefill
 
-    def capture_state(schedule, prompt, state):
+    def capture_state(schedule, prompt, state, *, request_eos):
         states.append(state)
-        return original_prefill(schedule, prompt, state)
+        return original_prefill(
+            schedule,
+            prompt,
+            state,
+            request_eos=request_eos,
+        )
 
     monkeypatch.setattr(generator, "_prefill", capture_state)
     stream = generator.synthesize_stream(

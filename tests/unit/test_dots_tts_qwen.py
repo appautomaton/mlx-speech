@@ -92,6 +92,22 @@ def test_dots_qwen_ids_embeddings_gqa_tied_logits_and_eos() -> None:
     assert all(values.shape == (1, 4, 2, 4) for _, values in from_ids.cache)
 
 
+def test_dots_qwen_can_skip_eos_projection(monkeypatch) -> None:
+    model = DotsTTSQwen(_tiny_config())
+    _set_deterministic_weights(model)
+
+    def unexpected_eos(_hidden_states):
+        raise AssertionError("disabled EOS built its projection")
+
+    monkeypatch.setattr(model, "eos_logits", unexpected_eos)
+    output = model.step(
+        input_ids=mx.array([[1, 2]], dtype=mx.int32),
+        request_eos=False,
+    )
+    mx.eval(output.last_hidden_state)
+    assert output.eos_logits is None
+
+
 def test_dots_qwen_full_and_incremental_decode_agree() -> None:
     model = DotsTTSQwen(_tiny_config())
     _set_deterministic_weights(model)
