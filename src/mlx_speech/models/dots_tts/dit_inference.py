@@ -715,56 +715,9 @@ class CachedDiTRunner:
             )
         return projected
 
-    def project_invariant_input(
-        self,
-        conditional: mx.array,
-        unconditional: mx.array | None = None,
-    ) -> mx.array:
-        """Project the patch-invariant tokens once for every solver step."""
-
-        if conditional.ndim != 3 or int(conditional.shape[-1]) != self.dit.input_size:
-            raise ValueError(
-                "cached DiT invariant input must match the model input size"
-            )
-        if self.mode == "soar":
-            if unconditional is None or unconditional.shape != conditional.shape:
-                raise ValueError(
-                    "cached SOAR invariant inputs require matching CFG branches"
-                )
-            branches = mx.concatenate((conditional, unconditional), axis=0)
-        else:
-            if unconditional is not None:
-                raise ValueError("cached MeanFlow invariant input cannot use CFG")
-            branches = conditional
-        return self.dit.input_layer(branches)
-
-    def _compose_solver_input(
-        self,
-        coordinate: mx.array,
-        *,
-        invariant_input: mx.array,
-        cfg_invariant_input: mx.array | None,
-        projected_invariant: mx.array,
-    ) -> mx.array:
-        projected_coordinate = self._project_coordinate(coordinate)
-        if coordinate.dtype == mx.bfloat16:
-            changing = self.dit.input_layer(projected_coordinate)
-            if self.mode == "soar":
-                changing = mx.concatenate((changing, changing), axis=0)
-            return mx.concatenate((projected_invariant, changing), axis=1)
-        conditional = mx.concatenate((invariant_input, projected_coordinate), axis=1)
-        if self.mode == "soar":
-            if cfg_invariant_input is None:
-                raise ValueError("cached SOAR solver input requires a CFG branch")
-            unconditional = mx.concatenate(
-                (cfg_invariant_input, projected_coordinate), axis=1
-            )
-            conditional = mx.concatenate((conditional, unconditional), axis=0)
-        return self.dit.input_layer(conditional)
-
     def _run_blocks(
         self,
-        value: mx.array,
+        sequence: mx.array,
         modulations: PreparedModulations,
         *,
         positions: mx.array | None,
@@ -791,6 +744,7 @@ class CachedDiTRunner:
                 raise ValueError("cached DiT attention requires an NFE index")
         if scratch_length and cache is not None and scratch_window is None:
             scratch_window = cache.open_scratch_window()
+        value = self.dit.input_layer(sequence)
         committed_keys: list[mx.array] = []
         committed_values: list[mx.array] = []
         for layer_index, (block, block_modulation) in enumerate(
@@ -884,19 +838,28 @@ class CachedDiTRunner:
     def prefill_nfe(
         self,
         *,
-        projected_prefix: mx.array,
+        prefix_sequence: mx.array,
         modulations: PreparedModulations,
+        cfg_prefix_sequence: mx.array | None,
         positions: mx.array,
         rotary_cos_sin: RotaryCosSin,
         attention_bias: mx.array | None,
     ) -> tuple[mx.array, mx.array]:
         """Project one prompt prefix NFE without retaining another NFE's K/V."""
 
-        prefix_length = int(projected_prefix.shape[1])
+        prefix_length = int(prefix_sequence.shape[1])
         if prefix_length == 0:
             raise ValueError("DiT prompt prefill requires a non-empty prefix")
+        if self.mode == "soar":
+            if cfg_prefix_sequence is None:
+                raise ValueError("cached SOAR prefill requires a CFG prefix")
+            branches = mx.concatenate((prefix_sequence, cfg_prefix_sequence), axis=0)
+        else:
+            if cfg_prefix_sequence is not None:
+                raise ValueError("cached MeanFlow prefill cannot use a CFG prefix")
+            branches = prefix_sequence
         _value, keys, values, _cache, _scratch_window = self._run_blocks(
-            projected_prefix,
+            branches,
             modulations,
             positions=positions,
             rotary_cos_sin=rotary_cos_sin,
@@ -911,24 +874,25 @@ class CachedDiTRunner:
         self,
         coordinate: mx.array,
         *,
-        invariant_input: mx.array,
-        cfg_invariant_input: mx.array | None,
-        projected_invariant: mx.array,
-        batch_size: int,
+        current_hidden: mx.array,
+        cfg_current_hidden: mx.array | None,
         modulations: PreparedModulations,
         positions: mx.array,
         rotary_cos_sin: RotaryCosSin,
         attention_bias: mx.array | None,
         guidance_scale: float,
     ) -> mx.array:
-        value_input = self._compose_solver_input(
-            coordinate,
-            invariant_input=invariant_input,
-            cfg_invariant_input=cfg_invariant_input,
-            projected_invariant=projected_invariant,
-        )
+        projected = self._project_coordinate(coordinate)
+        conditional = mx.concatenate((current_hidden, projected), axis=1)
+        if self.mode == "soar":
+            if cfg_current_hidden is None:
+                raise ValueError("cached SOAR first patch requires CFG hidden state")
+            unconditional = mx.concatenate((cfg_current_hidden, projected), axis=1)
+            branches = mx.concatenate((conditional, unconditional), axis=0)
+        else:
+            branches = conditional
         value, _keys, _values, _cache, _scratch_window = self._run_blocks(
-            value_input,
+            branches,
             modulations,
             positions=positions,
             rotary_cos_sin=rotary_cos_sin,
@@ -937,6 +901,7 @@ class CachedDiTRunner:
         prediction = self._apply_final(value, modulations)[:, self.hidden_patch_size :]
         if self.mode == "meanflow":
             return prediction
+        batch_size = int(current_hidden.shape[0])
         conditional_velocity = prediction[:batch_size]
         unconditional_velocity = prediction[batch_size:]
         return conditional_velocity + float(guidance_scale) * (
@@ -947,10 +912,10 @@ class CachedDiTRunner:
         self,
         coordinate: mx.array,
         *,
-        invariant_input: mx.array,
-        cfg_invariant_input: mx.array | None,
-        projected_invariant: mx.array,
-        batch_size: int,
+        previous_unit: mx.array,
+        current_hidden: mx.array,
+        cfg_previous_unit: mx.array | None,
+        cfg_current_hidden: mx.array | None,
         cache: DiTKvCache | None,
         cache_factory: CacheFactory | None,
         scratch_window: _DiTScratchWindow | None,
@@ -961,14 +926,19 @@ class CachedDiTRunner:
         attention_bias: mx.array | None,
         guidance_scale: float,
     ) -> tuple[mx.array, DiTKvCache, _DiTScratchWindow]:
-        value_input = self._compose_solver_input(
-            coordinate,
-            invariant_input=invariant_input,
-            cfg_invariant_input=cfg_invariant_input,
-            projected_invariant=projected_invariant,
-        )
+        projected = self._project_coordinate(coordinate)
+        conditional = mx.concatenate((previous_unit, current_hidden, projected), axis=1)
+        if self.mode == "soar":
+            if cfg_previous_unit is None or cfg_current_hidden is None:
+                raise ValueError("cached SOAR tail requires both CFG units")
+            unconditional = mx.concatenate(
+                (cfg_previous_unit, cfg_current_hidden, projected), axis=1
+            )
+            branches = mx.concatenate((conditional, unconditional), axis=0)
+        else:
+            branches = conditional
         value, _keys, _values, cache, scratch_window = self._run_blocks(
-            value_input,
+            branches,
             modulations,
             positions=positions,
             rotary_cos_sin=rotary_cos_sin,
@@ -988,6 +958,7 @@ class CachedDiTRunner:
         if self.mode == "meanflow":
             velocity = prediction
         else:
+            batch_size = int(current_hidden.shape[0])
             conditional_velocity = prediction[:batch_size]
             unconditional_velocity = prediction[batch_size:]
             velocity = conditional_velocity + float(guidance_scale) * (
@@ -1363,17 +1334,11 @@ class CachedDiTSolver:
                 key_length=self.unit_length,
                 dtype=sequence.dtype,
             )
-            projected_invariant = self.runner.project_invariant_input(
-                current_hidden,
-                cfg_current_hidden,
-            )
             for nfe_index, modulations in enumerate(modulations_by_nfe):
                 velocity = self.runner.first_velocity(
                     coordinate,
-                    invariant_input=current_hidden,
-                    cfg_invariant_input=cfg_current_hidden,
-                    projected_invariant=projected_invariant,
-                    batch_size=batch_size,
+                    current_hidden=current_hidden,
+                    cfg_current_hidden=cfg_current_hidden,
                     modulations=modulations,
                     positions=first_positions,
                     rotary_cos_sin=first_rotary,
@@ -1424,18 +1389,15 @@ class CachedDiTSolver:
                 key_length=persistent_length,
                 dtype=sequence.dtype,
             )
-            projected_prefix = self.runner.project_invariant_input(
-                sequence[:, :persistent_length],
-                (
-                    None
-                    if cfg_sequence is None
-                    else cfg_sequence[:, :persistent_length]
-                ),
-            )
             prefill_writes: list[tuple[int, mx.array, mx.array]] = []
             for nfe_index, modulations in enumerate(modulations_by_nfe):
                 keys, values = self.runner.prefill_nfe(
-                    projected_prefix=projected_prefix,
+                    prefix_sequence=sequence[:, :persistent_length],
+                    cfg_prefix_sequence=(
+                        None
+                        if cfg_sequence is None
+                        else cfg_sequence[:, :persistent_length]
+                    ),
                     modulations=modulations,
                     positions=prefix_positions,
                     rotary_cos_sin=prefix_rotary,
@@ -1515,24 +1477,14 @@ class CachedDiTSolver:
 
             cache_factory = allocate_scratch_cache
 
-        invariant_input = mx.concatenate((previous_unit, current_hidden), axis=1)
-        cfg_invariant_input = (
-            None
-            if cfg_previous_unit is None or cfg_current_hidden is None
-            else mx.concatenate((cfg_previous_unit, cfg_current_hidden), axis=1)
-        )
-        projected_invariant = self.runner.project_invariant_input(
-            invariant_input,
-            cfg_invariant_input,
-        )
         scratch_window: _DiTScratchWindow | None = None
         for nfe_index, modulations in enumerate(modulations_by_nfe):
             velocity, cache, scratch_window = self.runner.next_velocity(
                 coordinate,
-                invariant_input=invariant_input,
-                cfg_invariant_input=cfg_invariant_input,
-                projected_invariant=projected_invariant,
-                batch_size=batch_size,
+                previous_unit=previous_unit,
+                current_hidden=current_hidden,
+                cfg_previous_unit=cfg_previous_unit,
+                cfg_current_hidden=cfg_current_hidden,
                 cache=cache,
                 cache_factory=cache_factory,
                 scratch_window=scratch_window,

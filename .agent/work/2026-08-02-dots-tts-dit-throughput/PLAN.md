@@ -39,9 +39,11 @@ git diff --check
 
 **Produces:** one split input-projection path shared by MF and SOAR
 
+**Plan correction:** The split projection was exact for materialized production-shape inputs and reduced that isolated subpath by 32.0%, but the final public-path gate exposed different BF16 fusion/rounding when lazy Qwen outputs fed the hoisted projection. A no-sync `stop_gradient` boundary did not restore exactness; a per-patch `mx.eval` barrier was rejected because it adds host synchronization.
+
 **Status:** complete
-**Evidence:** BF16 MF/SOAR now project the invariant acoustic tail once per patch, reuse the SOAR coordinate projection across CFG branches, and reuse prompt-prefill projection across NFEs. A focused production-shape SOAR input-layer check was exact and reduced this subpath from 0.615 ms to 0.418 ms (32.0%); 56 focused DiT/cache/solver tests and 869 unit tests passed, and float32 retains the original full projection to avoid changed matmul rounding.
-**Risks / next:** none
+**Evidence:** A 20-patch public-path isolation produced a 1.046875 maximum waveform difference with Slice 1 enabled, while two unchanged optimized requests were bit-exact and a 36-patch materialized solver pair was exact. The full 261-patch gate was also non-exact. The input-hoist code and its focused test were removed; the original full input projection remains.
+**Risks / next:** Do not retry invariant projection hoisting without an MLX-native exact graph boundary that does not add a per-patch synchronization.
 
 ### Slice 2: Validate one scratch window per patch
 
@@ -154,6 +156,10 @@ git diff --check
 **Touches:** retained DiT runtime/tests and temporary `/private/tmp` evidence only
 
 **Produces:** exact end-to-end timing and memory evidence
+
+**Status:** complete
+**Evidence:** After removing the non-exact Slice 1 candidate, one corrected same-loaded Hank seed-42 pair generated 261 patches and 41.76 seconds of audio. Baseline was 19.949 s and the retained scratch-window runtime was 19.274 s, a 3.382% improvement. Waveforms were bit-exact; MLX allocator peak changed from 6,033,245,341 to 6,041,188,893 bytes (+0.132%). Model load was 0.500 s and excluded from both inference totals. The combined unit/checkpoint/runtime gate passed 936 tests with 34 skips; scoped Ruff and `git diff --check` passed. Temporary scripts were deleted and the optimized audio remains at `/private/tmp/hank_dots_tts_261_optimized.wav`.
+**Risks / next:** none
 
 ## Aggregate Verification Commands
 
