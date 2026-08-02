@@ -70,8 +70,15 @@ def test_compare_uses_recorded_numeric_tolerance(
     oracle.compare_fixture_packs(expected, actual)
 
 
-def test_reference_commits_are_pinned() -> None:
-    provenance = oracle._provenance(oracle._source_manifest())
+def test_reference_commits_are_pinned(monkeypatch: pytest.MonkeyPatch) -> None:
+    commits = {
+        oracle.OFFICIAL_REFERENCE: "5ed719e3d36f5a3f6d8037ca9a7009d4fd0520ba",
+        oracle.COMMUNITY_REFERENCE: "f64479f51a2a9d7093533732cae86e765d8fb96e",
+    }
+    monkeypatch.setattr(oracle, "_git_head", commits.__getitem__)
+    monkeypatch.setattr(oracle, "sha256_file", lambda _path: "0" * 64)
+
+    provenance = oracle._provenance({"variants": {}})
     assert provenance["references"]["official"]["commit"] == (
         "5ed719e3d36f5a3f6d8037ca9a7009d4fd0520ba"
     )

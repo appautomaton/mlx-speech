@@ -108,7 +108,9 @@ def test_dit_uses_positions_and_speaker_conditioning() -> None:
     changed_positions = model(
         value,
         timestep,
-        positions=(mx.arange(5, dtype=mx.float32) + 3)[None],
+        # RoPE is invariant to a uniform position offset because attention
+        # depends on relative positions. Stretch the spacing instead.
+        positions=(mx.arange(5, dtype=mx.float32) * 2)[None],
         speaker_condition=mx.zeros((1, 8)),
     )
     changed_speaker = model(
