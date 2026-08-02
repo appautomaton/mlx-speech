@@ -192,8 +192,42 @@ def test_dit_inference_fuses_qkv_without_changing_projection() -> None:
 
     parameters = set(tree_flatten(model.parameters(), destination={}))
     assert "blocks.0.attn.qkv_proj.weight" in parameters
+    assert not any("_qk_norm_weight" in name for name in parameters)
     assert not any("blocks.0.attn.q_proj" in name for name in parameters)
     model.fuse_for_inference()
+
+
+def test_dit_fused_projection_pairs_qk_without_changing_values() -> None:
+    mx.random.seed(74)
+    model = DiT(8, 4, _config(layers=1))
+    model.set_dtype(mx.bfloat16)
+    attention = model.blocks[0].attn
+    attention.fuse_qkv_for_inference()
+    value = mx.random.normal((2, 5, 8)).astype(mx.bfloat16)
+    positions = mx.arange(7, 12, dtype=mx.float32)[None]
+    cosine, sine = attention.rotary.cos_sin(attention.rotary(positions))
+
+    qkv = mx.split(attention.qkv_proj(value), 3, axis=-1)
+
+    def reshape(projected: mx.array) -> mx.array:
+        return projected.reshape(2, 5, 2, 4).transpose(0, 2, 1, 3)
+
+    expected_q = attention.rotary.apply_cos_sin(
+        attention.q_norm(reshape(qkv[0])), cosine, sine
+    )
+    expected_k = attention.rotary.apply_cos_sin(
+        attention.k_norm(reshape(qkv[1])), cosine, sine
+    )
+    expected_v = reshape(qkv[2])
+    actual_q, actual_k, actual_v = attention.project(
+        value,
+        rotary_cos_sin=(cosine, sine),
+    )
+    mx.eval(expected_q, expected_k, expected_v, actual_q, actual_k, actual_v)
+
+    assert mx.array_equal(actual_q, expected_q).item()
+    assert mx.array_equal(actual_k, expected_k).item()
+    assert mx.array_equal(actual_v, expected_v).item()
 
 
 def test_preparing_dit_modulations_does_not_change_parameter_names() -> None:

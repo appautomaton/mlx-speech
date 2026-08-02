@@ -214,7 +214,18 @@ class DiTAttention(nn.Module):
         if getattr(self, "qkv_proj", None) is not None:
             return
         fused = _FusedLinear((self.q_proj, self.k_proj, self.v_proj))
-        mx.eval(fused.parameters())
+        if (
+            isinstance(self.q_norm, AffineRMSNorm)
+            and isinstance(self.k_norm, AffineRMSNorm)
+            and self.q_norm.eps == self.k_norm.eps
+        ):
+            self._qk_norm_weight = mx.stack(
+                (self.q_norm.weight, self.k_norm.weight),
+                axis=0,
+            )
+            mx.eval(fused.parameters(), self._qk_norm_weight)
+        else:
+            mx.eval(fused.parameters())
         self.qkv_proj = fused
         del self.q_proj
         del self.k_proj
@@ -249,24 +260,49 @@ class DiTAttention(nn.Module):
         batch_size, sequence_length, _ = value.shape
 
         qkv_proj = getattr(self, "qkv_proj", None)
+        paired_qk = None
+        qk_norm_weight = None
         if qkv_proj is None:
             query = self.q_proj(value)
             key = self.k_proj(value)
             projected_value = self.v_proj(value)
         else:
-            query, key, projected_value = mx.split(qkv_proj(value), 3, axis=-1)
+            qkv = qkv_proj(value).reshape(
+                batch_size,
+                sequence_length,
+                3,
+                self.num_heads,
+                self.head_dim,
+            )
+            qkv = qkv.transpose(2, 0, 3, 1, 4)
+            qk_norm_weight = getattr(self, "_qk_norm_weight", None)
+            if qk_norm_weight is not None:
+                paired_qk = qkv[:2]
+                projected_value = qkv[2]
+            else:
+                query, key, projected_value = qkv[0], qkv[1], qkv[2]
 
         def reshape(projected: mx.array) -> mx.array:
             return projected.reshape(
                 batch_size, sequence_length, self.num_heads, self.head_dim
             ).transpose(0, 2, 1, 3)
 
-        query, key, projected_value = (
-            reshape(query),
-            reshape(key),
-            reshape(projected_value),
-        )
-        if self.q_norm is not None and self.k_norm is not None:
+        if qkv_proj is None:
+            query, key, projected_value = (
+                reshape(query),
+                reshape(key),
+                reshape(projected_value),
+            )
+        if paired_qk is not None:
+            source_dtype = paired_qk.dtype
+            paired_qk = paired_qk.astype(mx.float32)
+            variance = mx.mean(paired_qk * paired_qk, axis=-1, keepdims=True)
+            paired_qk = paired_qk * mx.rsqrt(variance + self.q_norm.eps)
+            paired_qk = (
+                paired_qk
+                * qk_norm_weight.astype(mx.float32)[:, None, None, None, :]
+            ).astype(source_dtype)
+        elif self.q_norm is not None and self.k_norm is not None:
             query = self.q_norm(query)
             key = self.k_norm(key)
         if self.rotary is not None:
@@ -279,10 +315,15 @@ class DiTAttention(nn.Module):
             cosine, sine = rotary_cos_sin
             if cosine.shape[-2] != sequence_length or sine.shape != cosine.shape:
                 raise ValueError("rotary geometry differs from DiT sequence length")
-            query = self.rotary.apply_cos_sin(query, cosine, sine)
-            key = self.rotary.apply_cos_sin(key, cosine, sine)
+            if paired_qk is not None:
+                paired_qk = self.rotary.apply_cos_sin(paired_qk, cosine, sine)
+            else:
+                query = self.rotary.apply_cos_sin(query, cosine, sine)
+                key = self.rotary.apply_cos_sin(key, cosine, sine)
         elif rotary_cos_sin is not None:
             raise ValueError("rotary geometry supplied to a non-rotary attention")
+        if paired_qk is not None:
+            query, key = paired_qk[0], paired_qk[1]
         return query, key, projected_value
 
     def attention_values(
