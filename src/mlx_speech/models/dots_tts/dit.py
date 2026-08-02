@@ -56,7 +56,11 @@ class TimestepEmbedder(nn.Module):
         self.fc2 = nn.Linear(hidden_size, hidden_size, bias=True)
 
     def __call__(self, timesteps: mx.array) -> mx.array:
-        embedding = sinusoidal_embedding(timesteps, self.frequency_embedding_size)
+        # PyTorch runs this float32 geometry under BF16 autocast. MLX has no
+        # implicit autocast, so cross the same boundary explicitly.
+        embedding = sinusoidal_embedding(
+            timesteps, self.frequency_embedding_size
+        ).astype(self.fc1.weight.dtype)
         return self.fc2(_silu(self.fc1(embedding)))
 
 
@@ -67,11 +71,7 @@ class AffineFreeLayerNorm(nn.Module):
         self.eps = float(eps)
 
     def __call__(self, value: mx.array) -> mx.array:
-        source_dtype = value.dtype
-        value = value.astype(mx.float32)
-        mean = mx.mean(value, axis=-1, keepdims=True)
-        variance = mx.mean((value - mean) ** 2, axis=-1, keepdims=True)
-        return ((value - mean) * mx.rsqrt(variance + self.eps)).astype(source_dtype)
+        return mx.fast.layer_norm(value, None, None, self.eps)
 
 
 class AffineRMSNorm(nn.Module):
@@ -111,15 +111,39 @@ class RotaryEmbedding(nn.Module):
 
     @staticmethod
     def apply(value: mx.array, frequencies: mx.array) -> mx.array:
-        source_dtype = value.dtype
         if frequencies.ndim == 2:
             frequencies = frequencies[None, None]
         elif frequencies.ndim == 3:
             frequencies = frequencies[:, None]
         else:
             raise ValueError("rotary frequencies must have rank two or three")
+        return RotaryEmbedding.apply_cos_sin(
+            value,
+            mx.cos(frequencies),
+            mx.sin(frequencies),
+        )
+
+    @staticmethod
+    def cos_sin(frequencies: mx.array) -> tuple[mx.array, mx.array]:
+        """Materialize reusable rotary geometry for identical-position layers."""
+
+        if frequencies.ndim == 2:
+            frequencies = frequencies[None, None]
+        elif frequencies.ndim == 3:
+            frequencies = frequencies[:, None]
+        else:
+            raise ValueError("rotary frequencies must have rank two or three")
+        return mx.cos(frequencies), mx.sin(frequencies)
+
+    @staticmethod
+    def apply_cos_sin(
+        value: mx.array,
+        cosine: mx.array,
+        sine: mx.array,
+    ) -> mx.array:
+        source_dtype = value.dtype
         value = value.astype(mx.float32)
-        output = value * mx.cos(frequencies) + _rotate_half(value) * mx.sin(frequencies)
+        output = value * cosine + _rotate_half(value) * sine
         return output.astype(source_dtype)
 
 
@@ -205,6 +229,7 @@ class DiTAttention(nn.Module):
         value: mx.array,
         *,
         positions: mx.array | None = None,
+        rotary_cos_sin: tuple[mx.array, mx.array] | None = None,
     ) -> tuple[mx.array, mx.array, mx.array]:
         """Project self-attention Q/K/V without changing checkpoint modules."""
 
@@ -226,25 +251,34 @@ class DiTAttention(nn.Module):
             query = self.q_norm(query)
             key = self.k_norm(key)
         if self.rotary is not None:
-            if positions is None:
-                positions = mx.arange(sequence_length, dtype=mx.float32)
-            if positions.shape[-1] != sequence_length:
-                raise ValueError("position count differs from DiT sequence length")
-            frequencies = self.rotary(positions)
-            query = self.rotary.apply(query, frequencies)
-            key = self.rotary.apply(key, frequencies)
+            if rotary_cos_sin is None:
+                if positions is None:
+                    positions = mx.arange(sequence_length, dtype=mx.float32)
+                if positions.shape[-1] != sequence_length:
+                    raise ValueError("position count differs from DiT sequence length")
+                rotary_cos_sin = self.rotary.cos_sin(self.rotary(positions))
+            cosine, sine = rotary_cos_sin
+            if cosine.shape[-2] != sequence_length or sine.shape != cosine.shape:
+                raise ValueError("rotary geometry differs from DiT sequence length")
+            query = self.rotary.apply_cos_sin(query, cosine, sine)
+            key = self.rotary.apply_cos_sin(key, cosine, sine)
+        elif rotary_cos_sin is not None:
+            raise ValueError("rotary geometry supplied to a non-rotary attention")
         return query, key, projected_value
 
-    def attend(
+    def attention_values(
         self,
         query: mx.array,
         key: mx.array,
         projected_value: mx.array,
         *,
         mask: mx.array | None = None,
+        prepared_bias: mx.array | None = None,
     ) -> mx.array:
-        """Apply attention to projected tensors, including a cached K/V prefix."""
+        """Return merged attention values before the serialized output projection."""
 
+        if mask is not None and prepared_bias is not None:
+            raise ValueError("DiT attention accepts either a mask or a prepared bias")
         if query.ndim != 4 or key.ndim != 4 or projected_value.ndim != 4:
             raise ValueError("projected DiT attention tensors must have rank four")
         if key.shape != projected_value.shape:
@@ -254,13 +288,15 @@ class DiTAttention(nn.Module):
         batch_size = int(query.shape[0])
         query_length = int(query.shape[2])
         key_length = int(key.shape[2])
-        bias = _attention_bias(
-            mask,
-            batch_size=batch_size,
-            query_length=query_length,
-            key_length=key_length,
-            dtype=query.dtype,
-        )
+        bias = prepared_bias
+        if bias is None:
+            bias = _attention_bias(
+                mask,
+                batch_size=batch_size,
+                query_length=query_length,
+                key_length=key_length,
+                dtype=query.dtype,
+            )
         attended = mx.fast.scaled_dot_product_attention(
             query,
             key,
@@ -268,8 +304,27 @@ class DiTAttention(nn.Module):
             scale=self.scale,
             mask=bias,
         )
-        attended = attended.transpose(0, 2, 1, 3).reshape(
+        return attended.transpose(0, 2, 1, 3).reshape(
             batch_size, query_length, self.hidden_size
+        )
+
+    def attend(
+        self,
+        query: mx.array,
+        key: mx.array,
+        projected_value: mx.array,
+        *,
+        mask: mx.array | None = None,
+        prepared_bias: mx.array | None = None,
+    ) -> mx.array:
+        """Apply attention to projected tensors, including a cached K/V prefix."""
+
+        attended = self.attention_values(
+            query,
+            key,
+            projected_value,
+            mask=mask,
+            prepared_bias=prepared_bias,
         )
         return self.o_proj(attended)
 

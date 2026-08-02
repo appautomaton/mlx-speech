@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal
@@ -9,7 +10,7 @@ from typing import Literal
 import mlx.core as mx
 import mlx.nn as nn
 
-from .dit import DiT, modulate
+from .dit import DiT, _attention_bias, _gelu_tanh, modulate
 from .solvers import ODESchedule, build_ode_schedule
 
 
@@ -21,6 +22,16 @@ PreparedModulations = tuple[
     tuple[mx.array, mx.array],
 ]
 CacheFactory = Callable[[mx.Dtype, mx.Dtype], "DiTKvCache"]
+RotaryCosSin = tuple[mx.array, mx.array] | None
+_COMPILED_TAIL_CACHE_LIMIT = 8
+
+
+@dataclass(frozen=True)
+class _TailCompileKey:
+    mode: SolverMode
+    shape: tuple[int, ...]
+    dtype: str
+    norm_eps: float
 
 
 def resolve_dit_cache_bucket(patch_count: int) -> int:
@@ -458,6 +469,141 @@ class CachedDiTRunner:
         self.num_layers = len(dit.blocks)
         self.num_heads = attention.num_heads
         self.head_dim = attention.head_dim
+        compiled_tail_functions = getattr(dit, "_compiled_tail_functions", None)
+        if compiled_tail_functions is None:
+            compiled_tail_functions = OrderedDict()
+            dit._compiled_tail_functions = compiled_tail_functions
+        elif not isinstance(compiled_tail_functions, OrderedDict):
+            raise TypeError("DiT compiled tail cache has an invalid type")
+        self._compiled_tail_functions: OrderedDict[
+            _TailCompileKey, Callable[..., mx.array]
+        ] = compiled_tail_functions
+        projection_layers = tuple(
+            (block.attn.o_proj, block.ffn.fc1, block.ffn.fc2)
+            for block in dit.blocks
+        )
+        if any(
+            not isinstance(layer, nn.Linear) or "bias" not in layer
+            for layers in projection_layers
+            for layer in layers
+        ):
+            raise TypeError("compiled DiT tail requires biased MLX Linear projections")
+        self._tail_projection_arguments = tuple(
+            tuple(
+                argument
+                for layer in layers
+                for argument in (layer.weight, layer.bias)
+            )
+            for layers in projection_layers
+        )
+        self._tail_norm_eps = float(dit.blocks[0].norm2.eps)
+        if any(
+            float(block.norm2.eps) != self._tail_norm_eps for block in dit.blocks[1:]
+        ):
+            raise ValueError("compiled DiT tail requires homogeneous block norms")
+
+    def prepare_rotary(self, positions: mx.array) -> RotaryCosSin:
+        """Build one rotary table reused by every NFE and DiT layer."""
+
+        rotary = self.dit.blocks[0].attn.rotary
+        if rotary is None:
+            return None
+        return rotary.cos_sin(rotary(positions))
+
+    @staticmethod
+    def prepare_attention_bias(
+        mask: mx.array | None,
+        *,
+        batch_size: int,
+        query_length: int,
+        key_length: int,
+        dtype: mx.Dtype,
+    ) -> mx.array | None:
+        """Convert a repeated boolean mask to an additive SDPA bias once."""
+
+        return _attention_bias(
+            mask,
+            batch_size=batch_size,
+            query_length=query_length,
+            key_length=key_length,
+            dtype=dtype,
+        )
+
+    def _compiled_tail_after_attention(
+        self,
+        layer_index: int,
+        value: mx.array,
+        attended: mx.array,
+        *,
+        shift_ffn: mx.array,
+        scale_ffn: mx.array,
+        gate_attn: mx.array,
+        gate_ffn: mx.array,
+    ) -> mx.array:
+        """Run the fixed-shape tail graph shared by all homogeneous DiT layers."""
+
+        key = _TailCompileKey(
+            mode=self.mode,
+            shape=tuple(int(dimension) for dimension in value.shape),
+            dtype=str(value.dtype),
+            norm_eps=self._tail_norm_eps,
+        )
+        compiled = self._compiled_tail_functions.pop(key, None)
+        if compiled is None:
+
+            def tail_after_attention(
+                current: mx.array,
+                raw_attention: mx.array,
+                ffn_shift: mx.array,
+                ffn_scale: mx.array,
+                attention_gate: mx.array,
+                ffn_gate: mx.array,
+                attention_weight: mx.array,
+                attention_bias: mx.array,
+                ffn_in_weight: mx.array,
+                ffn_in_bias: mx.array,
+                ffn_out_weight: mx.array,
+                ffn_out_bias: mx.array,
+            ) -> mx.array:
+                projected_attention = mx.addmm(
+                    attention_bias,
+                    raw_attention,
+                    attention_weight.T,
+                )
+                current = current + attention_gate[:, None] * projected_attention
+                normalized = mx.fast.layer_norm(
+                    current,
+                    None,
+                    None,
+                    key.norm_eps,
+                )
+                feed_forward = modulate(normalized, ffn_shift, ffn_scale)
+                feed_forward = mx.addmm(
+                    ffn_in_bias,
+                    feed_forward,
+                    ffn_in_weight.T,
+                )
+                feed_forward = _gelu_tanh(feed_forward)
+                feed_forward = mx.addmm(
+                    ffn_out_bias,
+                    feed_forward,
+                    ffn_out_weight.T,
+                )
+                return current + ffn_gate[:, None] * feed_forward
+
+            compiled = mx.compile(tail_after_attention)
+        self._compiled_tail_functions[key] = compiled
+        while len(self._compiled_tail_functions) > _COMPILED_TAIL_CACHE_LIMIT:
+            self._compiled_tail_functions.popitem(last=False)
+        return compiled(
+            value,
+            attended,
+            shift_ffn,
+            scale_ffn,
+            gate_attn,
+            gate_ffn,
+            *self._tail_projection_arguments[layer_index],
+        )
 
     def allocate_cache(
         self,
@@ -504,8 +650,9 @@ class CachedDiTRunner:
         sequence: mx.array,
         modulations: PreparedModulations,
         *,
-        positions: mx.array,
-        attention_mask: mx.array | None,
+        positions: mx.array | None,
+        attention_bias: mx.array | None,
+        rotary_cos_sin: RotaryCosSin = None,
         cache: DiTKvCache | None = None,
         cache_factory: CacheFactory | None = None,
         nfe_index: int | None = None,
@@ -539,7 +686,9 @@ class CachedDiTRunner:
             ) = block_modulation
             attention_input = modulate(block.norm1(value), shift_attn, scale_attn)
             query, key, projected_value = block.attn.project(
-                attention_input, positions=positions
+                attention_input,
+                positions=positions,
+                rotary_cos_sin=rotary_cos_sin,
             )
             if commit_length:
                 committed_keys.append(key[..., :commit_length, :])
@@ -561,12 +710,34 @@ class CachedDiTRunner:
                 projected_value = cache.cache_v[nfe_index][layer_index][
                     ..., :key_end, :
                 ]
-            attended = block.attn.attend(
-                query, key, projected_value, mask=attention_mask
-            )
-            value = value + gate_attn[:, None] * attended
-            feed_forward = block.ffn(modulate(block.norm2(value), shift_ffn, scale_ffn))
-            value = value + gate_ffn[:, None] * feed_forward
+            if scratch_length:
+                attended = block.attn.attention_values(
+                    query,
+                    key,
+                    projected_value,
+                    prepared_bias=attention_bias,
+                )
+                value = self._compiled_tail_after_attention(
+                    layer_index,
+                    value,
+                    attended,
+                    shift_ffn=shift_ffn,
+                    scale_ffn=scale_ffn,
+                    gate_attn=gate_attn,
+                    gate_ffn=gate_ffn,
+                )
+            else:
+                attended = block.attn.attend(
+                    query,
+                    key,
+                    projected_value,
+                    prepared_bias=attention_bias,
+                )
+                value = value + gate_attn[:, None] * attended
+                feed_forward = block.ffn(
+                    modulate(block.norm2(value), shift_ffn, scale_ffn)
+                )
+                value = value + gate_ffn[:, None] * feed_forward
         if not commit_length:
             return value, None, None, cache
         return (
@@ -593,7 +764,8 @@ class CachedDiTRunner:
         modulations: PreparedModulations,
         cfg_prefix_sequence: mx.array | None,
         positions: mx.array,
-        attention_mask: mx.array,
+        rotary_cos_sin: RotaryCosSin,
+        attention_bias: mx.array | None,
     ) -> tuple[mx.array, mx.array]:
         """Project one prompt prefix NFE without retaining another NFE's K/V."""
 
@@ -612,7 +784,8 @@ class CachedDiTRunner:
             branches,
             modulations,
             positions=positions,
-            attention_mask=attention_mask,
+            rotary_cos_sin=rotary_cos_sin,
+            attention_bias=attention_bias,
             commit_length=prefix_length,
         )
         if keys is None or values is None:
@@ -627,7 +800,8 @@ class CachedDiTRunner:
         cfg_current_hidden: mx.array | None,
         modulations: PreparedModulations,
         positions: mx.array,
-        attention_mask: mx.array | None,
+        rotary_cos_sin: RotaryCosSin,
+        attention_bias: mx.array | None,
         guidance_scale: float,
     ) -> mx.array:
         projected = self._project_coordinate(coordinate)
@@ -643,7 +817,8 @@ class CachedDiTRunner:
             branches,
             modulations,
             positions=positions,
-            attention_mask=attention_mask,
+            rotary_cos_sin=rotary_cos_sin,
+            attention_bias=attention_bias,
         )
         prediction = self._apply_final(value, modulations)[:, self.hidden_patch_size :]
         if self.mode == "meanflow":
@@ -668,7 +843,8 @@ class CachedDiTRunner:
         nfe_index: int,
         modulations: PreparedModulations,
         positions: mx.array,
-        attention_mask: mx.array,
+        rotary_cos_sin: RotaryCosSin,
+        attention_bias: mx.array | None,
         guidance_scale: float,
     ) -> tuple[mx.array, DiTKvCache]:
         projected = self._project_coordinate(coordinate)
@@ -686,7 +862,8 @@ class CachedDiTRunner:
             branches,
             modulations,
             positions=positions,
-            attention_mask=attention_mask,
+            rotary_cos_sin=rotary_cos_sin,
+            attention_bias=attention_bias,
             cache=cache,
             cache_factory=cache_factory,
             nfe_index=nfe_index,
@@ -1066,6 +1243,14 @@ class CachedDiTSolver:
                 raise ValueError("DiT solver state contains history for a first patch")
             first_mask = branch_attention_mask
             first_positions = full_positions[..., : self.unit_length]
+            first_rotary = self.runner.prepare_rotary(first_positions)
+            first_bias = self.runner.prepare_attention_bias(
+                first_mask,
+                batch_size=batch_size * self.runner.branch_count,
+                query_length=self.unit_length,
+                key_length=self.unit_length,
+                dtype=sequence.dtype,
+            )
             for nfe_index, modulations in enumerate(modulations_by_nfe):
                 velocity = self.runner.first_velocity(
                     coordinate,
@@ -1073,7 +1258,8 @@ class CachedDiTSolver:
                     cfg_current_hidden=cfg_current_hidden,
                     modulations=modulations,
                     positions=first_positions,
-                    attention_mask=first_mask,
+                    rotary_cos_sin=first_rotary,
+                    attention_bias=first_bias,
                     guidance_scale=guidance_scale,
                 )
                 coordinate = coordinate + schedule.step_size * velocity
@@ -1111,6 +1297,15 @@ class CachedDiTSolver:
                     required_prefix_mask,
                 )
             )
+            prefix_positions = full_positions[..., :persistent_length]
+            prefix_rotary = self.runner.prepare_rotary(prefix_positions)
+            prefix_bias = self.runner.prepare_attention_bias(
+                prefix_mask,
+                batch_size=batch_size * self.runner.branch_count,
+                query_length=persistent_length,
+                key_length=persistent_length,
+                dtype=sequence.dtype,
+            )
             prefill_writes: list[tuple[int, mx.array, mx.array]] = []
             for nfe_index, modulations in enumerate(modulations_by_nfe):
                 keys, values = self.runner.prefill_nfe(
@@ -1121,8 +1316,9 @@ class CachedDiTSolver:
                         else cfg_sequence[:, :persistent_length]
                     ),
                     modulations=modulations,
-                    positions=full_positions[..., :persistent_length],
-                    attention_mask=prefix_mask,
+                    positions=prefix_positions,
+                    rotary_cos_sin=prefix_rotary,
+                    attention_bias=prefix_bias,
                 )
                 prefill_writes.append((nfe_index, keys, values))
             _first_nfe, first_keys, first_values = prefill_writes[0]
@@ -1173,6 +1369,14 @@ class CachedDiTSolver:
             if compact_tail
             else full_positions[..., persistent_length:total_length]
         )
+        tail_rotary = self.runner.prepare_rotary(tail_positions)
+        tail_bias = self.runner.prepare_attention_bias(
+            tail_mask,
+            batch_size=batch_size * self.runner.branch_count,
+            query_length=2 * self.unit_length,
+            key_length=total_length,
+            dtype=sequence.dtype,
+        )
         cache_factory: CacheFactory | None = None
         if cache is None:
 
@@ -1202,7 +1406,8 @@ class CachedDiTSolver:
                 nfe_index=nfe_index,
                 modulations=modulations,
                 positions=tail_positions,
-                attention_mask=tail_mask,
+                rotary_cos_sin=tail_rotary,
+                attention_bias=tail_bias,
                 guidance_scale=guidance_scale,
             )
             coordinate = coordinate + schedule.step_size * velocity

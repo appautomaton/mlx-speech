@@ -361,6 +361,91 @@ def test_compact_tail_matches_full_history_after_cache_creation(mode: str) -> No
 
 
 @pytest.mark.parametrize("mode", ["meanflow", "soar"])
+def test_tail_compile_signature_is_shared_across_layers_nfes_and_cache_buckets(
+    mode: str,
+) -> None:
+    mx.random.seed(76)
+    _oracle, cached = _meanflow_pair() if mode == "meanflow" else _soar_pair()
+    speaker = mx.full((1, _HIDDEN_SIZE), 0.2)
+    kwargs = {
+        "previous_unit": _unit(0.3),
+        "current_hidden": _current(0.7),
+        "speaker_condition": speaker,
+        "steps": 2,
+        "noise": mx.full((1, _PATCH_SIZE, _LATENT_DIM), 0.15),
+    }
+    if mode == "soar":
+        kwargs.update(
+            cfg_previous_unit=_unit(-0.3),
+            cfg_current_hidden=_current(-0.7),
+            guidance_scale=1.3,
+        )
+
+    for capacity, published_patches in ((64, 1), (128, 5)):
+        state = cached.new_state(512)
+        state.cache = _published_cache(
+            cached,
+            capacity_patches=capacity,
+            published_patches=published_patches,
+        )
+        output = cached.sample_tail(state, **kwargs)
+        mx.eval(output)
+
+    keys = tuple(cached.runner._compiled_tail_functions)
+    assert len(keys) == 1
+    assert keys[0].mode == mode
+    assert keys[0].shape == (
+        cached.runner.branch_count,
+        2 * _UNIT_LENGTH,
+        _HIDDEN_SIZE,
+    )
+    solver_type = CachedMeanFlowSolver if mode == "meanflow" else CachedSOARSolver
+    next_request = solver_type(
+        cached.runner.dit,
+        cached.runner.coordinate_projection,
+        latent_dim=_LATENT_DIM,
+        patch_size=_PATCH_SIZE,
+    )
+    assert (
+        next_request.runner._compiled_tail_functions
+        is cached.runner._compiled_tail_functions
+    )
+
+
+def test_tail_builds_rotary_geometry_and_attention_bias_once_per_patch(
+    monkeypatch,
+) -> None:
+    mx.random.seed(76)
+    _oracle, cached = _meanflow_pair()
+    state = cached.new_state(64)
+    calls = {"rotary": 0, "bias": 0}
+    original_rotary = cached.runner.prepare_rotary
+    original_bias = cached.runner.prepare_attention_bias
+
+    def count_rotary(*args, **kwargs):
+        calls["rotary"] += 1
+        return original_rotary(*args, **kwargs)
+
+    def count_bias(*args, **kwargs):
+        calls["bias"] += 1
+        return original_bias(*args, **kwargs)
+
+    monkeypatch.setattr(cached.runner, "prepare_rotary", count_rotary)
+    monkeypatch.setattr(cached.runner, "prepare_attention_bias", count_bias)
+    output = cached.sample_tail(
+        state,
+        previous_unit=_unit(0.3),
+        current_hidden=_current(0.7),
+        speaker_condition=mx.full((1, _HIDDEN_SIZE), 0.2),
+        steps=2,
+        noise=mx.full((1, _PATCH_SIZE, _LATENT_DIM), 0.15),
+    )
+    mx.eval(output)
+
+    assert calls == {"rotary": 1, "bias": 1}
+
+
+@pytest.mark.parametrize("mode", ["meanflow", "soar"])
 def test_cached_interleaved_requests_are_exactly_isolated(mode: str) -> None:
     mx.random.seed(77)
     if mode == "meanflow":
@@ -808,6 +893,7 @@ def test_bfloat16_later_patch_uses_projected_cache_dtypes(
     cache = state.cache
     assert cache is not None
     assert cache.offsets == [_UNIT_LENGTH, _UNIT_LENGTH]
+    assert cache.key_dtype == cache.value_dtype == mx.bfloat16
     assert projected_dtypes
     assert all(key_dtype == cache.key_dtype for key_dtype, _ in projected_dtypes)
     assert all(

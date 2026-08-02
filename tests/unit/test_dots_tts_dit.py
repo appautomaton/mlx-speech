@@ -6,7 +6,13 @@ import pytest
 from mlx.utils import tree_flatten
 
 from mlx_speech.models.dots_tts.config import DotsTTSTransformerConfig
-from mlx_speech.models.dots_tts.dit import DiT, sinusoidal_embedding
+from mlx_speech.models.dots_tts.dit import (
+    AffineFreeLayerNorm,
+    DiT,
+    RotaryEmbedding,
+    TimestepEmbedder,
+    sinusoidal_embedding,
+)
 
 
 def _config(*, layers: int = 1) -> DotsTTSTransformerConfig:
@@ -34,6 +40,44 @@ def test_sinusoidal_embedding_is_cos_first_and_continuous() -> None:
     mx.eval(embedded)
     np.testing.assert_allclose(embedded[0], [1.0, 1.0, 0.0, 0.0], atol=0.0)
     assert not bool(mx.allclose(embedded[0], embedded[1]).item())
+
+
+def test_timestep_embedding_crosses_the_bfloat16_autocast_boundary() -> None:
+    embedder = TimestepEmbedder(8, frequency_embedding_size=8)
+    embedder.set_dtype(mx.bfloat16)
+    embedded = embedder(mx.array([0.25], dtype=mx.bfloat16))
+    mx.eval(embedded)
+    assert embedded.dtype == mx.bfloat16
+
+
+@pytest.mark.parametrize("dtype", [mx.float32, mx.bfloat16])
+def test_fast_affine_free_layer_norm_matches_float32_reference(dtype) -> None:
+    mx.random.seed(51)
+    value = mx.random.normal((2, 5, 8)).astype(dtype)
+    source = value.astype(mx.float32)
+    mean = mx.mean(source, axis=-1, keepdims=True)
+    variance = mx.mean((source - mean) ** 2, axis=-1, keepdims=True)
+    expected = ((source - mean) * mx.rsqrt(variance + 1e-5)).astype(dtype)
+    actual = AffineFreeLayerNorm(8)(value)
+    mx.eval(expected, actual)
+    np.testing.assert_allclose(
+        actual.astype(mx.float32),
+        expected.astype(mx.float32),
+        atol=5e-7,
+        rtol=0.0,
+    )
+
+
+def test_reusable_rotary_geometry_matches_direct_application() -> None:
+    mx.random.seed(52)
+    rotary = RotaryEmbedding(4, 10_000.0)
+    value = mx.random.normal((2, 3, 5, 4))
+    frequencies = rotary(mx.arange(5, dtype=mx.float32)[None])
+    direct = rotary.apply(value, frequencies)
+    cosine, sine = rotary.cos_sin(frequencies)
+    reused = rotary.apply_cos_sin(value, cosine, sine)
+    mx.eval(direct, reused)
+    np.testing.assert_array_equal(reused, direct)
 
 
 def test_dit_causal_mask_prevents_future_context_leakage() -> None:

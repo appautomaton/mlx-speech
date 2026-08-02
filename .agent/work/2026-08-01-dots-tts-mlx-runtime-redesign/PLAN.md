@@ -95,6 +95,10 @@ git diff --check
 **Touches:** DiT layers, inference runner/cache, solvers, focused tests
 **Produces:** a single bounded-signature DiT implementation
 
+**Status:** complete
+**Evidence:** Read the pinned PyTorch DiT/inference solver and its BF16 autocast boundary. The retained MLX path uses fast affine-free LayerNorm, computes rotary cos/sin and the additive SDPA bias once per patch, and keeps dynamic K/V attention outside one model-owned compiled tail graph shared across all layers, NFEs, prefixes, cache buckets, and later requests. An unintended float32 promotion at the timestep embedding was removed explicitly at the same boundary PyTorch autocasts; real MF cache storage is now BF16. The final real-checkpoint microcheck was bit-exact, reduced the retained tail post-attention work by 39.4%, paid 21 ms for compile plus first execution, produced one compile key, and peaked at 3.55 GB. Focused DiT/solver tests 52 passed, full unit 835 passed, dots.tts checkpoint/runtime 9 passed, and scoped Ruff plus `git diff --check` passed.
+**Risks / next:** The focused timing decides only this compiled boundary; Slice 6 owns the single final end-to-end comparison. Slice 4 should preserve the BF16/FP32 recurrent boundaries while reducing AudioVAE host-driven work.
+
 ### Slice 4: Compile and vectorize the AudioVAE bridge
 
 **Objective:** Remove avoidable Python/eager recurrent work between acoustic patches and decoder frames.
