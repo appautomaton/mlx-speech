@@ -117,12 +117,14 @@ class _DotsTTSRequestState:
     dit_solver: CachedDiTSolver | None
     dit_state: DiTSolverState | None
     rng: _DotsTTSRequestRNG | None
+    qwen_rotary_table: Any = None
     generated_patches: int = 0
 
     def close(self) -> None:
         self.fm_chunks.clear()
         self.cfg_chunks.clear()
         self.qwen_cache = None
+        self.qwen_rotary_table = None
         self.semantic_state = None
         self.dit_solver = None
         self.dit_state = None
@@ -195,7 +197,10 @@ def _concatenate_suffix(chunks: list[mx.array], length: int) -> mx.array:
         raise RuntimeError(
             f"dots.tts DiT history has {length - remaining} tokens; needs {length}"
         )
-    return mx.concatenate(tuple(reversed(selected)), axis=1)
+    selected.reverse()
+    if len(selected) == 1:
+        return selected[0]
+    return mx.concatenate(tuple(selected), axis=1)
 
 
 def _sample_rate(value: int, name: str) -> int:
@@ -843,6 +848,7 @@ class DotsTTSGenerator:
             inputs_embeds=inputs_embeds,
             cache=None,
             cache_capacity=len(schedule.token_ids),
+            rotary_table=state.qwen_rotary_table,
             request_eos=request_eos,
         )
         state.qwen_cache = qwen_output.cache
@@ -914,10 +920,6 @@ class DotsTTSGenerator:
         guidance_scale: float,
     ) -> mx.array:
         fm_sequence_length = sum(int(chunk.shape[1]) for chunk in state.fm_chunks)
-        padding = mx.zeros(
-            (1, self.config.patch_size, self.config.dit.hidden_size),
-            dtype=self._activation_dtype,
-        )
         if state.rng is None:
             raise RuntimeError("dots.tts request RNG was released before completion")
         noise = mx.random.normal(
@@ -978,6 +980,10 @@ class DotsTTSGenerator:
                     )
                 )
             fm_sequence = mx.concatenate(state.fm_chunks, axis=1)
+            padding = mx.zeros(
+                (1, self.config.patch_size, self.config.dit.hidden_size),
+                dtype=self._activation_dtype,
+            )
             sequence = mx.concatenate((fm_sequence, padding), axis=1)
             cfg_sequence = None
             if self.config.mode != "meanflow":
@@ -998,6 +1004,10 @@ class DotsTTSGenerator:
                 )
             )
         fm_sequence = mx.concatenate(state.fm_chunks, axis=1)
+        padding = mx.zeros(
+            (1, self.config.patch_size, self.config.dit.hidden_size),
+            dtype=self._activation_dtype,
+        )
         sequence = mx.concatenate((fm_sequence, padding), axis=1)
         mask = _build_fm_attention_mask(fm_sequence_length, self.config.patch_size)
         positions = _build_fm_positions(fm_sequence_length, self.config.patch_size)
@@ -1062,7 +1072,7 @@ class DotsTTSGenerator:
             raise RuntimeError(
                 f"dots.tts AudioVAE returned invalid waveform {decoded.shape}"
             )
-        waveform = decoded[0, 0].astype(mx.float32)
+        waveform = decoded[0, 0]
         finite, non_silent = _materialize_waveform_health(
             waveform,
             *_vocoder_state_arrays(next_vocoder_state),
@@ -1183,6 +1193,10 @@ class DotsTTSGenerator:
             dit_solver=dit_solver,
             dit_state=dit_state,
             rng=rng,
+            qwen_rotary_table=self.components.core.qwen.prepare_rotary_table(
+                len(schedule.token_ids),
+                dtype=self._activation_dtype,
+            ),
         )
         try:
             position, hidden, eos_logits = self._prefill(
@@ -1213,13 +1227,12 @@ class DotsTTSGenerator:
                         )[None],
                         cache=state.qwen_cache,
                         cache_capacity=len(schedule_ids),
+                        rotary_table=state.qwen_rotary_table,
                         request_eos=request_eos,
                     )
                     hidden, state.qwen_cache = output.last_hidden_state, output.cache
                     eos_logits = (
-                        None
-                        if output.eos_logits is None
-                        else output.eos_logits[:, -1:]
+                        None if output.eos_logits is None else output.eos_logits[:, -1:]
                     )
                     self._append_hidden(hidden, state.fm_chunks, state.cfg_chunks)
                     position = next_audio
@@ -1259,13 +1272,12 @@ class DotsTTSGenerator:
                     inputs_embeds=patch_embedding.astype(self._activation_dtype),
                     cache=state.qwen_cache,
                     cache_capacity=len(schedule_ids),
+                    rotary_table=state.qwen_rotary_table,
                     request_eos=request_eos,
                 )
                 hidden, state.qwen_cache = output.last_hidden_state, output.cache
                 next_eos_logits = (
-                    None
-                    if output.eos_logits is None
-                    else output.eos_logits[:, -1:]
+                    None if output.eos_logits is None else output.eos_logits[:, -1:]
                 )
                 if (
                     position + 1 < len(schedule_ids)
@@ -1424,7 +1436,7 @@ class DotsTTSGenerator:
                 raise RuntimeError(
                     f"dots.tts AudioVAE returned invalid waveform {decoded.shape}"
                 )
-            waveform = decoded[0, 0].astype(mx.float32)
+            waveform = decoded[0, 0]
             finite, non_silent = _materialize_waveform_health(waveform)
             if not finite:
                 raise RuntimeError("dots.tts generation produced non-finite audio")

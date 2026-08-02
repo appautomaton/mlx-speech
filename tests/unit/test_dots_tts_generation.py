@@ -77,6 +77,10 @@ class _Qwen:
             ids[..., None].astype(mx.float32), self.hidden_size, -1
         )
 
+    @staticmethod
+    def prepare_rotary_table(capacity, *, dtype):
+        return SimpleNamespace(capacity=capacity, dtype=dtype)
+
     def step(
         self,
         *,
@@ -84,9 +88,10 @@ class _Qwen:
         inputs_embeds=None,
         cache=None,
         cache_capacity=None,
+        rotary_table=None,
         request_eos=True,
     ):
-        del cache_capacity
+        del cache_capacity, rotary_table
         value = inputs_embeds
         if value is None:
             value = self.get_input_embeddings()(input_ids)
@@ -160,7 +165,7 @@ class _AudioVAE:
     @staticmethod
     def _decode(latent):
         waveform = mx.repeat(mx.sum(latent, axis=1), 2, axis=1)
-        return waveform[:, None]
+        return waveform[:, None].astype(mx.float32)
 
     def decode(self, latent):
         self.batch_latents.append(latent)
@@ -441,16 +446,12 @@ def test_stream_waveform_failure_preserves_vocoder_and_patch_state(monkeypatch) 
     generator, _, _ = _generator("meanflow")
     original_vocoder_state = SimpleNamespace(
         maximum_chunk_size=2,
-        decoder_state=SimpleNamespace(
-            arrays=lambda: (mx.zeros((1, 4, 2)),)
-        ),
+        decoder_state=SimpleNamespace(arrays=lambda: (mx.zeros((1, 4, 2)),)),
         recurrent_state=((mx.zeros((1, 2)), mx.zeros((1, 2))),),
     )
     candidate_vocoder_state = SimpleNamespace(
         maximum_chunk_size=2,
-        decoder_state=SimpleNamespace(
-            arrays=lambda: (mx.ones((1, 4, 2)),)
-        ),
+        decoder_state=SimpleNamespace(arrays=lambda: (mx.ones((1, 4, 2)),)),
         recurrent_state=((mx.ones((1, 2)), mx.ones((1, 2))),),
     )
     stream_state = SimpleNamespace(

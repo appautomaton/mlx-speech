@@ -10,17 +10,18 @@ from typing import Literal
 import mlx.core as mx
 import mlx.nn as nn
 
-from .dit import DiT, _attention_bias, _gelu_tanh, modulate
-from .solvers import ODESchedule, build_ode_schedule
+from .dit import (
+    DiT,
+    PreparedModulations,
+    _attention_bias,
+    _gelu_tanh,
+    modulate_prepared,
+)
+from .solvers import ODESchedule, build_ode_schedule, resolve_solver_steps
 
 
 DIT_CACHE_BUCKETS = (64, 128, 256, 512)
 SolverMode = Literal["meanflow", "soar"]
-BlockModulation = tuple[mx.array, ...]
-PreparedModulations = tuple[
-    tuple[BlockModulation, ...],
-    tuple[mx.array, mx.array],
-]
 CacheFactory = Callable[[mx.Dtype, mx.Dtype], "DiTKvCache"]
 RotaryCosSin = tuple[mx.array, mx.array] | None
 _COMPILED_TAIL_CACHE_LIMIT = 8
@@ -80,9 +81,7 @@ class DiTKvCache:
         ):
             raise ValueError("DiT cache dimensions must be positive")
         if len(self.cache_k) != self.nfe or len(self.cache_v) != self.nfe:
-            raise ValueError(
-                "DiT cache storage must contain one layer table per NFE"
-            )
+            raise ValueError("DiT cache storage must contain one layer table per NFE")
         if any(len(layers) != self.num_layers for layers in self.cache_k) or any(
             len(layers) != self.num_layers for layers in self.cache_v
         ):
@@ -239,9 +238,7 @@ class DiTKvCache:
 
         start, end = self.validate_write(nfe_index, keys, values)
         for layer_index in range(self.num_layers):
-            self.cache_k[nfe_index][layer_index][..., start:end, :] = keys[
-                layer_index
-            ]
+            self.cache_k[nfe_index][layer_index][..., start:end, :] = keys[layer_index]
             self.cache_v[nfe_index][layer_index][..., start:end, :] = values[
                 layer_index
             ]
@@ -422,6 +419,8 @@ class DiTSolverState:
     mode: SolverMode | None = None
     batch_size: int | None = None
     activation_dtype: str | None = None
+    solver_steps: int | None = None
+    geometry: DiTRequestGeometry | None = None
     _speaker_identity: int | None = field(default=None, repr=False)
     _condition_bound: bool = field(default=False, repr=False)
 
@@ -433,6 +432,49 @@ class DiTSolverState:
         """Compatibility view of the bucket bounding this request maximum."""
 
         return resolve_dit_cache_bucket(self.max_patches)
+
+
+@dataclass(frozen=True)
+class DiTRequestGeometry:
+    """Immutable position, rotary, and delayed-mask geometry for one request."""
+
+    positions: mx.array
+    rotary_cos_sin: RotaryCosSin
+    tail_prefix_zeros: mx.array
+    delayed_tail_bias: mx.array
+    activation_dtype: str
+    unit_length: int
+    batch_size: int
+
+    @property
+    def maximum_tokens(self) -> int:
+        return int(self.positions.shape[-1])
+
+    def position_slice(self, start: int, end: int) -> mx.array:
+        if start < 0 or end < start or end > self.maximum_tokens:
+            raise ValueError("DiT request position slice is out of range")
+        return self.positions[..., start:end]
+
+    def rotary_slice(self, start: int, end: int) -> RotaryCosSin:
+        if self.rotary_cos_sin is None:
+            return None
+        cosine, sine = self.rotary_cos_sin
+        return cosine[..., start:end, :], sine[..., start:end, :]
+
+    def tail_bias(self, persistent_length: int) -> mx.array:
+        if persistent_length < 0 or persistent_length > int(
+            self.tail_prefix_zeros.shape[-1]
+        ):
+            raise ValueError("DiT request tail prefix is out of range")
+        if persistent_length == 0:
+            return self.delayed_tail_bias
+        return mx.concatenate(
+            (
+                self.tail_prefix_zeros[..., :persistent_length],
+                self.delayed_tail_bias,
+            ),
+            axis=-1,
+        )
 
 
 def _mask_slice(
@@ -549,8 +591,7 @@ class CachedDiTRunner:
             _TailCompileKey, Callable[..., mx.array]
         ] = compiled_tail_functions
         projection_layers = tuple(
-            (block.attn.o_proj, block.ffn.fc1, block.ffn.fc2)
-            for block in dit.blocks
+            (block.attn.o_proj, block.ffn.fc1, block.ffn.fc2) for block in dit.blocks
         )
         if any(
             not isinstance(layer, nn.Linear) or "bias" not in layer
@@ -560,9 +601,7 @@ class CachedDiTRunner:
             raise TypeError("compiled DiT tail requires biased MLX Linear projections")
         self._tail_projection_arguments = tuple(
             tuple(
-                argument
-                for layer in layers
-                for argument in (layer.weight, layer.bias)
+                argument for layer in layers for argument in (layer.weight, layer.bias)
             )
             for layers in projection_layers
         )
@@ -606,7 +645,7 @@ class CachedDiTRunner:
         attended: mx.array,
         *,
         shift_ffn: mx.array,
-        scale_ffn: mx.array,
+        gain_ffn: mx.array,
         gate_attn: mx.array,
         gate_ffn: mx.array,
     ) -> mx.array:
@@ -625,7 +664,7 @@ class CachedDiTRunner:
                 current: mx.array,
                 raw_attention: mx.array,
                 ffn_shift: mx.array,
-                ffn_scale: mx.array,
+                ffn_gain: mx.array,
                 attention_gate: mx.array,
                 ffn_gate: mx.array,
                 attention_weight: mx.array,
@@ -635,9 +674,12 @@ class CachedDiTRunner:
                 ffn_out_weight: mx.array,
                 ffn_out_bias: mx.array,
             ) -> mx.array:
+                merged_attention = raw_attention.transpose(0, 2, 1, 3).reshape(
+                    current.shape
+                )
                 projected_attention = mx.addmm(
                     attention_bias,
-                    raw_attention,
+                    merged_attention,
                     attention_weight.T,
                 )
                 current = current + attention_gate[:, None] * projected_attention
@@ -647,7 +689,7 @@ class CachedDiTRunner:
                     None,
                     key.norm_eps,
                 )
-                feed_forward = modulate(normalized, ffn_shift, ffn_scale)
+                feed_forward = modulate_prepared(normalized, ffn_shift, ffn_gain)
                 feed_forward = mx.addmm(
                     ffn_in_bias,
                     feed_forward,
@@ -669,7 +711,7 @@ class CachedDiTRunner:
             value,
             attended,
             shift_ffn,
-            scale_ffn,
+            gain_ffn,
             gate_attn,
             gate_ffn,
             *self._tail_projection_arguments[layer_index],
@@ -736,7 +778,7 @@ class CachedDiTRunner:
         DiTKvCache | None,
         _DiTScratchWindow | None,
     ]:
-        block_modulations, _final_modulation = modulations
+        block_modulations = modulations.blocks
         if len(block_modulations) != self.num_layers:
             raise ValueError("cached DiT modulation layer count differs from model")
         if cache is not None or cache_factory is not None:
@@ -750,15 +792,11 @@ class CachedDiTRunner:
         for layer_index, (block, block_modulation) in enumerate(
             zip(self.dit.blocks, block_modulations, strict=True)
         ):
-            (
-                shift_attn,
-                scale_attn,
-                gate_attn,
-                shift_ffn,
-                scale_ffn,
-                gate_ffn,
-            ) = block_modulation
-            attention_input = modulate(block.norm1(value), shift_attn, scale_attn)
+            attention_input = modulate_prepared(
+                block.norm1(value),
+                block_modulation.shift_attn,
+                block_modulation.gain_attn,
+            )
             query, key, projected_value = block.attn.project(
                 attention_input,
                 positions=positions,
@@ -788,7 +826,7 @@ class CachedDiTRunner:
                     ..., :key_end, :
                 ]
             if scratch_length:
-                attended = block.attn.attention_values(
+                attended = block.attn._attention_heads(
                     query,
                     key,
                     projected_value,
@@ -798,10 +836,10 @@ class CachedDiTRunner:
                     layer_index,
                     value,
                     attended,
-                    shift_ffn=shift_ffn,
-                    scale_ffn=scale_ffn,
-                    gate_attn=gate_attn,
-                    gate_ffn=gate_ffn,
+                    shift_ffn=block_modulation.shift_ffn,
+                    gain_ffn=block_modulation.gain_ffn,
+                    gate_attn=block_modulation.gate_attn,
+                    gate_ffn=block_modulation.gate_ffn,
                 )
             else:
                 attended = block.attn.attend(
@@ -810,11 +848,15 @@ class CachedDiTRunner:
                     projected_value,
                     prepared_bias=attention_bias,
                 )
-                value = value + gate_attn[:, None] * attended
+                value = value + block_modulation.gate_attn[:, None] * attended
                 feed_forward = block.ffn(
-                    modulate(block.norm2(value), shift_ffn, scale_ffn)
+                    modulate_prepared(
+                        block.norm2(value),
+                        block_modulation.shift_ffn,
+                        block_modulation.gain_ffn,
+                    )
                 )
-                value = value + gate_ffn[:, None] * feed_forward
+                value = value + block_modulation.gate_ffn[:, None] * feed_forward
         if not commit_length:
             return value, None, None, cache, scratch_window
         return (
@@ -830,9 +872,12 @@ class CachedDiTRunner:
         value: mx.array,
         modulations: PreparedModulations,
     ) -> mx.array:
-        shift, scale = modulations[1]
         return self.dit.output_layer.linear(
-            modulate(self.dit.output_layer.norm(value), shift, scale)
+            modulate_prepared(
+                self.dit.output_layer.norm(value),
+                modulations.final.shift,
+                modulations.final.gain,
+            )
         )
 
     def prefill_nfe(
@@ -1069,9 +1114,7 @@ class CachedDiTSolver:
 
         if required_tokens <= cache.capacity_tokens:
             return cache
-        required_patches = (
-            required_tokens + self.unit_length - 1
-        ) // self.unit_length
+        required_patches = (required_tokens + self.unit_length - 1) // self.unit_length
         capacity_patches = resolve_dit_cache_bucket(required_patches)
         replacement = self.runner.allocate_cache(
             capacity_patches=capacity_patches,
@@ -1085,6 +1128,42 @@ class CachedDiTSolver:
         cache.invalidate_scratch()
         return replacement
 
+    def _build_request_geometry(
+        self,
+        state: DiTSolverState,
+        *,
+        batch_size: int,
+        dtype: mx.Dtype,
+    ) -> DiTRequestGeometry:
+        maximum_tokens = state.max_patches * self.unit_length
+        positions = _expand_branch_positions(
+            mx.arange(maximum_tokens, dtype=mx.float32)[None],
+            batch_size=batch_size,
+            branch_count=self.runner.branch_count,
+        )
+        delayed_tail_bias = self.runner.prepare_attention_bias(
+            _delayed_tail_mask(0, self.unit_length),
+            batch_size=batch_size * self.runner.branch_count,
+            query_length=2 * self.unit_length,
+            key_length=2 * self.unit_length,
+            dtype=dtype,
+        )
+        if delayed_tail_bias is None:
+            raise RuntimeError("DiT request geometry did not produce a tail bias")
+        maximum_prefix = max(0, maximum_tokens - 2 * self.unit_length)
+        return DiTRequestGeometry(
+            positions=positions,
+            rotary_cos_sin=self.runner.prepare_rotary(positions),
+            tail_prefix_zeros=mx.zeros(
+                (1, 1, 2 * self.unit_length, maximum_prefix),
+                dtype=dtype,
+            ),
+            delayed_tail_bias=delayed_tail_bias,
+            activation_dtype=str(dtype),
+            unit_length=self.unit_length,
+            batch_size=batch_size,
+        )
+
     def _prepare_request(
         self,
         state: DiTSolverState,
@@ -1094,8 +1173,7 @@ class CachedDiTSolver:
         batch_size: int,
         dtype: mx.Dtype,
     ) -> tuple[ODESchedule, tuple[PreparedModulations, ...]]:
-        schedule = build_ode_schedule(self.mode, steps, dtype)
-        nfe = int(schedule.times.shape[0])
+        resolved_steps = resolve_solver_steps(self.mode, steps)
         speaker_identity = None if speaker_condition is None else id(speaker_condition)
         if state._condition_bound:
             if (
@@ -1103,7 +1181,11 @@ class CachedDiTSolver:
                 or state.batch_size != batch_size
                 or state.activation_dtype != str(dtype)
                 or state.schedule is None
-                or int(state.schedule.times.shape[0]) != nfe
+                or state.solver_steps != resolved_steps
+                or state.geometry is None
+                or state.geometry.activation_dtype != str(dtype)
+                or state.geometry.unit_length != self.unit_length
+                or state.geometry.batch_size != batch_size
                 or state._speaker_identity != speaker_identity
             ):
                 raise ValueError(
@@ -1112,6 +1194,8 @@ class CachedDiTSolver:
             if state.modulations_by_nfe is None:
                 raise RuntimeError("DiT solver state has no prepared modulations")
             return state.schedule, state.modulations_by_nfe
+        schedule = build_ode_schedule(self.mode, resolved_steps, dtype)
+        nfe = int(schedule.times.shape[0])
         if speaker_condition is not None and speaker_condition.shape != (
             batch_size,
             self.runner.dit.hidden_size,
@@ -1140,11 +1224,18 @@ class CachedDiTSolver:
                 speaker_condition=branch_speaker,
             )
             prepared.append(self.runner.dit.prepare_modulations(condition))
+        geometry = self._build_request_geometry(
+            state,
+            batch_size=batch_size,
+            dtype=dtype,
+        )
         state.schedule = schedule
         state.modulations_by_nfe = tuple(prepared)
         state.mode = self.mode
         state.batch_size = batch_size
         state.activation_dtype = str(dtype)
+        state.solver_steps = resolved_steps
+        state.geometry = geometry
         state._speaker_identity = speaker_identity
         state._condition_bound = True
         return schedule, state.modulations_by_nfe
@@ -1235,10 +1326,7 @@ class CachedDiTSolver:
         if compact_tail:
             if attention_mask is not None or positions is not None:
                 raise ValueError("compact cached DiT tails derive mask and positions")
-            if (
-                _persistent_length < 0
-                or _persistent_length % self.unit_length
-            ):
+            if _persistent_length < 0 or _persistent_length % self.unit_length:
                 raise ValueError("compact cached DiT history must be unit-aligned")
             expected_length = 2 * self.unit_length
             if (
@@ -1255,7 +1343,9 @@ class CachedDiTSolver:
                         "compact cached SOAR tails require matching CFG state"
                     )
             elif cfg_sequence is not None:
-                raise ValueError("compact cached MeanFlow tails do not accept CFG state")
+                raise ValueError(
+                    "compact cached MeanFlow tails do not accept CFG state"
+                )
             local_prefix_length = self.unit_length
             prefix_length = _persistent_length + self.unit_length
             patch_count = prefix_length // self.unit_length + 1
@@ -1290,6 +1380,9 @@ class CachedDiTSolver:
             batch_size=batch_size,
             dtype=sequence.dtype,
         )
+        geometry = state.geometry
+        if geometry is None:
+            raise RuntimeError("DiT solver state has no request geometry")
         nfe = int(schedule.times.shape[0])
         self._validate_state_cache(state, nfe=nfe, batch_size=batch_size)
         current_start = local_prefix_length
@@ -1299,23 +1392,16 @@ class CachedDiTSolver:
             None if cfg_sequence is None else cfg_sequence[:, current_start:current_end]
         )
         total_length = prefix_length + self.unit_length
-        if compact_tail:
-            full_positions = mx.arange(
-                prefix_length - self.unit_length,
-                total_length,
-                dtype=mx.float32,
-            )[None]
+        uses_request_positions = positions is None
+        if uses_request_positions:
+            position_start = prefix_length - self.unit_length if compact_tail else 0
+            full_positions = geometry.position_slice(position_start, total_length)
         else:
-            full_positions = (
-                mx.arange(total_length, dtype=mx.float32)[None]
-                if positions is None
-                else positions
+            full_positions = _expand_branch_positions(
+                positions,
+                batch_size=batch_size,
+                branch_count=self.runner.branch_count,
             )
-        full_positions = _expand_branch_positions(
-            full_positions,
-            batch_size=batch_size,
-            branch_count=self.runner.branch_count,
-        )
         branch_attention_mask = _expand_branch_mask(
             attention_mask,
             batch_size=batch_size,
@@ -1326,7 +1412,11 @@ class CachedDiTSolver:
                 raise ValueError("DiT solver state contains history for a first patch")
             first_mask = branch_attention_mask
             first_positions = full_positions[..., : self.unit_length]
-            first_rotary = self.runner.prepare_rotary(first_positions)
+            first_rotary = (
+                geometry.rotary_slice(0, self.unit_length)
+                if uses_request_positions
+                else self.runner.prepare_rotary(first_positions)
+            )
             first_bias = self.runner.prepare_attention_bias(
                 first_mask,
                 batch_size=batch_size * self.runner.branch_count,
@@ -1350,9 +1440,11 @@ class CachedDiTSolver:
             return coordinate
 
         persistent_length = prefix_length - self.unit_length
-        previous_unit = sequence[:, : self.unit_length] if compact_tail else sequence[
-            :, persistent_length:prefix_length
-        ]
+        previous_unit = (
+            sequence[:, : self.unit_length]
+            if compact_tail
+            else sequence[:, persistent_length:prefix_length]
+        )
         cfg_previous_unit = (
             None
             if cfg_sequence is None
@@ -1381,7 +1473,11 @@ class CachedDiTSolver:
                 )
             )
             prefix_positions = full_positions[..., :persistent_length]
-            prefix_rotary = self.runner.prepare_rotary(prefix_positions)
+            prefix_rotary = (
+                geometry.rotary_slice(0, persistent_length)
+                if uses_request_positions
+                else self.runner.prepare_rotary(prefix_positions)
+            )
             prefix_bias = self.runner.prepare_attention_bias(
                 prefix_mask,
                 batch_size=batch_size * self.runner.branch_count,
@@ -1433,11 +1529,24 @@ class CachedDiTSolver:
                 cache,
                 required_tokens=persistent_length + 2 * self.unit_length,
             )
-        required_tail_mask = _delayed_tail_mask(persistent_length, self.unit_length)
-        tail_mask = (
-            required_tail_mask
-            if branch_attention_mask is None
-            else _enforce_required_mask(
+        tail_positions = (
+            full_positions
+            if compact_tail
+            else full_positions[..., persistent_length:total_length]
+        )
+        tail_rotary = (
+            geometry.rotary_slice(persistent_length, total_length)
+            if uses_request_positions
+            else self.runner.prepare_rotary(tail_positions)
+        )
+        if branch_attention_mask is None:
+            tail_bias = geometry.tail_bias(persistent_length)
+        else:
+            required_tail_mask = _delayed_tail_mask(
+                persistent_length,
+                self.unit_length,
+            )
+            tail_mask = _enforce_required_mask(
                 _mask_slice(
                     branch_attention_mask,
                     query_start=persistent_length,
@@ -1446,20 +1555,13 @@ class CachedDiTSolver:
                 ),
                 required_tail_mask,
             )
-        )
-        tail_positions = (
-            full_positions
-            if compact_tail
-            else full_positions[..., persistent_length:total_length]
-        )
-        tail_rotary = self.runner.prepare_rotary(tail_positions)
-        tail_bias = self.runner.prepare_attention_bias(
-            tail_mask,
-            batch_size=batch_size * self.runner.branch_count,
-            query_length=2 * self.unit_length,
-            key_length=total_length,
-            dtype=sequence.dtype,
-        )
+            tail_bias = self.runner.prepare_attention_bias(
+                tail_mask,
+                batch_size=batch_size * self.runner.branch_count,
+                query_length=2 * self.unit_length,
+                key_length=total_length,
+                dtype=sequence.dtype,
+            )
         cache_factory: CacheFactory | None = None
         if cache is None:
 

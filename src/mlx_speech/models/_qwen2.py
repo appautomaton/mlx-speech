@@ -173,6 +173,36 @@ class Qwen2RotaryEmbedding(nn.Module):
         return mx.cos(emb).astype(dtype), mx.sin(emb).astype(dtype)
 
 
+@dataclass(frozen=True)
+class Qwen2RotaryTable:
+    """Request-owned Qwen rotary values sliced by the validated cache offset."""
+
+    cosine: mx.array
+    sine: mx.array
+
+    def __post_init__(self) -> None:
+        if (
+            self.cosine.ndim != 2
+            or self.sine.shape != self.cosine.shape
+            or self.sine.dtype != self.cosine.dtype
+        ):
+            raise ValueError("Qwen2 rotary table arrays are incompatible")
+
+    @property
+    def capacity(self) -> int:
+        return int(self.cosine.shape[0])
+
+    def slice(
+        self, offset: int, length: int, *, dtype: mx.Dtype
+    ) -> tuple[mx.array, mx.array]:
+        end = offset + length
+        if offset < 0 or length <= 0 or end > self.capacity:
+            raise ValueError("Qwen2 rotary table slice is out of range")
+        if self.cosine.dtype != dtype:
+            raise ValueError("Qwen2 rotary table dtype differs from the query dtype")
+        return self.cosine[offset:end], self.sine[offset:end]
+
+
 def _rotate_half(x: mx.array) -> mx.array:
     half = x.shape[-1] // 2
     return mx.concatenate([-x[..., half:], x[..., :half]], axis=-1)
@@ -509,6 +539,19 @@ class Qwen2Model(nn.Module):
 
         return self.embed_tokens.as_linear(hidden_states)
 
+    def prepare_rotary_table(
+        self,
+        capacity: int,
+        *,
+        dtype: mx.Dtype,
+    ) -> Qwen2RotaryTable:
+        """Build immutable rotary values for one bounded request."""
+
+        if capacity <= 0 or capacity > self.config.max_position_embeddings:
+            raise ValueError("Qwen2 rotary table capacity is out of range")
+        cosine, sine = self.rotary_emb(0, int(capacity), dtype=dtype)
+        return Qwen2RotaryTable(cosine=cosine, sine=sine)
+
     @staticmethod
     def _build_causal_mask(offset: int, seq_len: int) -> mx.array | None:
         if seq_len <= 1:
@@ -618,6 +661,7 @@ class Qwen2Model(nn.Module):
         inputs_embeds: mx.array | None = None,
         cache: Qwen2KVCache | list[_LegacyQwen2LayerCache] | None = None,
         cache_capacity: int | None = None,
+        rotary_table: Qwen2RotaryTable | None = None,
     ) -> Qwen2Output:
         hidden_states = self._prepare_inputs(
             input_ids=input_ids,
@@ -655,14 +699,16 @@ class Qwen2Model(nn.Module):
                     layer_cache.validate_append_length(seq_len)
         mask = self._build_causal_mask(offset, seq_len)
         rotary_dtype = (
-            hidden_states.dtype
-            if self.rotary_dtype_policy == "query"
-            else mx.float32
+            hidden_states.dtype if self.rotary_dtype_policy == "query" else mx.float32
         )
-        position_embeddings = self.rotary_emb(
-            offset,
-            seq_len,
-            dtype=rotary_dtype,
+        position_embeddings = (
+            self.rotary_emb(
+                offset,
+                seq_len,
+                dtype=rotary_dtype,
+            )
+            if rotary_table is None
+            else rotary_table.slice(offset, seq_len, dtype=rotary_dtype)
         )
 
         if cache_capacity is None:

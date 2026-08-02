@@ -11,6 +11,8 @@ from mlx_speech.models.dots_tts.dit import (
     DiT,
     RotaryEmbedding,
     TimestepEmbedder,
+    modulate,
+    modulate_prepared,
     sinusoidal_embedding,
 )
 
@@ -78,6 +80,20 @@ def test_reusable_rotary_geometry_matches_direct_application() -> None:
     reused = rotary.apply_cos_sin(value, cosine, sine)
     mx.eval(direct, reused)
     np.testing.assert_array_equal(reused, direct)
+
+
+@pytest.mark.parametrize("dtype", [mx.float32, mx.bfloat16])
+def test_unmerged_attention_heads_preserve_eager_attention_values(dtype) -> None:
+    mx.random.seed(53)
+    attention = DiT(8, 4, _config()).blocks[0].attn
+    attention.set_dtype(dtype)
+    value = mx.random.normal((1, 5, 8)).astype(dtype)
+    query, key, projected_value = attention.project(value)
+    heads = attention._attention_heads(query, key, projected_value)
+    merged = heads.transpose(0, 2, 1, 3).reshape(1, 5, 8)
+    eager = attention.attention_values(query, key, projected_value)
+    mx.eval(merged, eager)
+    np.testing.assert_array_equal(merged.astype(mx.float32), eager.astype(mx.float32))
 
 
 def test_dit_causal_mask_prevents_future_context_leakage() -> None:
@@ -240,5 +256,16 @@ def test_preparing_dit_modulations_does_not_change_parameter_names() -> None:
     )
     modulations = model.prepare_modulations(condition)
     after = set(tree_flatten(model.parameters(), destination={}))
-    assert len(modulations[0]) == 2
+    assert len(modulations.blocks) == 2
     assert before == after
+
+
+def test_prepared_modulation_matches_scale_arithmetic_in_bf16() -> None:
+    value = mx.arange(24, dtype=mx.float32).reshape(1, 3, 8).astype(mx.bfloat16)
+    shift = mx.linspace(-0.5, 0.5, 8)[None].astype(mx.bfloat16)
+    scale = mx.linspace(-0.25, 0.75, 8)[None].astype(mx.bfloat16)
+    expected = modulate(value, shift, scale)
+    actual = modulate_prepared(value, shift, 1.0 + scale)
+    mx.eval(expected, actual)
+
+    assert mx.array_equal(actual, expected).item()

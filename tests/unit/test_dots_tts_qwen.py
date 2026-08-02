@@ -177,6 +177,55 @@ def test_dots_qwen_builds_rotary_geometry_once_for_all_layers(monkeypatch) -> No
     assert calls == 1
 
 
+def test_request_rotary_table_matches_incremental_bf16_geometry() -> None:
+    model = DotsTTSQwen(_tiny_config(max_position_embeddings=16))
+    _set_deterministic_weights(model, dtype=mx.bfloat16)
+    input_ids = mx.array([[1, 3, 5, 7, 9]], dtype=mx.int32)
+    table = model.prepare_rotary_table(5, dtype=mx.bfloat16)
+    direct_cache = None
+    table_cache = None
+
+    for index in range(int(input_ids.shape[1])):
+        token = input_ids[:, index : index + 1]
+        direct = model.step(
+            input_ids=token,
+            cache=direct_cache,
+            cache_capacity=5,
+        )
+        prepared = model.step(
+            input_ids=token,
+            cache=table_cache,
+            cache_capacity=5,
+            rotary_table=table,
+        )
+        direct_cache = direct.cache
+        table_cache = prepared.cache
+        mx.eval(
+            direct.last_hidden_state,
+            prepared.last_hidden_state,
+            *(cache.fetch()[0] for cache in direct_cache),
+            *(cache.fetch()[0] for cache in table_cache),
+        )
+
+        assert mx.array_equal(
+            prepared.last_hidden_state,
+            direct.last_hidden_state,
+        ).item()
+        for direct_layer, prepared_layer in zip(
+            direct_cache,
+            table_cache,
+            strict=True,
+        ):
+            assert mx.array_equal(
+                prepared_layer.fetch()[0],
+                direct_layer.fetch()[0],
+            ).item()
+            assert mx.array_equal(
+                prepared_layer.fetch()[1],
+                direct_layer.fetch()[1],
+            ).item()
+
+
 def test_dots_qwen_exact_cache_capacity_is_slice_written_and_bounded() -> None:
     model = DotsTTSQwen(_tiny_config(max_position_embeddings=16))
     _set_deterministic_weights(model)

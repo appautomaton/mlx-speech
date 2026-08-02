@@ -115,9 +115,7 @@ class DotsTTSQuantizationConfig:
             bits=int(payload.get("bits", 0)),
             group_size=int(payload.get("group_size", 0)),
             mode=str(payload.get("mode", "")),
-            module_types=tuple(
-                str(value) for value in payload.get("module_types", ())
-            ),
+            module_types=tuple(str(value) for value in payload.get("module_types", ())),
             path_prefixes=tuple(
                 str(value) for value in payload.get("path_prefixes", ())
             ),
@@ -132,9 +130,13 @@ class DotsTTSQuantizationConfig:
         if self.bits != 8 or self.group_size != 64 or self.mode != "affine":
             raise ValueError("dots.tts int8 requires affine 8-bit groups of 64")
         if self.module_types != ("Linear", "Embedding"):
-            raise ValueError("dots.tts int8 may target only Linear and Embedding modules")
+            raise ValueError(
+                "dots.tts int8 may target only Linear and Embedding modules"
+            )
         if self.path_prefixes != ("qwen.model.",):
-            raise ValueError("dots.tts int8 may target only the native qwen.model.* trunk")
+            raise ValueError(
+                "dots.tts int8 may target only the native qwen.model.* trunk"
+            )
         if not self.quantized_paths:
             raise ValueError("dots.tts int8 metadata must name every quantized path")
         if any(
@@ -276,7 +278,9 @@ class DotsTTSArtifactConfig:
             "revision": self.source_revision,
         }
         if actual_source != expected_source:
-            raise ValueError("dots.tts source provenance does not match pinned revision")
+            raise ValueError(
+                "dots.tts source provenance does not match pinned revision"
+            )
         if len(self.source_manifest_sha256) != 64:
             raise ValueError("dots.tts source manifest SHA-256 is invalid")
         if self.artifact_class not in {"base", "int8"}:
@@ -284,14 +288,16 @@ class DotsTTSArtifactConfig:
                 f"unsupported dots.tts artifact class: {self.artifact_class}"
             )
         expected_policy = (
-            BASE_DTYPE_POLICY
-            if self.artifact_class == "base"
-            else INT8_DTYPE_POLICY
+            BASE_DTYPE_POLICY if self.artifact_class == "base" else INT8_DTYPE_POLICY
         )
         if self.dtype_policy != expected_policy:
-            raise ValueError("dots.tts dtype policy is inconsistent with artifact class")
+            raise ValueError(
+                "dots.tts dtype policy is inconsistent with artifact class"
+            )
         if self.artifact_class == "base" and self.quantization is not None:
-            raise ValueError("base dots.tts artifacts cannot carry quantization metadata")
+            raise ValueError(
+                "base dots.tts artifacts cannot carry quantization metadata"
+            )
         if self.artifact_class == "int8" and self.quantization is None:
             raise ValueError("int8 dots.tts artifacts require quantization metadata")
         if self.quantization is not None:
@@ -392,9 +398,7 @@ class DotsTTSCoreComponents(nn.Module):
         self.hidden_projection = nn.Linear(
             qwen_config.hidden_size, hidden_size, bias=True
         )
-        self.latent_projection = nn.Linear(
-            config.latent_dim, hidden_size, bias=True
-        )
+        self.latent_projection = nn.Linear(config.latent_dim, hidden_size, bias=True)
         self.speaker_projection = nn.Linear(
             config.campplus_embedding_size, hidden_size, bias=True
         )
@@ -483,7 +487,9 @@ def align_state_dict(
         checkpoint_shape = tuple(int(value) for value in checkpoint[key].shape)
         if model_shape != checkpoint_shape:
             shape_mismatches.append((key, model_shape, checkpoint_shape))
-        tensor_dtype = expected_dtype(key) if callable(expected_dtype) else expected_dtype
+        tensor_dtype = (
+            expected_dtype(key) if callable(expected_dtype) else expected_dtype
+        )
         if tensor_dtype is not None and checkpoint[key].dtype != tensor_dtype:
             dtype_mismatches.append(
                 (key, str(tensor_dtype), str(checkpoint[key].dtype))
@@ -506,9 +512,7 @@ def _strict_load(
     expected_dtype: Callable[[str], mx.Dtype],
 ) -> DotsTTSAlignmentReport:
     weights = mx.load(str(path))
-    report = align_state_dict(
-        component, model, weights, expected_dtype=expected_dtype
-    )
+    report = align_state_dict(component, model, weights, expected_dtype=expected_dtype)
     report.require_exact()
     model.load_weights(list(weights.items()), strict=True)
     mx.eval(model.parameters())
@@ -573,6 +577,7 @@ def load_dots_tts_components(model_dir: str | Path) -> LoadedDotsTTSComponents:
     core.qwen.model.fuse_for_inference()
     core.semantic_encoder.fuse_for_inference()
     core.dit.fuse_for_inference()
+    audio_vae.prepare_for_inference()
     mx.clear_cache()
     with safe_open(
         layout.model_dir / "latent_stats.safetensors", framework="numpy"
@@ -710,9 +715,7 @@ def validate_artifact_dir(model_dir: str | Path) -> DotsTTSArtifactLayout:
         )
     if config.mode != artifact_config.mode:
         raise ValueError("dots.tts config mode and artifact mode differ")
-    if qwen_config.vocab_size <= max(
-        151_668, 151_669, 151_670, 151_666, 151_671
-    ):
+    if qwen_config.vocab_size <= max(151_668, 151_669, 151_670, 151_666, 151_671):
         raise ValueError("Qwen vocabulary does not contain dots.tts special tokens")
 
     weight_files = tuple(

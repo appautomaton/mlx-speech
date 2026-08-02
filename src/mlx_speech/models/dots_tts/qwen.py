@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import mlx.core as mx
 import mlx.nn as nn
 
-from .._qwen2 import Qwen2KVCache, Qwen2Model
+from .._qwen2 import Qwen2KVCache, Qwen2Model, Qwen2RotaryTable
 from .config import DotsTTSQwenConfig
 
 
@@ -58,6 +58,14 @@ class DotsTTSQwen(nn.Module):
 
         return self.model.embed_tokens
 
+    def prepare_rotary_table(
+        self,
+        capacity: int,
+        *,
+        dtype: mx.Dtype,
+    ) -> Qwen2RotaryTable:
+        return self.model.prepare_rotary_table(capacity, dtype=dtype)
+
     def project_logits(self, hidden_states: mx.array) -> mx.array:
         return self.model.tied_logits(hidden_states)
 
@@ -84,6 +92,7 @@ class DotsTTSQwen(nn.Module):
         inputs_embeds: mx.array | None = None,
         cache: Qwen2KVCache | None = None,
         cache_capacity: int | None = None,
+        rotary_table: Qwen2RotaryTable | None = None,
         request_logits: bool = True,
         request_eos: bool = True,
     ) -> DotsTTSQwenOutput:
@@ -92,6 +101,7 @@ class DotsTTSQwen(nn.Module):
             inputs_embeds=inputs_embeds,
             cache=cache,
             cache_capacity=cache_capacity,
+            rotary_table=rotary_table,
         )
         hidden_states = output.last_hidden_state
         logits = self.project_logits(hidden_states) if request_logits else None
@@ -109,6 +119,7 @@ class DotsTTSQwen(nn.Module):
         inputs_embeds: mx.array | None = None,
         cache: Qwen2KVCache | None = None,
         cache_capacity: int | None = None,
+        rotary_table: Qwen2RotaryTable | None = None,
         request_logits: bool = False,
         request_eos: bool = True,
     ) -> DotsTTSQwenOutput:
@@ -119,6 +130,7 @@ class DotsTTSQwen(nn.Module):
             inputs_embeds=inputs_embeds,
             cache=cache,
             cache_capacity=cache_capacity,
+            rotary_table=rotary_table,
             request_logits=request_logits,
             request_eos=request_eos,
         )

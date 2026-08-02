@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -299,8 +300,7 @@ class DiTAttention(nn.Module):
             variance = mx.mean(paired_qk * paired_qk, axis=-1, keepdims=True)
             paired_qk = paired_qk * mx.rsqrt(variance + self.q_norm.eps)
             paired_qk = (
-                paired_qk
-                * qk_norm_weight.astype(mx.float32)[:, None, None, None, :]
+                paired_qk * qk_norm_weight.astype(mx.float32)[:, None, None, None, :]
             ).astype(source_dtype)
         elif self.q_norm is not None and self.k_norm is not None:
             query = self.q_norm(query)
@@ -326,7 +326,7 @@ class DiTAttention(nn.Module):
             query, key = paired_qk[0], paired_qk[1]
         return query, key, projected_value
 
-    def attention_values(
+    def _attention_heads(
         self,
         query: mx.array,
         key: mx.array,
@@ -335,7 +335,7 @@ class DiTAttention(nn.Module):
         mask: mx.array | None = None,
         prepared_bias: mx.array | None = None,
     ) -> mx.array:
-        """Return merged attention values before the serialized output projection."""
+        """Return unmerged attention heads before the output projection."""
 
         if mask is not None and prepared_bias is not None:
             raise ValueError("DiT attention accepts either a mask or a prepared bias")
@@ -357,13 +357,34 @@ class DiTAttention(nn.Module):
                 key_length=key_length,
                 dtype=query.dtype,
             )
-        attended = mx.fast.scaled_dot_product_attention(
+        return mx.fast.scaled_dot_product_attention(
             query,
             key,
             projected_value,
             scale=self.scale,
             mask=bias,
         )
+
+    def attention_values(
+        self,
+        query: mx.array,
+        key: mx.array,
+        projected_value: mx.array,
+        *,
+        mask: mx.array | None = None,
+        prepared_bias: mx.array | None = None,
+    ) -> mx.array:
+        """Return merged attention values before the serialized output projection."""
+
+        attended = self._attention_heads(
+            query,
+            key,
+            projected_value,
+            mask=mask,
+            prepared_bias=prepared_bias,
+        )
+        batch_size = int(query.shape[0])
+        query_length = int(query.shape[2])
         return attended.transpose(0, 2, 1, 3).reshape(
             batch_size, query_length, self.hidden_size
         )
@@ -401,6 +422,38 @@ class DiTMLP(nn.Module):
 
 def modulate(value: mx.array, shift: mx.array, scale: mx.array) -> mx.array:
     return value * (1.0 + scale[:, None]) + shift[:, None]
+
+
+def modulate_prepared(
+    value: mx.array,
+    shift: mx.array,
+    gain: mx.array,
+) -> mx.array:
+    """Apply an AdaLN modulation whose ``1 + scale`` is already prepared."""
+
+    return value * gain[:, None] + shift[:, None]
+
+
+@dataclass(frozen=True)
+class PreparedBlockModulation:
+    shift_attn: mx.array
+    gain_attn: mx.array
+    gate_attn: mx.array
+    shift_ffn: mx.array
+    gain_ffn: mx.array
+    gate_ffn: mx.array
+
+
+@dataclass(frozen=True)
+class PreparedFinalModulation:
+    shift: mx.array
+    gain: mx.array
+
+
+@dataclass(frozen=True)
+class PreparedModulations:
+    blocks: tuple[PreparedBlockModulation, ...]
+    final: PreparedFinalModulation
 
 
 class DiTBlock(nn.Module):
@@ -520,7 +573,7 @@ class DiT(nn.Module):
     def prepare_modulations(
         self,
         condition: mx.array,
-    ) -> tuple[tuple[tuple[mx.array, ...], ...], tuple[mx.array, mx.array]]:
+    ) -> PreparedModulations:
         """Precompute all AdaLN values while retaining serialized layer names."""
 
         if condition.ndim != 2 or int(condition.shape[-1]) != self.hidden_size:
@@ -528,18 +581,38 @@ class DiT(nn.Module):
                 "DiT modulation condition must have shape (batch, hidden_size)"
             )
         activated = _silu(condition)
-        block_modulations = tuple(
-            tuple(mx.split(block.adaLN_modulation(activated), 6, axis=-1))
-            for block in self.blocks
-        )
-        final_modulation = tuple(
-            mx.split(
-                self.output_layer.adaLN_modulation(activated),
-                2,
-                axis=-1,
+        block_modulations = []
+        for block in self.blocks:
+            (
+                shift_attn,
+                scale_attn,
+                gate_attn,
+                shift_ffn,
+                scale_ffn,
+                gate_ffn,
+            ) = mx.split(block.adaLN_modulation(activated), 6, axis=-1)
+            block_modulations.append(
+                PreparedBlockModulation(
+                    shift_attn=shift_attn,
+                    gain_attn=1.0 + scale_attn,
+                    gate_attn=gate_attn,
+                    shift_ffn=shift_ffn,
+                    gain_ffn=1.0 + scale_ffn,
+                    gate_ffn=gate_ffn,
+                )
             )
+        final_shift, final_scale = mx.split(
+            self.output_layer.adaLN_modulation(activated),
+            2,
+            axis=-1,
         )
-        return block_modulations, final_modulation
+        return PreparedModulations(
+            blocks=tuple(block_modulations),
+            final=PreparedFinalModulation(
+                shift=final_shift,
+                gain=1.0 + final_scale,
+            ),
+        )
 
     def __call__(
         self,
@@ -578,7 +651,9 @@ __all__ = [
     "DiT",
     "DiTAttention",
     "DiTBlock",
+    "PreparedModulations",
     "TimestepEmbedder",
     "modulate",
+    "modulate_prepared",
     "sinusoidal_embedding",
 ]

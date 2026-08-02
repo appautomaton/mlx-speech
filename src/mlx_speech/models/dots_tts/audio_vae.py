@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import lru_cache
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -26,6 +27,13 @@ _COMPILED_VOCODER_CACHE_LIMIT = 12
 _COMPILED_VOCODER_WARM_FRAMES = DECODER_RECURRENT_TILES
 
 
+@lru_cache(maxsize=DECODER_RECURRENT_TILES[-1])
+def _valid_length_scalar(length: int) -> mx.array:
+    if length <= 0 or length > DECODER_RECURRENT_TILES[-1]:
+        raise ValueError("vocoder valid length is outside the recurrent tile bound")
+    return mx.array(length, dtype=mx.int32)
+
+
 def _leaky_relu(value: mx.array, slope: float) -> mx.array:
     return mx.where(value >= 0, value, value * slope)
 
@@ -43,12 +51,8 @@ def _high_precision_matmul(value: mx.array, right: mx.array) -> mx.array:
     for row_start in range(0, int(rows.shape[0]), HIGH_PRECISION_TIME_TILE):
         row_end = min(row_start + HIGH_PRECISION_TIME_TILE, int(rows.shape[0]))
         output_tiles = []
-        for output_start in range(
-            0, output_features, HIGH_PRECISION_OUTPUT_TILE
-        ):
-            output_end = min(
-                output_start + HIGH_PRECISION_OUTPUT_TILE, output_features
-            )
+        for output_start in range(0, output_features, HIGH_PRECISION_OUTPUT_TILE):
+            output_end = min(output_start + HIGH_PRECISION_OUTPUT_TILE, output_features)
             output_tiles.append(
                 mx.sum(
                     rows[row_start:row_end, :, None]
@@ -165,6 +169,11 @@ def encoder_logical_workspace_bytes(
     return largest_elements * 4  # FP32 bytes
 
 
+@dataclass(frozen=True)
+class _SLSTMRuntimeConstants:
+    combined_biases: tuple[mx.array, ...]
+
+
 class SLSTM(nn.Module):
     """Residual batch-first LSTM with explicit PyTorch-compatible gate order."""
 
@@ -181,6 +190,14 @@ class SLSTM(nn.Module):
         self.layers = [_LSTMWeights(dimension) for _ in range(num_layers)]
         self.high_precision = bool(high_precision)
         self.projection_block_size = projection_block_size
+        self._runtime_constants: _SLSTMRuntimeConstants | None = None
+
+    def prepare_for_inference(self) -> None:
+        """Materialize derived biases after strict checkpoint loading."""
+
+        combined_biases = tuple(layer.bias_ih + layer.bias_hh for layer in self.layers)
+        mx.eval(combined_biases)
+        self._runtime_constants = _SLSTMRuntimeConstants(combined_biases)
 
     def initial_state(
         self, batch_size: int, *, dtype: mx.Dtype = mx.float32
@@ -213,6 +230,11 @@ class SLSTM(nn.Module):
         if int(time) == 0:
             return value, state
         next_state = []
+        runtime_constants = self._runtime_constants
+        if runtime_constants is not None and len(
+            runtime_constants.combined_biases
+        ) != len(self.layers):
+            raise RuntimeError("SLSTM runtime bias count differs from the model")
         for layer_index, layer in enumerate(self.layers):
             if self.high_precision:
                 projected = _high_precision_matmul(value, layer.weight_ih.T)
@@ -224,7 +246,11 @@ class SLSTM(nn.Module):
                 )
             else:
                 projected = value @ layer.weight_ih.T
-            projected += layer.bias_ih + layer.bias_hh
+            projected += (
+                layer.bias_ih + layer.bias_hh
+                if runtime_constants is None
+                else runtime_constants.combined_biases[layer_index]
+            )
             h, cell = state[layer_index]
             expected_shape = (int(batch), self.dimension)
             if h.shape != expected_shape or cell.shape != expected_shape:
@@ -293,9 +319,7 @@ class _ResidualStack(nn.Module):
             for index in range(layers)
         ]
         self.convs2 = [
-            Conv1d(
-                channels, channels, 3, causal=True, high_precision=high_precision
-            )
+            Conv1d(channels, channels, 3, causal=True, high_precision=high_precision)
             for _ in range(layers)
         ]
 
@@ -319,9 +343,7 @@ class AudioEncoder(nn.Module):
         super().__init__()
         if len(channels) != len(downsample_rates) + 1:
             raise ValueError("encoder channels must be one longer than rates")
-        self.pre_conv = Conv1d(
-            1, channels[0], 3, causal=True, high_precision=True
-        )
+        self.pre_conv = Conv1d(1, channels[0], 3, causal=True, high_precision=True)
         self.down_convs = []
         self.residual_stacks = []
         for input_channels, output_channels, rate in zip(
@@ -338,9 +360,7 @@ class AudioEncoder(nn.Module):
                 )
             )
             self.residual_stacks.append(
-                _ResidualStack(
-                    output_channels, residual_layers, high_precision=True
-                )
+                _ResidualStack(output_channels, residual_layers, high_precision=True)
             )
         self.post_conv = Conv1d(
             channels[-1],
@@ -488,9 +508,17 @@ class AudioVAE(nn.Module):
             _VocoderCompileKey, Callable[..., tuple[mx.array, ...] | mx.array]
         ] = OrderedDict()
 
+    def prepare_for_inference(self) -> None:
+        """Prepare derived runtime constants after strict checkpoint loading."""
+
+        self.enc_mi_layer.recurrent.prepare_for_inference()
+        self.dec_mi_layer.recurrent.prepare_for_inference()
+
     def encode(self, waveform: mx.array) -> mx.array:
         if waveform.ndim != 3 or int(waveform.shape[1]) != 1:
-            raise ValueError("AudioVAE encode expects waveform shape (batch, 1, samples)")
+            raise ValueError(
+                "AudioVAE encode expects waveform shape (batch, 1, samples)"
+            )
         if int(waveform.shape[-1]) < self.hop_size:
             raise ValueError("AudioVAE waveform is shorter than one latent hop")
         value = waveform.astype(mx.float32).transpose(0, 2, 1)
@@ -672,7 +700,7 @@ class AudioVAE(nn.Module):
         valid_length: mx.array | None = None,
     ) -> tuple[mx.array, tuple[tuple[mx.array, mx.array], ...]]:
         if valid_length is None:
-            valid_length = mx.array(int(latent.shape[-1]), dtype=mx.int32)
+            valid_length = _valid_length_scalar(int(latent.shape[-1]))
         flat_state = tuple(
             tensor for layer_state in recurrent_state for tensor in layer_state
         )
@@ -741,11 +769,12 @@ class AudioVAE(nn.Module):
                 tile,
                 recurrent_state,
                 use_compiled=use_compiled,
-                valid_length=mx.array(valid_frames, dtype=mx.int32),
+                valid_length=_valid_length_scalar(valid_frames),
             )
             outputs.append(decoded[:, :valid_frames])
             offset += valid_frames
-        return mx.concatenate(outputs, axis=1), recurrent_state
+        output = outputs[0] if len(outputs) == 1 else mx.concatenate(outputs, axis=1)
+        return output, recurrent_state
 
     def decode_chunk(
         self,
@@ -810,9 +839,10 @@ class AudioVAE(nn.Module):
             if final
             else max(0, total_frames - self.decoder.stream_lookahead)
         )
-        if int(waveform.shape[1]) != (
-            stable_frames - state.emitted_frames
-        ) * self.hop_size:
+        if (
+            int(waveform.shape[1])
+            != (stable_frames - state.emitted_frames) * self.hop_size
+        ):
             raise RuntimeError("BigVGAN stream emitted an invalid sample count")
         next_state = VocoderDecodeState(
             recurrent_state=recurrent_state,

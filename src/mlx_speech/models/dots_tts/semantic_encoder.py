@@ -254,8 +254,16 @@ class _SemanticTransformer(nn.Module):
             tuple(cache.offset for cache in caches) if caches is not None else ()
         )
         if caches is not None:
+            if any(offset != prior_offsets[0] for offset in prior_offsets[1:]):
+                raise ValueError("semantic transformer cache offsets differ")
             for cache in caches:
                 cache.validate_append_length(int(value.shape[1]))
+        offset = 0 if not prior_offsets else prior_offsets[0]
+        attention_mask = self.layers[0].attn._mask(
+            offset,
+            int(value.shape[1]),
+            dtype=value.dtype,
+        )
         next_caches = []
         try:
             for index, layer in enumerate(self.layers):
@@ -264,6 +272,7 @@ class _SemanticTransformer(nn.Module):
                     value,
                     cache=cache,
                     cache_capacity=cache_capacity,
+                    attention_mask=attention_mask,
                 )
                 next_caches.append(next_cache)
         except Exception:

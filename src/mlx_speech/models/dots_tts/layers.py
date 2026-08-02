@@ -142,6 +142,7 @@ class SemanticAttention(nn.Module):
         *,
         cache: SemanticLayerCache | None = None,
         cache_capacity: int | None = None,
+        attention_mask: mx.array | None = None,
     ) -> tuple[mx.array, SemanticLayerCache]:
         batch, length, _ = value.shape
         qkv_proj = getattr(self, "qkv_proj", None)
@@ -171,7 +172,11 @@ class SemanticAttention(nn.Module):
                 max_capacity=capacity,
             )
         keys, values = next_cache.fetch()
-        mask = self._mask(offset, length, dtype=query.dtype)
+        mask = (
+            self._mask(offset, length, dtype=query.dtype)
+            if attention_mask is None
+            else attention_mask
+        )
         attended = mx.fast.scaled_dot_product_attention(
             query.transpose(0, 2, 1, 3),
             keys.transpose(0, 2, 1, 3),
@@ -207,11 +212,13 @@ class SemanticEncoderLayer(nn.Module):
         *,
         cache: SemanticLayerCache | None = None,
         cache_capacity: int | None = None,
+        attention_mask: mx.array | None = None,
     ) -> tuple[mx.array, SemanticLayerCache]:
         attended, next_cache = self.attn(
             self.attn_norm(value),
             cache=cache,
             cache_capacity=cache_capacity,
+            attention_mask=attention_mask,
         )
         value = value + attended
         return value + self.ffn(self.ffn_norm(value)), next_cache

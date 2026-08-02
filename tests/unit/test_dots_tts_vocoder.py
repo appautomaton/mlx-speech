@@ -27,6 +27,22 @@ def test_causal_convolution_does_not_see_future_inputs() -> None:
     np.testing.assert_allclose(first[:, :4], second[:, :4], atol=0.0, rtol=0.0)
 
 
+def test_causal_stream_starts_with_fixed_zero_context_and_is_exact() -> None:
+    mx.random.seed(42)
+    convolution = Conv1d(2, 3, 5, dilation=2, causal=True)
+    value = mx.random.normal((1, 7, 2))
+    full = convolution(value)
+    state = convolution.init_stream_state(1, dtype=value.dtype)
+    assert state.tail.shape == (1, convolution.left_context, 2)
+    first, state = convolution.stream(value[:, :1], state)
+    second, state = convolution.stream(value[:, 1:], state)
+    streamed = mx.concatenate((first, second), axis=1)
+    mx.eval(full, streamed, state)
+
+    np.testing.assert_array_equal(streamed, full)
+    assert state.tail.shape == (1, convolution.left_context, 2)
+
+
 def test_causal_transposed_convolution_has_exact_stride_length() -> None:
     mx.random.seed(43)
     convolution = CausalConvTranspose1d(4, 2, 6, stride=3)

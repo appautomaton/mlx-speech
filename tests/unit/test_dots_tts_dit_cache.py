@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from mlx.utils import tree_flatten
 
+import mlx_speech.models.dots_tts.dit_inference as dit_inference
 from mlx_speech.models.dots_tts.config import DotsTTSTransformerConfig
 from mlx_speech.models.dots_tts.dit import DiT
 from mlx_speech.models.dots_tts.dit_inference import (
@@ -149,12 +150,12 @@ def _published_cache(
         values = mx.arange(size, dtype=mx.float32).reshape(shape)
         values = values / 200.0 + nfe_index / 10.0
         for layer_index in range(cache.num_layers):
-            cache.cache_k[nfe_index][layer_index][..., :published_tokens, :] = (
-                values[layer_index]
-            )
-            cache.cache_v[nfe_index][layer_index][..., :published_tokens, :] = (
-                -values[layer_index]
-            )
+            cache.cache_k[nfe_index][layer_index][..., :published_tokens, :] = values[
+                layer_index
+            ]
+            cache.cache_v[nfe_index][layer_index][..., :published_tokens, :] = -values[
+                layer_index
+            ]
     cache.offsets = [published_tokens] * cache.nfe
     mx.eval(cache.cache_k, cache.cache_v)
     return cache
@@ -320,6 +321,51 @@ def test_meanflow_cache_matches_first_and_multiple_full_history_patches() -> Non
     assert state.cache.offsets == [2 * _UNIT_LENGTH] * 2
 
 
+def test_bound_request_reuses_schedule_and_validates_resolved_steps(
+    monkeypatch,
+) -> None:
+    _oracle, cached = _meanflow_pair()
+    state = cached.new_state(12)
+    speaker = mx.zeros((1, _HIDDEN_SIZE))
+    original = dit_inference.build_ode_schedule
+    calls = 0
+
+    def count_schedule(mode, steps, dtype):
+        nonlocal calls
+        calls += 1
+        return original(mode, steps, dtype)
+
+    monkeypatch.setattr(dit_inference, "build_ode_schedule", count_schedule)
+    first = cached._prepare_request(
+        state,
+        speaker_condition=speaker,
+        steps=2,
+        batch_size=1,
+        dtype=mx.float32,
+    )
+    second = cached._prepare_request(
+        state,
+        speaker_condition=speaker,
+        steps=2,
+        batch_size=1,
+        dtype=mx.float32,
+    )
+
+    assert first is not second
+    assert first[0] is second[0]
+    assert first[1] is second[1]
+    assert calls == 1
+    with pytest.raises(ValueError, match="different request conditioning"):
+        cached._prepare_request(
+            state,
+            speaker_condition=speaker,
+            steps=3,
+            batch_size=1,
+            dtype=mx.float32,
+        )
+    assert calls == 1
+
+
 @pytest.mark.parametrize("mode", ["meanflow", "soar"])
 def test_compact_tail_matches_full_history_after_cache_creation(mode: str) -> None:
     mx.random.seed(75)
@@ -468,6 +514,49 @@ def test_tail_builds_rotary_geometry_and_attention_bias_once_per_patch(
     mx.eval(output)
 
     assert calls == {"rotary": 1, "bias": 1}
+
+
+def test_request_geometry_slices_match_fresh_tail_geometry() -> None:
+    mx.random.seed(76)
+    _oracle, cached = _meanflow_pair()
+    state = cached.new_state(64)
+    output = cached.sample_tail(
+        state,
+        previous_unit=_unit(0.3),
+        current_hidden=_current(0.7),
+        speaker_condition=mx.full((1, _HIDDEN_SIZE), 0.2),
+        steps=2,
+        noise=mx.full((1, _PATCH_SIZE, _LATENT_DIM), 0.15),
+    )
+    mx.eval(output)
+    geometry = state.geometry
+    assert geometry is not None
+    start = _UNIT_LENGTH
+    end = start + 2 * _UNIT_LENGTH
+    expected_positions = mx.arange(start, end, dtype=mx.float32)[None]
+    expected_rotary = cached.runner.prepare_rotary(expected_positions)
+    expected_bias = cached.runner.prepare_attention_bias(
+        dit_inference._delayed_tail_mask(start, _UNIT_LENGTH),
+        batch_size=1,
+        query_length=2 * _UNIT_LENGTH,
+        key_length=end,
+        dtype=mx.float32,
+    )
+    actual_rotary = geometry.rotary_slice(start, end)
+    actual_bias = geometry.tail_bias(start)
+    mx.eval(
+        expected_positions, expected_rotary, expected_bias, actual_rotary, actual_bias
+    )
+
+    assert mx.array_equal(
+        geometry.position_slice(start, end),
+        expected_positions,
+    ).item()
+    assert expected_rotary is not None and actual_rotary is not None
+    assert mx.array_equal(actual_rotary[0], expected_rotary[0]).item()
+    assert mx.array_equal(actual_rotary[1], expected_rotary[1]).item()
+    assert expected_bias is not None
+    assert mx.array_equal(actual_bias, expected_bias).item()
 
 
 @pytest.mark.parametrize("mode", ["meanflow", "soar"])
@@ -928,9 +1017,7 @@ def test_bfloat16_later_patch_uses_projected_cache_dtypes(
     assert cache.key_dtype == cache.value_dtype == mx.bfloat16
     assert projected_dtypes
     assert all(key_dtype == cache.key_dtype for key_dtype, _ in projected_dtypes)
-    assert all(
-        value_dtype == cache.value_dtype for _, value_dtype in projected_dtypes
-    )
+    assert all(value_dtype == cache.value_dtype for _, value_dtype in projected_dtypes)
     assert bool(mx.any(_cache_keys(cache)[..., :_UNIT_LENGTH, :] != 0).item())
 
     next_previous = _unit(0.9).astype(mx.bfloat16)
@@ -978,9 +1065,7 @@ def test_bfloat16_later_patch_uses_projected_cache_dtypes(
     )
     assert cache.offsets == [2 * _UNIT_LENGTH, 2 * _UNIT_LENGTH]
     assert all(key_dtype == cache.key_dtype for key_dtype, _ in projected_dtypes)
-    assert all(
-        value_dtype == cache.value_dtype for _, value_dtype in projected_dtypes
-    )
+    assert all(value_dtype == cache.value_dtype for _, value_dtype in projected_dtypes)
 
 
 @pytest.mark.parametrize(
@@ -1071,9 +1156,13 @@ def test_cache_grows_transactionally_without_changing_solver_output(
     np.testing.assert_array_equal(actual, expected)
     assert grown is not source
     assert grown.capacity_patches == target_capacity
-    assert grown.offsets == [
-        (source_capacity + 1) * _UNIT_LENGTH,
-    ] * 2
+    assert (
+        grown.offsets
+        == [
+            (source_capacity + 1) * _UNIT_LENGTH,
+        ]
+        * 2
+    )
     assert grown.key_dtype == source.key_dtype
     assert grown.value_dtype == source.value_dtype
     assert grown.storage_shape[:4] == source.storage_shape[:4]
@@ -1088,9 +1177,7 @@ def test_cache_grows_transactionally_without_changing_solver_output(
     assert baseline_state.cache is not None
     np.testing.assert_array_equal(
         _cache_keys(grown)[..., : grown.valid_tokens, :],
-        _cache_keys(baseline_state.cache)[
-            ..., : baseline_state.cache.valid_tokens, :
-        ],
+        _cache_keys(baseline_state.cache)[..., : baseline_state.cache.valid_tokens, :],
     )
     np.testing.assert_array_equal(
         _cache_values(grown)[..., : grown.valid_tokens, :],
@@ -1200,7 +1287,9 @@ def test_cache_rejects_overflow_alignment_and_inconsistent_state() -> None:
         )
 
 
-def test_mid_nfe_failure_preserves_exact_published_prefix_and_retry(monkeypatch) -> None:
+def test_mid_nfe_failure_preserves_exact_published_prefix_and_retry(
+    monkeypatch,
+) -> None:
     mx.random.seed(99)
     _oracle, cached = _meanflow_pair()
     state = cached.new_state(64)

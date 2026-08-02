@@ -17,8 +17,7 @@ _ALIAS_FREE_FILTER_SIZE = 12
 _ALIAS_FREE_RATIO = 2
 _ALIAS_FREE_OUTPUTS_PER_THREAD = 16
 _CUSTOM_METAL_AVAILABLE = (
-    os.environ.get("MLX_SPEECH_DISABLE_CUSTOM_METAL") != "1"
-    and mx.metal.is_available()
+    os.environ.get("MLX_SPEECH_DISABLE_CUSTOM_METAL") != "1" and mx.metal.is_available()
 )
 
 
@@ -141,9 +140,7 @@ def _empty_sequence_state(
     channels: int,
     dtype: mx.Dtype,
 ) -> SequenceStreamState:
-    return SequenceStreamState(
-        mx.zeros((batch_size, 0, channels), dtype=dtype)
-    )
+    return SequenceStreamState(mx.zeros((batch_size, 0, channels), dtype=dtype))
 
 
 def _updated_tail(value: mx.array, length: int) -> mx.array:
@@ -175,14 +172,12 @@ class Conv1d(nn.Module):
         self.high_precision = bool(high_precision)
         self.left_padding = self.dilation * (self.kernel_size - 1) if causal else 0
         self.padding = (
-            0
-            if causal
-            else (self.kernel_size * self.dilation - self.dilation) // 2
+            0 if causal else (self.kernel_size * self.dilation - self.dilation) // 2
         )
         scale = math.sqrt(2.0 / (input_channels * kernel_size + output_channels))
-        self.weight = mx.random.normal(
-            (output_channels, kernel_size, input_channels)
-        ) * scale
+        self.weight = (
+            mx.random.normal((output_channels, kernel_size, input_channels)) * scale
+        )
         self.bias = mx.zeros((output_channels,)) if bias else None
 
     def __call__(self, value: mx.array) -> mx.array:
@@ -199,6 +194,18 @@ class Conv1d(nn.Module):
         )
         return output if self.bias is None else output + self.bias
 
+    def _call_without_padding(self, value: mx.array) -> mx.array:
+        if self.high_precision:
+            return self._call_high_precision(value, apply_padding=False)
+        output = mx.conv1d(
+            value,
+            self.weight,
+            stride=self.stride,
+            padding=0,
+            dilation=self.dilation,
+        )
+        return output if self.bias is None else output + self.bias
+
     def init_stream_state(
         self,
         batch_size: int,
@@ -207,10 +214,11 @@ class Conv1d(nn.Module):
     ) -> SequenceStreamState:
         if not self.causal or self.stride != 1:
             raise ValueError("streaming Conv1d state requires causal stride one")
-        return _empty_sequence_state(
-            batch_size,
-            int(self.weight.shape[-1]),
-            dtype,
+        return SequenceStreamState(
+            mx.zeros(
+                (batch_size, self.left_context, int(self.weight.shape[-1])),
+                dtype=dtype,
+            )
         )
 
     def stream(
@@ -229,12 +237,19 @@ class Conv1d(nn.Module):
                 ),
                 state,
             )
-        tail_length = int(state.tail.shape[1])
-        combined = mx.concatenate((state.tail, value), axis=1)
-        output = self(combined)[:, tail_length : tail_length + frame_count]
-        return output, SequenceStreamState(
-            _updated_tail(combined, self.left_context)
+        expected_tail = (
+            int(value.shape[0]),
+            self.left_context,
+            int(self.weight.shape[-1]),
         )
+        if state.tail.shape != expected_tail:
+            raise ValueError(
+                "streaming Conv1d state has invalid shape: "
+                f"expected {expected_tail}, got {state.tail.shape}"
+            )
+        combined = mx.concatenate((state.tail, value), axis=1)
+        output = self._call_without_padding(combined)
+        return output, SequenceStreamState(_updated_tail(combined, self.left_context))
 
     def init_lookahead_state(
         self,
@@ -260,9 +275,7 @@ class Conv1d(nn.Module):
         available = mx.concatenate((state.pending, value), axis=1)
         available_frames = int(available.shape[1])
         stable_frames = (
-            available_frames
-            if final
-            else max(0, available_frames - self.right_context)
+            available_frames if final else max(0, available_frames - self.right_context)
         )
         if stable_frames == 0:
             return (
@@ -277,12 +290,9 @@ class Conv1d(nn.Module):
             )
         history_frames = int(state.history.shape[1])
         combined = mx.concatenate((state.history, available), axis=1)
-        output = self(combined)[
-            :, history_frames : history_frames + stable_frames
-        ]
-        processed = available[:, :stable_frames]
+        output = self(combined)[:, history_frames : history_frames + stable_frames]
         history = _updated_tail(
-            mx.concatenate((state.history, processed), axis=1),
+            combined[:, : history_frames + stable_frames],
             self.left_context,
         )
         return output, LookaheadStreamState(
@@ -303,14 +313,20 @@ class Conv1d(nn.Module):
         receptive_field = self.dilation * (self.kernel_size - 1)
         return receptive_field - self.padding
 
-    def _call_high_precision(self, value: mx.array) -> mx.array:
+    def _call_high_precision(
+        self,
+        value: mx.array,
+        *,
+        apply_padding: bool = True,
+    ) -> mx.array:
         """Run an encoder-only convolution with true FP32 reductions."""
 
         value = value.astype(mx.float32)
-        if self.causal and self.left_padding:
-            value = mx.pad(value, ((0, 0), (self.left_padding, 0), (0, 0)))
-        elif self.padding:
-            value = mx.pad(value, ((0, 0), (self.padding, self.padding), (0, 0)))
+        if apply_padding:
+            if self.causal and self.left_padding:
+                value = mx.pad(value, ((0, 0), (self.left_padding, 0), (0, 0)))
+            elif self.padding:
+                value = mx.pad(value, ((0, 0), (self.padding, self.padding), (0, 0)))
         weight = self.weight.astype(mx.float32)
         kernel = int(weight.shape[1])
         padded_time = int(value.shape[1])
@@ -322,9 +338,7 @@ class Conv1d(nn.Module):
         for time_start in range(0, output_time, HIGH_PRECISION_TIME_TILE):
             time_end = min(time_start + HIGH_PRECISION_TIME_TILE, output_time)
             channel_tiles = []
-            for channel_start in range(
-                0, output_channels, HIGH_PRECISION_OUTPUT_TILE
-            ):
+            for channel_start in range(0, output_channels, HIGH_PRECISION_OUTPUT_TILE):
                 channel_end = min(
                     channel_start + HIGH_PRECISION_OUTPUT_TILE, output_channels
                 )
@@ -333,7 +347,8 @@ class Conv1d(nn.Module):
                     start = tap * self.dilation + time_start * self.stride
                     frames = value[
                         :,
-                        start : start + self.stride * (time_end - time_start) : self.stride,
+                        start : start
+                        + self.stride * (time_end - time_start) : self.stride,
                         :,
                     ]
                     contribution = mx.sum(
@@ -347,9 +362,7 @@ class Conv1d(nn.Module):
                         ],
                         axis=-1,
                     )
-                    output = (
-                        contribution if output is None else output + contribution
-                    )
+                    output = contribution if output is None else output + contribution
                 if output is None:
                     raise ValueError("high-precision convolution has an empty kernel")
                 if self.bias is not None:
@@ -377,13 +390,15 @@ class CausalConvTranspose1d(nn.Module):
     ):
         super().__init__()
         if kernel_size != 2 * stride:
-            raise ValueError("causal transposed convolution requires kernel_size=2*stride")
+            raise ValueError(
+                "causal transposed convolution requires kernel_size=2*stride"
+            )
         self.stride = int(stride)
         self.kernel_size = int(kernel_size)
         scale = math.sqrt(2.0 / (input_channels * kernel_size + output_channels))
-        self.weight = mx.random.normal(
-            (output_channels, kernel_size, input_channels)
-        ) * scale
+        self.weight = (
+            mx.random.normal((output_channels, kernel_size, input_channels)) * scale
+        )
         self.bias = mx.zeros((output_channels,)) if bias else None
 
     def __call__(self, value: mx.array) -> mx.array:
@@ -422,12 +437,9 @@ class CausalConvTranspose1d(nn.Module):
         combined = mx.concatenate((state.tail, value), axis=1)
         output = self(combined)[
             :,
-            tail_length * self.stride : (tail_length + frame_count)
-            * self.stride,
+            tail_length * self.stride : (tail_length + frame_count) * self.stride,
         ]
-        return output, SequenceStreamState(
-            _updated_tail(combined, self.left_context)
-        )
+        return output, SequenceStreamState(_updated_tail(combined, self.left_context))
 
     @property
     def left_context(self) -> int:
@@ -550,17 +562,13 @@ class AliasFreeSnakeBeta(nn.Module):
         tail_length = int(state.tail.shape[1])
         combined = mx.concatenate((state.tail, value), axis=1)
         output = self(combined)[:, tail_length : tail_length + frame_count]
-        return output, SequenceStreamState(
-            _updated_tail(combined, self.left_context)
-        )
+        return output, SequenceStreamState(_updated_tail(combined, self.left_context))
 
     @property
     def left_context(self) -> int:
         upsample_context = int(self.up_filter.shape[1]) - 1
         downsample_context = int(self.down_filter.shape[1]) - 1
-        return (
-            upsample_context + downsample_context + self.ratio - 1
-        ) // self.ratio
+        return (upsample_context + downsample_context + self.ratio - 1) // self.ratio
 
 
 class AMPBlock(nn.Module):
@@ -582,8 +590,7 @@ class AMPBlock(nn.Module):
             for dilation in dilations
         ]
         self.convs2 = [
-            Conv1d(channels, channels, kernel_size, causal=True)
-            for _ in dilations
+            Conv1d(channels, channels, kernel_size, causal=True) for _ in dilations
         ]
         self.activations = [
             AliasFreeSnakeBeta(channels) for _ in range(2 * len(dilations))
@@ -611,12 +618,10 @@ class AMPBlock(nn.Module):
                 for activation in self.activations
             ),
             first_convs=tuple(
-                conv.init_stream_state(batch_size, dtype=dtype)
-                for conv in self.convs1
+                conv.init_stream_state(batch_size, dtype=dtype) for conv in self.convs1
             ),
             second_convs=tuple(
-                conv.init_stream_state(batch_size, dtype=dtype)
-                for conv in self.convs2
+                conv.init_stream_state(batch_size, dtype=dtype) for conv in self.convs2
             ),
         )
 
@@ -631,9 +636,9 @@ class AMPBlock(nn.Module):
         for index, (first, second) in enumerate(
             zip(self.convs1, self.convs2, strict=True)
         ):
-            update, activation_states[2 * index] = self.activations[
-                2 * index
-            ].stream(value, activation_states[2 * index])
+            update, activation_states[2 * index] = self.activations[2 * index].stream(
+                value, activation_states[2 * index]
+            )
             update, first_conv_states[index] = first.stream(
                 update, first_conv_states[index]
             )
@@ -690,9 +695,7 @@ class BigVGANDecoder(nn.Module):
         self.ups = []
         self.resblocks = []
         channels = int(initial_channels)
-        for rate, kernel in zip(
-            upsample_rates, upsample_kernel_sizes, strict=True
-        ):
+        for rate, kernel in zip(upsample_rates, upsample_kernel_sizes, strict=True):
             output_channels = channels // 2
             self.ups.append(
                 CausalConvTranspose1d(
@@ -778,9 +781,7 @@ class BigVGANDecoder(nn.Module):
             raise ValueError("BigVGAN stream batch size changed")
         if state.finalized:
             if int(value.shape[1]) == 0:
-                return mx.zeros(
-                    (int(value.shape[0]), 0, 1), dtype=value.dtype
-                ), state
+                return mx.zeros((int(value.shape[0]), 0, 1), dtype=value.dtype), state
             raise ValueError("BigVGAN stream is already finalized")
 
         value, conv_pre_state = self.conv_pre.stream_lookahead(

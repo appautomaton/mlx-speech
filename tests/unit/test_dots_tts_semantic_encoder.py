@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 from mlx.utils import tree_flatten
 
+from mlx_speech.models.dots_tts.layers import SemanticAttention
 from mlx_speech.models.dots_tts.semantic_encoder import VAESemanticEncoder
 
 
@@ -37,6 +38,28 @@ def test_full_prefill_and_incremental_decode_agree() -> None:
     # Full masked attention and cached attention use different fused SDPA shapes;
     # gate their equivalent result with the checked-in semantic oracle tolerance.
     np.testing.assert_allclose(combined, full, atol=0.02, rtol=0.02)
+
+
+def test_semantic_transformer_builds_one_mask_per_step(monkeypatch) -> None:
+    model = _encoder()
+    original_mask = SemanticAttention._mask
+    calls: list[tuple[int, int, mx.Dtype]] = []
+
+    def record_mask(
+        offset: int,
+        length: int,
+        *,
+        dtype: mx.Dtype,
+    ) -> mx.array | None:
+        calls.append((offset, length, dtype))
+        return original_mask(offset, length, dtype=dtype)
+
+    monkeypatch.setattr(SemanticAttention, "_mask", staticmethod(record_mask))
+    _, state = model.prefill(mx.zeros((1, 4, 4)), max_audio_patches=2)
+    _, state = model.decode_patch(mx.ones((1, 4, 4)), state)
+    mx.eval(*(cache.fetch()[0] for cache in state.layer_caches))
+
+    assert calls == [(0, 2, mx.float32), (2, 2, mx.float32)]
 
 
 def test_semantic_encoder_is_causal_across_patches() -> None:
