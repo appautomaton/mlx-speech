@@ -234,6 +234,31 @@ def test_cache_scratch_storage_is_physical_per_nfe_layer() -> None:
         )
 
 
+def test_cache_scratch_window_rejects_stale_writes_after_reopen_and_publish() -> None:
+    cache = DiTKvCache.allocate(
+        capacity_patches=64,
+        unit_length=1,
+        nfe=1,
+        num_layers=1,
+        branch_count=1,
+        batch_size=1,
+        num_heads=1,
+        head_dim=2,
+        key_dtype=mx.float32,
+        value_dtype=mx.float32,
+    )
+    keys = mx.ones((1, 1, 2, 2), dtype=mx.float32)
+    values = -keys
+    first = cache.open_scratch_window()
+    second = cache.open_scratch_window()
+    with pytest.raises(RuntimeError, match="stale"):
+        first.write(0, 0, keys, values)
+    second.write(0, 0, keys, values)
+    cache.publish_unit()
+    with pytest.raises(RuntimeError, match="stale"):
+        second.write(0, 0, keys, values)
+
+
 def _oracle_meanflow(
     solver: MeanFlowSolver,
     sequence: mx.array,
@@ -850,19 +875,26 @@ def test_bfloat16_later_patch_uses_projected_cache_dtypes(
     cfg_sequence = _sequence([cfg_previous], _current(-0.2).astype(mx.bfloat16))
     noise = mx.full((1, _PATCH_SIZE, _LATENT_DIM), 0.3, dtype=mx.bfloat16)
     projected_dtypes = []
-    original_write_scratch = DiTKvCache.write_scratch
+    original_write_scratch = DiTKvCache._write_scratch_window
 
-    def record_projected_dtypes(cache_self, nfe_index, layer_index, keys, values):
+    def record_projected_dtypes(
+        cache_self, window, nfe_index, layer_index, keys, values
+    ):
         projected_dtypes.append((keys.dtype, values.dtype))
         return original_write_scratch(
             cache_self,
+            window,
             nfe_index,
             layer_index,
             keys,
             values,
         )
 
-    monkeypatch.setattr(DiTKvCache, "write_scratch", record_projected_dtypes)
+    monkeypatch.setattr(
+        DiTKvCache,
+        "_write_scratch_window",
+        record_projected_dtypes,
+    )
     if mode == "meanflow":
         expected = _oracle_meanflow(oracle, sequence, noise, speaker)
         actual = cached.sample(
@@ -1266,11 +1298,12 @@ def test_mid_nfe_failure_preserves_exact_published_prefix_and_retry(monkeypatch)
         noise=third_noise,
     )
     assert clean_state.cache is not None
-    original_write_scratch = DiTKvCache.write_scratch
+    original_write_scratch = DiTKvCache._write_scratch_window
 
-    def fail_mid_nfe(cache_self, nfe_index, layer_index, keys, values):
+    def fail_mid_nfe(cache_self, window, nfe_index, layer_index, keys, values):
         end = original_write_scratch(
             cache_self,
+            window,
             nfe_index,
             layer_index,
             keys,
@@ -1280,7 +1313,7 @@ def test_mid_nfe_failure_preserves_exact_published_prefix_and_retry(monkeypatch)
             raise RuntimeError("injected mid-NFE failure")
         return end
 
-    monkeypatch.setattr(DiTKvCache, "write_scratch", fail_mid_nfe)
+    monkeypatch.setattr(DiTKvCache, "_write_scratch_window", fail_mid_nfe)
     with pytest.raises(RuntimeError, match="injected mid-NFE"):
         cached.sample(
             state,
@@ -1305,7 +1338,11 @@ def test_mid_nfe_failure_preserves_exact_published_prefix_and_retry(monkeypatch)
         for layer in nfe_layers:
             layer[..., published_length:scratch_end, :] = -41.0
     mx.eval(cache.cache_k, cache.cache_v)
-    monkeypatch.setattr(DiTKvCache, "write_scratch", original_write_scratch)
+    monkeypatch.setattr(
+        DiTKvCache,
+        "_write_scratch_window",
+        original_write_scratch,
+    )
     actual = cached.sample(
         state,
         sequence=third_sequence,

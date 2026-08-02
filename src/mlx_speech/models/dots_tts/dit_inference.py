@@ -61,6 +61,7 @@ class DiTKvCache:
     cache_k: tuple[tuple[mx.array, ...], ...]
     cache_v: tuple[tuple[mx.array, ...], ...]
     offsets: list[int]
+    _scratch_epoch: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.capacity_patches not in DIT_CACHE_BUCKETS:
@@ -329,6 +330,43 @@ class DiTKvCache:
         self.cache_v[nfe_index][layer_index][..., start:end, :] = values
         return end
 
+    def open_scratch_window(self) -> _DiTScratchWindow:
+        """Validate and reserve one unpublished two-unit tail."""
+
+        start = self.valid_tokens
+        attention_end = start + 2 * self.unit_length
+        if attention_end > self.capacity_tokens:
+            raise ValueError(
+                "DiT cache scratch overflow: "
+                f"required={attention_end} capacity={self.capacity_tokens}"
+            )
+        self._scratch_epoch += 1
+        return _DiTScratchWindow(
+            cache=self,
+            epoch=self._scratch_epoch,
+            start=start,
+            attention_end=attention_end,
+        )
+
+    def invalidate_scratch(self) -> None:
+        self._scratch_epoch += 1
+
+    def _write_scratch_window(
+        self,
+        window: _DiTScratchWindow,
+        nfe_index: int,
+        layer_index: int,
+        keys: mx.array,
+        values: mx.array,
+    ) -> int:
+        self.cache_k[nfe_index][layer_index][
+            ..., window.start : window.attention_end, :
+        ] = keys
+        self.cache_v[nfe_index][layer_index][
+            ..., window.start : window.attention_end, :
+        ] = values
+        return window.attention_end
+
     def publish_unit(self) -> None:
         """Atomically expose one finalized unit for every NFE."""
 
@@ -338,7 +376,39 @@ class DiTKvCache:
             raise ValueError(
                 f"DiT cache overflow: required={end} capacity={self.capacity_tokens}"
             )
+        self.invalidate_scratch()
         self.offsets = [end] * self.nfe
+
+
+@dataclass(frozen=True)
+class _DiTScratchWindow:
+    """Validated unpublished K/V range owned by one patch transaction."""
+
+    cache: DiTKvCache
+    epoch: int
+    start: int
+    attention_end: int
+
+    def write(
+        self,
+        nfe_index: int,
+        layer_index: int,
+        keys: mx.array,
+        values: mx.array,
+    ) -> int:
+        if self.cache._scratch_epoch != self.epoch:
+            raise RuntimeError("DiT cache scratch window is stale")
+        if nfe_index < 0 or nfe_index >= self.cache.nfe:
+            raise ValueError(f"DiT cache NFE index is out of range: {nfe_index}")
+        if layer_index < 0 or layer_index >= self.cache.num_layers:
+            raise ValueError(f"DiT cache layer index is out of range: {layer_index}")
+        return self.cache._write_scratch_window(
+            self,
+            nfe_index,
+            layer_index,
+            keys,
+            values,
+        )
 
 
 @dataclass
@@ -702,6 +772,7 @@ class CachedDiTRunner:
         rotary_cos_sin: RotaryCosSin = None,
         cache: DiTKvCache | None = None,
         cache_factory: CacheFactory | None = None,
+        scratch_window: _DiTScratchWindow | None = None,
         nfe_index: int | None = None,
         commit_length: int = 0,
         scratch_length: int = 0,
@@ -710,6 +781,7 @@ class CachedDiTRunner:
         mx.array | None,
         mx.array | None,
         DiTKvCache | None,
+        _DiTScratchWindow | None,
     ]:
         block_modulations, _final_modulation = modulations
         if len(block_modulations) != self.num_layers:
@@ -717,6 +789,8 @@ class CachedDiTRunner:
         if cache is not None or cache_factory is not None:
             if nfe_index is None:
                 raise ValueError("cached DiT attention requires an NFE index")
+        if scratch_length and cache is not None and scratch_window is None:
+            scratch_window = cache.open_scratch_window()
         committed_keys: list[mx.array] = []
         committed_values: list[mx.array] = []
         for layer_index, (block, block_modulation) in enumerate(
@@ -744,9 +818,12 @@ class CachedDiTRunner:
                     if cache_factory is None:
                         raise RuntimeError("cached DiT scratch has no storage factory")
                     cache = cache_factory(key.dtype, projected_value.dtype)
+                    scratch_window = cache.open_scratch_window()
                 if int(key.shape[-2]) != scratch_length:
                     raise ValueError("cached DiT projected scratch length differs")
-                key_end = cache.write_scratch(
+                if scratch_window is None:
+                    raise RuntimeError("cached DiT scratch window was not opened")
+                key_end = scratch_window.write(
                     nfe_index,
                     layer_index,
                     key,
@@ -785,12 +862,13 @@ class CachedDiTRunner:
                 )
                 value = value + gate_ffn[:, None] * feed_forward
         if not commit_length:
-            return value, None, None, cache
+            return value, None, None, cache, scratch_window
         return (
             value,
             mx.stack(committed_keys, axis=0),
             mx.stack(committed_values, axis=0),
             cache,
+            scratch_window,
         )
 
     def _apply_final(
@@ -817,7 +895,7 @@ class CachedDiTRunner:
         prefix_length = int(projected_prefix.shape[1])
         if prefix_length == 0:
             raise ValueError("DiT prompt prefill requires a non-empty prefix")
-        _value, keys, values, _cache = self._run_blocks(
+        _value, keys, values, _cache, _scratch_window = self._run_blocks(
             projected_prefix,
             modulations,
             positions=positions,
@@ -849,7 +927,7 @@ class CachedDiTRunner:
             cfg_invariant_input=cfg_invariant_input,
             projected_invariant=projected_invariant,
         )
-        value, _keys, _values, _cache = self._run_blocks(
+        value, _keys, _values, _cache, _scratch_window = self._run_blocks(
             value_input,
             modulations,
             positions=positions,
@@ -875,20 +953,21 @@ class CachedDiTRunner:
         batch_size: int,
         cache: DiTKvCache | None,
         cache_factory: CacheFactory | None,
+        scratch_window: _DiTScratchWindow | None,
         nfe_index: int,
         modulations: PreparedModulations,
         positions: mx.array,
         rotary_cos_sin: RotaryCosSin,
         attention_bias: mx.array | None,
         guidance_scale: float,
-    ) -> tuple[mx.array, DiTKvCache]:
+    ) -> tuple[mx.array, DiTKvCache, _DiTScratchWindow]:
         value_input = self._compose_solver_input(
             coordinate,
             invariant_input=invariant_input,
             cfg_invariant_input=cfg_invariant_input,
             projected_invariant=projected_invariant,
         )
-        value, _keys, _values, cache = self._run_blocks(
+        value, _keys, _values, cache, scratch_window = self._run_blocks(
             value_input,
             modulations,
             positions=positions,
@@ -896,11 +975,14 @@ class CachedDiTRunner:
             attention_bias=attention_bias,
             cache=cache,
             cache_factory=cache_factory,
+            scratch_window=scratch_window,
             nfe_index=nfe_index,
             scratch_length=2 * self.unit_length,
         )
         if cache is None:
             raise RuntimeError("cached DiT tail did not produce scratch K/V")
+        if scratch_window is None:
+            raise RuntimeError("cached DiT tail did not retain its scratch window")
         latent_start = self.unit_length + self.hidden_patch_size
         prediction = self._apply_final(value, modulations)[:, latent_start:]
         if self.mode == "meanflow":
@@ -911,7 +993,7 @@ class CachedDiTRunner:
             velocity = conditional_velocity + float(guidance_scale) * (
                 conditional_velocity - unconditional_velocity
             )
-        return velocity, cache
+        return velocity, cache, scratch_window
 
 
 class CachedDiTSolver:
@@ -1029,6 +1111,7 @@ class CachedDiTSolver:
         )
         self._copy_published_cache(cache, replacement)
         self._materialize_cache_growth(replacement)
+        cache.invalidate_scratch()
         return replacement
 
     def _prepare_request(
@@ -1442,8 +1525,9 @@ class CachedDiTSolver:
             invariant_input,
             cfg_invariant_input,
         )
+        scratch_window: _DiTScratchWindow | None = None
         for nfe_index, modulations in enumerate(modulations_by_nfe):
-            velocity, cache = self.runner.next_velocity(
+            velocity, cache, scratch_window = self.runner.next_velocity(
                 coordinate,
                 invariant_input=invariant_input,
                 cfg_invariant_input=cfg_invariant_input,
@@ -1451,6 +1535,7 @@ class CachedDiTSolver:
                 batch_size=batch_size,
                 cache=cache,
                 cache_factory=cache_factory,
+                scratch_window=scratch_window,
                 nfe_index=nfe_index,
                 modulations=modulations,
                 positions=tail_positions,

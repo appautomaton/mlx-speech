@@ -67,6 +67,10 @@ git diff --check
 
 **Produces:** a retained validated scratch window or an evidence-backed no-change slice
 
+**Status:** complete
+**Evidence:** Added one epoch-bound scratch window per patch; reopening, publish, and cache growth invalidate stale windows, while layer/NFE writes reuse the validated range and delayed offsets still publish only after materialization. One warmed same-loaded production MF cached-tail A/B was exact and improved 18.144 ms to 17.945 ms (1.095%), meeting the retention gate. Focused cache/DiT tests passed 51 cases and the unit suite passed 870 cases.
+**Risks / next:** The gain is small and close to the slice threshold; the final request gate decides whether it survives in the combined implementation.
+
 ### Slice 3: Compile the stable pre-attention bridge
 
 **Objective:** Reduce the repeated layer-boundary kernels by compiling a stable explicit-weight bridge while leaving dynamic scratch and SDPA eager.
