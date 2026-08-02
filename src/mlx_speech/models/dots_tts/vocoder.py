@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 
 import mlx.core as mx
@@ -15,6 +16,10 @@ HIGH_PRECISION_TIME_TILE = 512
 _ALIAS_FREE_FILTER_SIZE = 12
 _ALIAS_FREE_RATIO = 2
 _ALIAS_FREE_OUTPUTS_PER_THREAD = 16
+_CUSTOM_METAL_AVAILABLE = (
+    os.environ.get("MLX_SPEECH_DISABLE_CUSTOM_METAL") != "1"
+    and mx.metal.is_available()
+)
 
 
 _alias_free_snakebeta_kernel = mx.fast.metal_kernel(
@@ -470,7 +475,7 @@ class AliasFreeSnakeBeta(nn.Module):
             and int(self.up_filter.shape[1]) == _ALIAS_FREE_FILTER_SIZE
             and int(self.down_filter.shape[1]) == _ALIAS_FREE_FILTER_SIZE
             and value.dtype in (mx.float16, mx.bfloat16)
-            and mx.metal.is_available()
+            and _CUSTOM_METAL_AVAILABLE
         ):
             segment_count = (
                 int(value.shape[1]) + _ALIAS_FREE_OUTPUTS_PER_THREAD - 1

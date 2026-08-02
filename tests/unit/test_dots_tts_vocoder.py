@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import mlx.core as mx
 import numpy as np
 import pytest
@@ -43,7 +45,11 @@ def test_alias_free_snakebeta_preserves_shape_and_is_finite() -> None:
     assert activation.left_context == 11
 
 
-@pytest.mark.skipif(not mx.metal.is_available(), reason="requires Metal")
+@pytest.mark.skipif(
+    os.environ.get("MLX_SPEECH_DISABLE_CUSTOM_METAL") == "1"
+    or not mx.metal.is_available(),
+    reason="requires custom Metal kernels",
+)
 @pytest.mark.parametrize("length", (1, 7, 33))
 @pytest.mark.parametrize("dtype", (mx.float16, mx.bfloat16))
 def test_fused_alias_free_snakebeta_matches_eager(
