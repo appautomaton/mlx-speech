@@ -169,3 +169,28 @@ git diff --check
 | Required default | `.venv/bin/python -m pytest tests/unit/` | every retained slice |
 | Inference tiers | `.venv/bin/python -m pytest tests/unit/ tests/checkpoint/ tests/runtime/` | final retained implementation |
 | Final real request | one same-loaded 261-patch baseline/optimized pair | Slice 5 only |
+
+## Verification
+
+### Summary
+
+**Overall:** PASS
+**Passed:** 24 of 24 corrected plan criteria
+**Remaining gaps:** none
+
+### Slice rollup
+
+- **Slice 1 — PASS (4/4):** direct source search confirms the non-exact invariant-projection candidate and its test are absent. The recorded public-path isolation identified the BF16 lazy-graph divergence before retention; the original full projection remains.
+- **Slice 2 — PASS (5/5):** fresh focused DiT/cache/solver verification passed 55 tests. Direct inspection confirms one epoch-bound window per patch, invalidation on reopen/publish/growth, unchanged contiguous K/V storage, and delayed publication after materialization.
+- **Slice 3 — PASS (5/5 corrected):** source search confirms no cross-layer bridge, standalone pre-attention compile cache, selector, or compile key remains after both candidates failed exactness and speed gates.
+- **Slice 4 — PASS (5/5 corrected):** source search confirms no prepared-attention candidate remains after its exact but slower production gate. Existing fast SDPA and prepared rotary/bias path are unchanged; the rejected-path GPU capture is not applicable under the recorded correction.
+- **Slice 5 — PASS (5/5):** the single corrected same-loaded 261-patch gate recorded bit-exact 41.76-second audio, 19.949 s to 19.274 s request time (3.382% faster), and MLX allocator peak growth of 0.132%. The final combined test command reported 936 passed and 34 skipped; fresh scoped Ruff, `git diff --check`, rejected-symbol/temp-script searches, and WAV health inspection passed.
+
+### Commands and observations
+
+- `.venv/bin/python -m pytest tests/unit/ tests/checkpoint/ tests/runtime/ -q` — 936 passed, 34 skipped in 190.53 s; not repeated after the verified source commit.
+- `.venv/bin/python -m pytest tests/unit/test_dots_tts_dit.py tests/unit/test_dots_tts_dit_cache.py tests/unit/test_dots_tts_solvers.py -q` — fresh verification: 55 passed.
+- Scoped Ruff and `git diff --check` — passed.
+- Derived source searches confirmed the retained scratch-window symbols and absence of every rejected candidate symbol and temporary script.
+- Derived WAV inspection confirmed `/private/tmp/hank_dots_tts_261_optimized.wav` is finite, non-silent, 48 kHz, 2,004,480 samples, and 41.76 seconds.
+- The final generation pair and rejected-candidate timing pairs were not repeated during verification because the approved plan permits one production pair per candidate and explicitly forbids repeated uncached trials.
