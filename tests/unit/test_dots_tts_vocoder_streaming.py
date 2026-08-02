@@ -8,7 +8,6 @@ import pytest
 from mlx.utils import tree_flatten
 
 from mlx_speech.models.dots_tts.audio_vae import (
-    _COMPILED_VOCODER_CACHE_LIMIT,
     AudioVAE,
     VocoderDecodeState,
 )
@@ -42,9 +41,7 @@ def _stream_chunks(
         )
         chunks.append(output)
         emitted_samples.append(int(output.shape[-1]))
-        assert int(state.decoder_input.shape[1]) == model.decoder.stream_window_size(
-            maximum_chunk_size
-        )
+        _assert_decoder_state_bounded(model, state)
         offset = end
         size_index += 1
     return mx.concatenate(chunks, axis=-1), state, tuple(emitted_samples)
@@ -57,12 +54,18 @@ def _assert_state_close(
     assert actual.maximum_chunk_size == expected.maximum_chunk_size
     assert actual.total_frames == expected.total_frames
     assert actual.emitted_frames == expected.emitted_frames
-    np.testing.assert_allclose(
-        actual.decoder_input.astype(mx.float32),
-        expected.decoder_input.astype(mx.float32),
-        atol=0.0,
-        rtol=0.0,
-    )
+    assert actual.decoder_state.finalized == expected.decoder_state.finalized
+    for actual_tensor, expected_tensor in zip(
+        actual.decoder_state.arrays(),
+        expected.decoder_state.arrays(),
+        strict=True,
+    ):
+        np.testing.assert_allclose(
+            actual_tensor.astype(mx.float32),
+            expected_tensor.astype(mx.float32),
+            atol=0.0,
+            rtol=0.0,
+        )
     for actual_layer, expected_layer in zip(
         actual.recurrent_state, expected.recurrent_state, strict=True
     ):
@@ -75,6 +78,55 @@ def _assert_state_close(
                 atol=1e-5,
                 rtol=1e-5,
             )
+
+
+def _assert_decoder_state_bounded(
+    model: AudioVAE,
+    state: VocoderDecodeState,
+) -> None:
+    decoder_state = state.decoder_state
+    assert int(decoder_state.conv_pre.history.shape[1]) <= (
+        model.decoder.conv_pre.left_context
+    )
+    assert int(decoder_state.conv_pre.pending.shape[1]) <= (
+        model.decoder.stream_lookahead
+    )
+    for layer_state, layer in zip(
+        decoder_state.upsamples,
+        model.decoder.ups,
+        strict=True,
+    ):
+        assert int(layer_state.tail.shape[1]) <= layer.left_context
+    for stage_state, blocks in zip(
+        decoder_state.resblocks,
+        model.decoder.resblocks,
+        strict=True,
+    ):
+        for block_state, block in zip(stage_state, blocks, strict=True):
+            for activation_state, activation in zip(
+                block_state.activations,
+                block.activations,
+                strict=True,
+            ):
+                assert int(activation_state.tail.shape[1]) <= activation.left_context
+            for conv_state, conv in zip(
+                block_state.first_convs,
+                block.convs1,
+                strict=True,
+            ):
+                assert int(conv_state.tail.shape[1]) <= conv.left_context
+            for conv_state, conv in zip(
+                block_state.second_convs,
+                block.convs2,
+                strict=True,
+            ):
+                assert int(conv_state.tail.shape[1]) <= conv.left_context
+    assert int(decoder_state.activation_post.tail.shape[1]) <= (
+        model.decoder.activation_post.left_context
+    )
+    assert int(decoder_state.conv_post.tail.shape[1]) <= (
+        model.decoder.conv_post.left_context
+    )
 
 
 def test_alias_free_left_padding_has_a_finite_safe_seam() -> None:
@@ -109,7 +161,7 @@ def test_alias_free_left_padding_has_a_finite_safe_seam() -> None:
         (mx.bfloat16, 1e-2, 1e-2),
     ),
 )
-def test_streaming_window_is_bounded_and_matches_every_chunk_seam(
+def test_streaming_state_is_bounded_and_matches_every_chunk_seam(
     weight_dtype: mx.Dtype,
     atol: float,
     rtol: float,
@@ -124,13 +176,14 @@ def test_streaming_window_is_bounded_and_matches_every_chunk_seam(
 
     assert tuple(field.name for field in fields(state)) == (
         "recurrent_state",
-        "decoder_input",
+        "decoder_state",
         "maximum_chunk_size",
         "total_frames",
         "emitted_frames",
     )
     assert state.total_frames == state.emitted_frames == 40
-    assert int(state.decoder_input.shape[1]) == 33
+    assert state.decoder_state.finalized
+    _assert_decoder_state_bounded(model, state)
     np.testing.assert_allclose(streamed, full, atol=atol, rtol=rtol)
 
     seams = np.cumsum([size for size in chunk_samples if size])[:-1]
@@ -173,6 +226,8 @@ def test_streaming_flushes_lookahead_once_after_partial_groups() -> None:
     assert int(duplicate_tail.shape[-1]) == 0
     assert duplicate_state.emitted_frames == duplicate_state.total_frames == 9
     np.testing.assert_allclose(streamed, full, atol=5e-3, rtol=5e-3)
+    with pytest.raises(ValueError, match="already finalized"):
+        model.decode_chunk(latent[:, :, :1], state)
 
 
 def test_compiled_common_and_residual_shapes_reuse_pure_tensor_helpers(
@@ -210,9 +265,6 @@ def test_compiled_common_and_residual_shapes_reuse_pure_tensor_helpers(
         for key in model._compiled_vocoder_functions
         if key.operation == "recurrent"
     }
-    decoder_keys = {
-        key for key in model._compiled_vocoder_functions if key.operation == "decoder"
-    }
     assert {key.shapes[0] for key in recurrent_keys} == {
         (1, model.latent_dim, 4),
         (1, model.latent_dim, 8),
@@ -230,11 +282,10 @@ def test_compiled_common_and_residual_shapes_reuse_pure_tensor_helpers(
     assert {key.model_identity for key in recurrent_keys} == {
         id(model.dec_mi_layer)
     }
-    assert len(decoder_keys) == 1
-    decoder_key = next(iter(decoder_keys))
-    assert decoder_key.shapes == ((1, 46, model.latent_dim),)
-    assert decoder_key.dtypes == (str(mx.bfloat16),)
-    assert decoder_key.model_identity == id(model.decoder)
+    assert all(
+        key.operation == "recurrent"
+        for key in model._compiled_vocoder_functions
+    )
 
     recurrent_cache = {
         key: function
@@ -297,7 +348,10 @@ def test_recurrent_tile_failure_leaves_caller_state_retryable(
         model.decode_chunk(latent, state, final=True)
     assert calls == 2
     assert state.total_frames == state.emitted_frames == 0
-    assert not bool(mx.any(state.decoder_input).item())
+    assert all(
+        not bool(mx.any(tensor).item())
+        for tensor in state.decoder_state.arrays()
+    )
     assert all(
         not bool(mx.any(tensor).item())
         for layer_state in state.recurrent_state
@@ -309,6 +363,40 @@ def test_recurrent_tile_failure_leaves_caller_state_retryable(
     expected, expected_state = model.decode_chunk(
         latent,
         model.init_decode_state(maximum_chunk_size=20),
+        final=True,
+    )
+    np.testing.assert_allclose(retried, expected, atol=0.0, rtol=0.0)
+    _assert_state_close(retried_state, expected_state)
+
+
+def test_decoder_failure_leaves_caller_state_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _model(134)
+    mx.random.seed(135)
+    latent = mx.random.normal((1, model.latent_dim, 9))
+    state = model.init_decode_state(maximum_chunk_size=9)
+    original_stream = model.decoder.stream
+
+    def fail_after_build(*args, **kwargs):
+        original_stream(*args, **kwargs)
+        raise RuntimeError("injected decoder failure")
+
+    monkeypatch.setattr(model.decoder, "stream", fail_after_build)
+    with pytest.raises(RuntimeError, match="injected decoder failure"):
+        model.decode_chunk(latent, state, final=True)
+    assert state.total_frames == state.emitted_frames == 0
+    assert not state.decoder_state.finalized
+    assert all(
+        not bool(mx.any(tensor).item())
+        for tensor in state.decoder_state.arrays()
+    )
+
+    monkeypatch.setattr(model.decoder, "stream", original_stream)
+    retried, retried_state = model.decode_chunk(latent, state, final=True)
+    expected, expected_state = model.decode_chunk(
+        latent,
+        model.init_decode_state(maximum_chunk_size=9),
         final=True,
     )
     np.testing.assert_allclose(retried, expected, atol=0.0, rtol=0.0)
@@ -353,7 +441,7 @@ def test_compiled_recurrent_tiles_isolate_interleaved_requests() -> None:
         _assert_state_close(states[request], expected_state)
 
 
-def test_compiled_helpers_observe_same_dtype_weight_replacement() -> None:
+def test_compiled_recurrent_observes_same_dtype_weight_replacement() -> None:
     model = _model(137)
     model.set_dtype(mx.bfloat16)
     mx.random.seed(139)
@@ -366,26 +454,13 @@ def test_compiled_helpers_observe_same_dtype_weight_replacement() -> None:
         recurrent_state,
         use_compiled=True,
     )
-    decoder_input = mx.random.normal(
-        (1, model.decoder.stream_window_size(4), model.latent_dim)
-    ).astype(model.decoder.input_dtype)
-    warm_decoder = model._execute_decoder_window(
-        decoder_input,
-        use_compiled=True,
-    )
-    mx.eval(warm_recurrent, warm_decoder)
+    mx.eval(warm_recurrent)
     recurrent_key = next(
         key
         for key in model._compiled_vocoder_functions
         if key.operation == "recurrent"
     )
-    decoder_key = next(
-        key
-        for key in model._compiled_vocoder_functions
-        if key.operation == "decoder"
-    )
     recurrent_function = model._compiled_vocoder_functions[recurrent_key]
-    decoder_function = model._compiled_vocoder_functions[decoder_key]
 
     model.post_proj.weight = mx.zeros_like(model.post_proj.weight)
     updated_recurrent, _ = model._execute_recurrent_step(
@@ -398,30 +473,13 @@ def test_compiled_helpers_observe_same_dtype_weight_replacement() -> None:
         recurrent_state,
         use_compiled=False,
     )
-    model.decoder.conv_pre.weight = mx.zeros_like(model.decoder.conv_pre.weight)
-    updated_decoder = model._execute_decoder_window(
-        decoder_input,
-        use_compiled=True,
-    )
-    eager_decoder = model._execute_decoder_window(
-        decoder_input,
-        use_compiled=False,
-    )
-    mx.eval(updated_recurrent, eager_recurrent, updated_decoder, eager_decoder)
+    mx.eval(updated_recurrent, eager_recurrent)
 
     assert model.post_proj.weight.dtype == mx.bfloat16
-    assert model.decoder.conv_pre.weight.dtype == mx.bfloat16
     assert model._compiled_vocoder_functions[recurrent_key] is recurrent_function
-    assert model._compiled_vocoder_functions[decoder_key] is decoder_function
     assert not np.allclose(
         warm_recurrent.astype(mx.float32),
         updated_recurrent.astype(mx.float32),
-        atol=1e-6,
-        rtol=1e-6,
-    )
-    assert not np.allclose(
-        warm_decoder.astype(mx.float32),
-        updated_decoder.astype(mx.float32),
         atol=1e-6,
         rtol=1e-6,
     )
@@ -431,44 +489,16 @@ def test_compiled_helpers_observe_same_dtype_weight_replacement() -> None:
         atol=0.0,
         rtol=0.0,
     )
-    np.testing.assert_allclose(
-        updated_decoder.astype(mx.float32),
-        eager_decoder.astype(mx.float32),
-        atol=0.0,
-        rtol=0.0,
-    )
 
 
-def test_compiled_cache_is_bounded_and_preserves_common_warm_shapes() -> None:
+def test_compiled_cache_contains_only_the_three_recurrent_tile_shapes() -> None:
     model = _model(149)
     model.set_dtype(mx.bfloat16)
     mx.random.seed(151)
     latent = mx.random.normal(
-        (1, model.latent_dim, _COMPILED_VOCODER_CACHE_LIMIT + 6)
+        (1, model.latent_dim, 18)
     )
-
-    for chunk_frames in (4, 16):
-        state = model.init_decode_state(maximum_chunk_size=16)
-        output, _ = model.decode_chunk(
-            latent[:, :, :chunk_frames],
-            state,
-            final=True,
-        )
-        mx.eval(output)
-    common_cache = {
-        key: function
-        for key, function in model._compiled_vocoder_functions.items()
-        if model._is_common_compile_key(key)
-    }
-    assert len(common_cache) == 3
-
-    first_varied_keys = set()
-    varied_shapes = [
-        frames
-        for frames in range(1, _COMPILED_VOCODER_CACHE_LIMIT + 5)
-        if frames not in (4, 16)
-    ]
-    for index, chunk_frames in enumerate(varied_shapes):
+    for chunk_frames in range(1, 19):
         state = model.init_decode_state(maximum_chunk_size=chunk_frames)
         output, _ = model.decode_chunk(
             latent[:, :, :chunk_frames],
@@ -476,29 +506,13 @@ def test_compiled_cache_is_bounded_and_preserves_common_warm_shapes() -> None:
             final=True,
         )
         mx.eval(output)
-        if index == 0:
-            first_varied_keys = set(model._compiled_vocoder_functions) - set(
-                common_cache
-            )
-
-    assert len(model._compiled_vocoder_functions) == _COMPILED_VOCODER_CACHE_LIMIT
-    assert first_varied_keys.isdisjoint(model._compiled_vocoder_functions)
+    assert len(model._compiled_vocoder_functions) == 3
+    assert {
+        key.shapes[0][-1] for key in model._compiled_vocoder_functions
+    } == {4, 8, 16}
     assert all(
-        model._compiled_vocoder_functions.get(key) is function
-        for key, function in common_cache.items()
-    )
-
-    for chunk_frames in (4, 16):
-        state = model.init_decode_state(maximum_chunk_size=16)
-        output, _ = model.decode_chunk(
-            latent[:, :, :chunk_frames],
-            state,
-            final=True,
-        )
-        mx.eval(output)
-    assert all(
-        model._compiled_vocoder_functions.get(key) is function
-        for key, function in common_cache.items()
+        key.operation == "recurrent"
+        for key in model._compiled_vocoder_functions
     )
 
     model._clear_compiled_vocoder_cache()

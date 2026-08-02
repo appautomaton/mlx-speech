@@ -70,15 +70,18 @@ def test_tiled_batch_decode_matches_the_full_recurrent_bridge() -> None:
     latent = mx.random.normal((1, model.latent_dim, 19)).astype(mx.bfloat16)
     projected = model.post_proj(latent.transpose(0, 2, 1))
     bridged = model.dec_mi_layer(projected).astype(model.decoder.input_dtype)
-    padding = model.decoder.stream_left_context + model.decoder.stream_lookahead
-    decoder_input = mx.concatenate(
-        (
-            bridged,
-            mx.zeros((1, padding, model.latent_dim), dtype=bridged.dtype),
-        ),
-        axis=1,
+    decoder_state = model.decoder.init_stream_state(1)
+    expected, decoder_state = model.decoder.stream(
+        bridged,
+        decoder_state,
+        final=False,
     )
-    expected = model.decoder(decoder_input)[:, : 19 * model.hop_size]
+    tail, _decoder_state = model.decoder.stream(
+        bridged[:, :0],
+        decoder_state,
+        final=True,
+    )
+    expected = mx.concatenate((expected, tail), axis=1)
     expected = expected.astype(mx.float32).transpose(0, 2, 1)
     actual = model.decode(latent)
     mx.eval(expected, actual)
@@ -196,7 +199,10 @@ def test_decoder_uses_bf16_weights_with_an_fp32_slstm_boundary() -> None:
         for hidden, cell in state.recurrent_state
     )
     assert model.decoder.input_dtype == mx.bfloat16
-    assert state.decoder_input.dtype == model.decoder.input_dtype
+    assert all(
+        tensor.dtype == model.decoder.input_dtype
+        for tensor in state.decoder_state.arrays()
+    )
     assert decoded.dtype == mx.float32
 
 

@@ -6,6 +6,7 @@ import pytest
 
 from mlx_speech.models.dots_tts.audio_vae import AudioVAE
 from mlx_speech.models.dots_tts.vocoder import (
+    AMPBlock,
     AliasFreeSnakeBeta,
     CausalConvTranspose1d,
     Conv1d,
@@ -42,14 +43,102 @@ def test_alias_free_snakebeta_preserves_shape_and_is_finite() -> None:
     assert activation.left_context == 11
 
 
-def test_decoder_stream_context_is_derived_from_layer_structure() -> None:
+@pytest.mark.parametrize("kind", ("conv", "transpose", "activation", "amp"))
+def test_causal_primitives_preserve_full_sequence_results_across_partitions(
+    kind: str,
+) -> None:
+    mx.random.seed(44)
+    if kind == "conv":
+        layer = Conv1d(3, 4, 5, dilation=2, causal=True)
+    elif kind == "transpose":
+        layer = CausalConvTranspose1d(3, 4, 6, stride=3)
+    elif kind == "activation":
+        layer = AliasFreeSnakeBeta(3)
+    else:
+        layer = AMPBlock(3, 3, (1, 2))
+    value = mx.random.normal((1, 17, 3))
+    full = layer(value)
+    state = layer.init_stream_state(1, dtype=value.dtype)
+    chunks = []
+    offset = 0
+    for size in (1, 5, 2, 9):
+        output, state = layer.stream(value[:, offset : offset + size], state)
+        chunks.append(output)
+        offset += size
+    streamed = mx.concatenate(chunks, axis=1)
+    mx.eval(full, streamed, state)
+
+    np.testing.assert_allclose(streamed, full, atol=2e-6, rtol=2e-6)
+
+
+def test_symmetric_conv_stream_holds_and_flushes_lookahead_exactly_once() -> None:
+    mx.random.seed(45)
+    convolution = Conv1d(3, 4, 5, causal=False)
+    value = mx.random.normal((1, 11, 3))
+    full = convolution(value)
+    state = convolution.init_lookahead_state(1, dtype=value.dtype)
+    outputs = []
+    offset = 0
+    for size in (1, 4, 2, 4):
+        output, state = convolution.stream_lookahead(
+            value[:, offset : offset + size],
+            state,
+            final=False,
+        )
+        outputs.append(output)
+        offset += size
+    tail, state = convolution.stream_lookahead(
+        value[:, :0],
+        state,
+        final=True,
+    )
+    outputs.append(tail)
+    streamed = mx.concatenate(outputs, axis=1)
+    mx.eval(full, streamed, state)
+
+    assert int(state.pending.shape[1]) == 0
+    assert int(tail.shape[1]) == convolution.right_context
+    np.testing.assert_allclose(streamed, full, atol=0.0, rtol=0.0)
+
+
+@pytest.mark.parametrize(
+    "partitions",
+    ((1,), (1, 2), (1, 1, 1, 8), (3, 5, 3), (11,)),
+)
+def test_bigvgan_stream_matches_full_for_irregular_and_short_partitions(
+    partitions: tuple[int, ...],
+) -> None:
+    mx.random.seed(46)
+    model = AudioVAE(_config(), encoder_residual_layers=1).decoder
+    value = mx.random.normal((1, sum(partitions), 4))
+    full = model(value)
+    state = model.init_stream_state(1)
+    outputs = []
+    offset = 0
+    for index, size in enumerate(partitions):
+        output, state = model.stream(
+            value[:, offset : offset + size],
+            state,
+            final=index == len(partitions) - 1,
+        )
+        outputs.append(output)
+        offset += size
+    duplicate, duplicate_state = model.stream(value[:, :0], state, final=True)
+    streamed = mx.concatenate(outputs, axis=1)
+    mx.eval(full, streamed, duplicate, state)
+
+    assert int(duplicate.shape[1]) == 0
+    assert duplicate_state is state
+    assert state.finalized
+    np.testing.assert_allclose(streamed, full, atol=2e-6, rtol=2e-6)
+
+
+def test_decoder_stream_lookahead_is_derived_from_conv_pre() -> None:
     model = AudioVAE(_config(), encoder_residual_layers=1)
     assert model.decoder.conv_pre.left_context == 2
     assert model.decoder.conv_pre.right_context == 2
     assert model.decoder.resblocks[0][0].left_context == 26
-    assert model.decoder.stream_left_context == 28
     assert model.decoder.stream_lookahead == 2
-    assert model.decoder.stream_window_size(3) == 33
 
 
 def test_bigvgan_rejects_input_outside_its_checkpoint_dtype() -> None:

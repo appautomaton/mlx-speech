@@ -400,9 +400,9 @@ def _vocoder_state_arrays(state: Any) -> tuple[mx.array, ...]:
     """Return decoder arrays whose publication is owned by the waveform sink."""
 
     arrays: list[mx.array] = []
-    decoder_input = getattr(state, "decoder_input", None)
-    if decoder_input is not None:
-        arrays.append(decoder_input)
+    decoder_state = getattr(state, "decoder_state", None)
+    if decoder_state is not None:
+        arrays.extend(decoder_state.arrays())
     recurrent_state = getattr(state, "recurrent_state", ())
     arrays.extend(tensor for layer_state in recurrent_state for tensor in layer_state)
     return tuple(arrays)

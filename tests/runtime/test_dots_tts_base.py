@@ -22,7 +22,10 @@ def test_base_checkpoint_generates_finite_non_silent_waveform(variant: str) -> N
     audio_vae = generator.components.audio_vae
     decoder_state = audio_vae.init_decode_state(maximum_chunk_size=16)
     assert audio_vae.decoder.input_dtype == mx.bfloat16
-    assert decoder_state.decoder_input.dtype == audio_vae.decoder.input_dtype
+    assert all(
+        tensor.dtype == audio_vae.decoder.input_dtype
+        for tensor in decoder_state.decoder_state.arrays()
+    )
     assert all(
         hidden.dtype == cell.dtype == mx.float32
         for hidden, cell in decoder_state.recurrent_state
@@ -97,7 +100,10 @@ def test_int8_checkpoint_stream_window_uses_decoder_dtype(variant: str) -> None:
     assert audio_vae.post_proj.weight.dtype == mx.bfloat16
     assert audio_vae.dec_mi_layer.input.weight.dtype == mx.bfloat16
     assert audio_vae.decoder.input_dtype == mx.bfloat16
-    assert state.decoder_input.dtype == audio_vae.decoder.input_dtype
+    assert all(
+        tensor.dtype == audio_vae.decoder.input_dtype
+        for tensor in state.decoder_state.arrays()
+    )
     assert all(
         hidden.dtype == cell.dtype == mx.float32
         for hidden, cell in state.recurrent_state

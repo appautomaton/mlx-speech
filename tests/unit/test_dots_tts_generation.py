@@ -387,7 +387,7 @@ def test_stream_waveform_boundary_publishes_returned_recurrent_state(
     recurrent = ((mx.ones((1, 2)), mx.zeros((1, 2))),)
     vocoder_state = SimpleNamespace(
         maximum_chunk_size=2,
-        decoder_input=decoder_input,
+        decoder_state=SimpleNamespace(arrays=lambda: (decoder_input,)),
         recurrent_state=recurrent,
     )
     stream_state = SimpleNamespace(
@@ -424,12 +424,16 @@ def test_stream_waveform_failure_preserves_vocoder_and_patch_state(monkeypatch) 
     generator, _, _ = _generator("meanflow")
     original_vocoder_state = SimpleNamespace(
         maximum_chunk_size=2,
-        decoder_input=mx.zeros((1, 4, 2)),
+        decoder_state=SimpleNamespace(
+            arrays=lambda: (mx.zeros((1, 4, 2)),)
+        ),
         recurrent_state=((mx.zeros((1, 2)), mx.zeros((1, 2))),),
     )
     candidate_vocoder_state = SimpleNamespace(
         maximum_chunk_size=2,
-        decoder_input=mx.ones((1, 4, 2)),
+        decoder_state=SimpleNamespace(
+            arrays=lambda: (mx.ones((1, 4, 2)),)
+        ),
         recurrent_state=((mx.ones((1, 2)), mx.ones((1, 2))),),
     )
     stream_state = SimpleNamespace(

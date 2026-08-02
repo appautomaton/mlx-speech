@@ -148,6 +148,10 @@ git diff --check
 **Touches:** BigVGAN primitives, AudioVAE decoder state, batch/stream generator routing, focused tests
 **Produces:** one stateful decoder with no rolling full-context recomputation
 
+**Status:** complete
+**Evidence:** Read the pinned PyTorch BigVGAN, alias-free activation, causal transpose, and streaming AudioVAE sources. The retained MLX decoder owns bounded per-request lookahead, causal-convolution tails, transpose overlap, alias-free FIR history, AMP-block state, and finalization state; each chunk processes only new frames plus each layer's finite tail. The old composite `decoder_input`, rolling full-window decode, decoder compile variants, and derived composite-window API were removed. Batch uses the same state primitives with one large tile plus the identical lookahead flush. Single-frame, regular, irregular, short, mixed, duplicate-final, failure/retry, interleaved, sample-count, seam, FP32, and BF16 tests pass without a private Metal kernel or cadence change. Focused vocoder/AudioVAE/generation tests 96 passed and full unit 851 passed. The combined checkpoint/runtime gate reported 67 passed and 34 skipped with one SOAR BF16 tail mismatch; after routing batch through the same final-flush order, that exact real-checkpoint case passed. Scoped Ruff and `git diff --check` passed.
+**Risks / next:** Layer state removes asymptotically repeated full-context work, but only Slice 6's single locked default-path timing decides its end-to-end effect. Do not rerun the starting measurement.
+
 ### Slice 6: Run the single final timing and waveform gate
 
 **Objective:** Verify that the retained runtime is faster on the real public paths and still produces complete, correct speech.

@@ -14,6 +14,7 @@ from .vocoder import (
     HIGH_PRECISION_OUTPUT_TILE,
     HIGH_PRECISION_TIME_TILE,
     BigVGANDecoder,
+    BigVGANStreamState,
     Conv1d,
 )
 
@@ -420,7 +421,7 @@ class _MIBridge(nn.Module):
 @dataclass(frozen=True)
 class VocoderDecodeState:
     recurrent_state: tuple[tuple[mx.array, mx.array], ...]
-    decoder_input: mx.array
+    decoder_state: BigVGANStreamState
     maximum_chunk_size: int
     total_frames: int = 0
     emitted_frames: int = 0
@@ -517,21 +518,21 @@ class AudioVAE(nn.Module):
             use_compiled=True,
         )
         value = value.astype(self.decoder.input_dtype)
-        frames = int(value.shape[1])
-        decoder_padding = (
-            self.decoder.stream_left_context + self.decoder.stream_lookahead
+        decoder_state = self.decoder.init_stream_state(
+            int(value.shape[0]),
+            dtype=value.dtype,
         )
-        value = mx.concatenate(
-            (
-                value,
-                mx.zeros(
-                    (int(value.shape[0]), decoder_padding, self.latent_dim),
-                    dtype=value.dtype,
-                ),
-            ),
-            axis=1,
+        waveform, decoder_state = self.decoder.stream(
+            value,
+            decoder_state,
+            final=False,
         )
-        waveform = self.decoder(value)[:, : frames * self.hop_size]
+        tail, _decoder_state = self.decoder.stream(
+            value[:, :0],
+            decoder_state,
+            final=True,
+        )
+        waveform = mx.concatenate((waveform, tail), axis=1)
         return waveform.astype(mx.float32).transpose(0, 2, 1)
 
     def init_decode_state(
@@ -542,7 +543,8 @@ class AudioVAE(nn.Module):
     ) -> VocoderDecodeState:
         if batch_size <= 0:
             raise ValueError("batch_size must be positive")
-        window_size = self.decoder.stream_window_size(maximum_chunk_size)
+        if maximum_chunk_size <= 0:
+            raise ValueError("maximum_chunk_size must be positive")
         recurrent_dtype = self.dec_mi_layer.recurrent_dtype
         if recurrent_dtype is None:
             recurrent_dtype = self.dec_mi_layer.input.weight.dtype
@@ -551,8 +553,9 @@ class AudioVAE(nn.Module):
             recurrent_state=self.dec_mi_layer.recurrent.initial_state(
                 batch_size, dtype=recurrent_dtype
             ),
-            decoder_input=mx.zeros(
-                (batch_size, window_size, self.latent_dim), dtype=decoder_dtype
+            decoder_state=self.decoder.init_stream_state(
+                batch_size,
+                dtype=decoder_dtype,
             ),
             maximum_chunk_size=int(maximum_chunk_size),
         )
@@ -582,26 +585,20 @@ class AudioVAE(nn.Module):
         operation: str,
         tensors: tuple[mx.array, ...],
     ) -> Callable[..., tuple[mx.array, ...] | mx.array]:
-        if operation == "recurrent":
-            model_identity = id(self.dec_mi_layer)
-            function = self._recurrent_step_tensors
-            recurrent_dtype = self.dec_mi_layer.recurrent_dtype
-            if recurrent_dtype is None:
-                recurrent_dtype = self.dec_mi_layer.input.weight.dtype
-            execution_dtypes = (
-                self.post_proj.weight.dtype,
-                self.dec_mi_layer.input.weight.dtype,
-                recurrent_dtype,
-                self.decoder.input_dtype,
-            )
-            state_inputs = [self.post_proj.state, self.dec_mi_layer.state]
-        elif operation == "decoder":
-            model_identity = id(self.decoder)
-            function = self._decode_window_tensor
-            execution_dtypes = ()
-            state_inputs = [self.decoder.state]
-        else:
+        if operation != "recurrent":
             raise ValueError(f"unsupported vocoder compile operation: {operation}")
+        model_identity = id(self.dec_mi_layer)
+        function = self._recurrent_step_tensors
+        recurrent_dtype = self.dec_mi_layer.recurrent_dtype
+        if recurrent_dtype is None:
+            recurrent_dtype = self.dec_mi_layer.input.weight.dtype
+        execution_dtypes = (
+            self.post_proj.weight.dtype,
+            self.dec_mi_layer.input.weight.dtype,
+            recurrent_dtype,
+            self.decoder.input_dtype,
+        )
+        state_inputs = [self.post_proj.state, self.dec_mi_layer.state]
         key = self._compile_signature(
             operation,
             model_identity,
@@ -627,8 +624,6 @@ class AudioVAE(nn.Module):
     def _is_common_compile_key(self, key: _VocoderCompileKey) -> bool:
         if key.operation == "recurrent":
             return key.shapes[0][-1] in _COMPILED_VOCODER_WARM_FRAMES
-        if key.operation == "decoder":
-            return key.shapes[0][1] == self.decoder.stream_window_size(16)
         return False
 
     def _clear_compiled_vocoder_cache(self) -> None:
@@ -741,24 +736,6 @@ class AudioVAE(nn.Module):
             offset += valid_frames
         return mx.concatenate(outputs, axis=1), recurrent_state
 
-    def _decode_window_tensor(self, decoder_input: mx.array) -> mx.array:
-        return self.decoder(decoder_input)
-
-    def _execute_decoder_window(
-        self,
-        decoder_input: mx.array,
-        *,
-        use_compiled: bool,
-    ) -> mx.array:
-        if use_compiled:
-            result = self._compiled_function("decoder", (decoder_input,))(
-                decoder_input
-            )
-            if isinstance(result, tuple):
-                raise TypeError("compiled BigVGAN decoder returned an invalid result")
-            return result
-        return self._decode_window_tensor(decoder_input)
-
     def decode_chunk(
         self,
         latent: mx.array,
@@ -783,7 +760,7 @@ class AudioVAE(nn.Module):
     ) -> tuple[mx.array, VocoderDecodeState]:
         if latent.ndim != 3 or int(latent.shape[1]) != self.latent_dim:
             raise ValueError("AudioVAE decode chunk has invalid shape")
-        if int(latent.shape[0]) != int(state.decoder_input.shape[0]):
+        if int(latent.shape[0]) != int(state.decoder_state.conv_pre.history.shape[0]):
             raise ValueError("AudioVAE decode state batch size differs from chunk")
         chunk_frames = int(latent.shape[-1])
         if chunk_frames > state.maximum_chunk_size:
@@ -791,6 +768,13 @@ class AudioVAE(nn.Module):
                 f"AudioVAE decode chunk has {chunk_frames} frames, exceeding "
                 f"maximum_chunk_size={state.maximum_chunk_size}"
             )
+        if state.decoder_state.finalized:
+            if chunk_frames == 0:
+                return (
+                    mx.zeros((int(latent.shape[0]), 1, 0), dtype=mx.float32),
+                    state,
+                )
+            raise ValueError("AudioVAE decode state is already finalized")
 
         recurrent_state = state.recurrent_state
         decoder_chunk = mx.zeros(
@@ -803,68 +787,30 @@ class AudioVAE(nn.Module):
                 recurrent_state,
                 use_compiled=use_compiled,
             )
-
-        window_size = int(state.decoder_input.shape[1])
-        valid_frames = min(state.total_frames, window_size)
-        combined = mx.concatenate(
-            (state.decoder_input[:, :valid_frames], decoder_chunk), axis=1
+        decoder_chunk = decoder_chunk.astype(self.decoder.input_dtype)
+        waveform, decoder_state = self.decoder.stream(
+            decoder_chunk,
+            state.decoder_state,
+            final=final,
         )
-        if int(combined.shape[1]) > window_size:
-            combined = combined[:, -window_size:]
-        elif int(combined.shape[1]) < window_size:
-            combined = mx.concatenate(
-                (
-                    combined,
-                    mx.zeros(
-                        (
-                            int(combined.shape[0]),
-                            window_size - int(combined.shape[1]),
-                            self.latent_dim,
-                        ),
-                        dtype=combined.dtype,
-                    ),
-                ),
-                axis=1,
-            )
-        combined = combined.astype(self.decoder.input_dtype)
-
         total_frames = state.total_frames + chunk_frames
         stable_frames = (
             total_frames
             if final
             else max(0, total_frames - self.decoder.stream_lookahead)
         )
-        next_emitted_frames = max(state.emitted_frames, stable_frames)
+        if int(waveform.shape[1]) != (
+            stable_frames - state.emitted_frames
+        ) * self.hop_size:
+            raise RuntimeError("BigVGAN stream emitted an invalid sample count")
         next_state = VocoderDecodeState(
             recurrent_state=recurrent_state,
-            decoder_input=combined,
+            decoder_state=decoder_state,
             maximum_chunk_size=state.maximum_chunk_size,
             total_frames=total_frames,
-            emitted_frames=next_emitted_frames,
+            emitted_frames=stable_frames,
         )
-        if stable_frames <= state.emitted_frames:
-            return (
-                mx.zeros((int(latent.shape[0]), 1, 0), dtype=mx.float32),
-                next_state,
-            )
-
-        valid_frames = min(total_frames, window_size)
-        window_start = total_frames - valid_frames
-        if state.emitted_frames < window_start:
-            raise RuntimeError("AudioVAE decoder window is shorter than its context")
-        local_start = state.emitted_frames - window_start
-        local_end = stable_frames - window_start
-        waveform = self._execute_decoder_window(
-            combined, use_compiled=use_compiled
-        ).astype(mx.float32).transpose(0, 2, 1)
-        return (
-            waveform[
-                :,
-                :,
-                local_start * self.hop_size : local_end * self.hop_size,
-            ],
-            next_state,
-        )
+        return waveform.astype(mx.float32).transpose(0, 2, 1), next_state
 
 
 __all__ = [

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from fractions import Fraction
+from dataclasses import dataclass
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -12,6 +12,72 @@ import numpy as np
 
 HIGH_PRECISION_OUTPUT_TILE = 32
 HIGH_PRECISION_TIME_TILE = 512
+
+
+@dataclass(frozen=True)
+class SequenceStreamState:
+    tail: mx.array
+
+
+@dataclass(frozen=True)
+class LookaheadStreamState:
+    history: mx.array
+    pending: mx.array
+
+
+@dataclass(frozen=True)
+class AMPBlockStreamState:
+    activations: tuple[SequenceStreamState, ...]
+    first_convs: tuple[SequenceStreamState, ...]
+    second_convs: tuple[SequenceStreamState, ...]
+
+    def arrays(self) -> tuple[mx.array, ...]:
+        return tuple(
+            state.tail
+            for states in (self.activations, self.first_convs, self.second_convs)
+            for state in states
+        )
+
+
+@dataclass(frozen=True)
+class BigVGANStreamState:
+    conv_pre: LookaheadStreamState
+    upsamples: tuple[SequenceStreamState, ...]
+    resblocks: tuple[tuple[AMPBlockStreamState, ...], ...]
+    activation_post: SequenceStreamState
+    conv_post: SequenceStreamState
+    finalized: bool = False
+
+    def arrays(self) -> tuple[mx.array, ...]:
+        return (
+            self.conv_pre.history,
+            self.conv_pre.pending,
+            *(state.tail for state in self.upsamples),
+            *(
+                array
+                for stage in self.resblocks
+                for state in stage
+                for array in state.arrays()
+            ),
+            self.activation_post.tail,
+            self.conv_post.tail,
+        )
+
+
+def _empty_sequence_state(
+    batch_size: int,
+    channels: int,
+    dtype: mx.Dtype,
+) -> SequenceStreamState:
+    return SequenceStreamState(
+        mx.zeros((batch_size, 0, channels), dtype=dtype)
+    )
+
+
+def _updated_tail(value: mx.array, length: int) -> mx.array:
+    if length <= 0:
+        return value[:, :0]
+    return value[:, -min(length, int(value.shape[1])) :]
 
 
 class Conv1d(nn.Module):
@@ -60,6 +126,97 @@ class Conv1d(nn.Module):
             dilation=self.dilation,
         )
         return output if self.bias is None else output + self.bias
+
+    def init_stream_state(
+        self,
+        batch_size: int,
+        *,
+        dtype: mx.Dtype,
+    ) -> SequenceStreamState:
+        if not self.causal or self.stride != 1:
+            raise ValueError("streaming Conv1d state requires causal stride one")
+        return _empty_sequence_state(
+            batch_size,
+            int(self.weight.shape[-1]),
+            dtype,
+        )
+
+    def stream(
+        self,
+        value: mx.array,
+        state: SequenceStreamState,
+    ) -> tuple[mx.array, SequenceStreamState]:
+        if not self.causal or self.stride != 1:
+            raise ValueError("streaming Conv1d requires causal stride one")
+        frame_count = int(value.shape[1])
+        if frame_count == 0:
+            return (
+                mx.zeros(
+                    (int(value.shape[0]), 0, int(self.weight.shape[0])),
+                    dtype=value.dtype,
+                ),
+                state,
+            )
+        tail_length = int(state.tail.shape[1])
+        combined = mx.concatenate((state.tail, value), axis=1)
+        output = self(combined)[:, tail_length : tail_length + frame_count]
+        return output, SequenceStreamState(
+            _updated_tail(combined, self.left_context)
+        )
+
+    def init_lookahead_state(
+        self,
+        batch_size: int,
+        *,
+        dtype: mx.Dtype,
+    ) -> LookaheadStreamState:
+        if self.causal or self.stride != 1:
+            raise ValueError("lookahead Conv1d state requires symmetric stride one")
+        channels = int(self.weight.shape[-1])
+        empty = mx.zeros((batch_size, 0, channels), dtype=dtype)
+        return LookaheadStreamState(history=empty, pending=empty)
+
+    def stream_lookahead(
+        self,
+        value: mx.array,
+        state: LookaheadStreamState,
+        *,
+        final: bool,
+    ) -> tuple[mx.array, LookaheadStreamState]:
+        if self.causal or self.stride != 1:
+            raise ValueError("lookahead Conv1d requires symmetric stride one")
+        available = mx.concatenate((state.pending, value), axis=1)
+        available_frames = int(available.shape[1])
+        stable_frames = (
+            available_frames
+            if final
+            else max(0, available_frames - self.right_context)
+        )
+        if stable_frames == 0:
+            return (
+                mx.zeros(
+                    (int(value.shape[0]), 0, int(self.weight.shape[0])),
+                    dtype=value.dtype,
+                ),
+                LookaheadStreamState(
+                    history=state.history,
+                    pending=available,
+                ),
+            )
+        history_frames = int(state.history.shape[1])
+        combined = mx.concatenate((state.history, available), axis=1)
+        output = self(combined)[
+            :, history_frames : history_frames + stable_frames
+        ]
+        processed = available[:, :stable_frames]
+        history = _updated_tail(
+            mx.concatenate((state.history, processed), axis=1),
+            self.left_context,
+        )
+        return output, LookaheadStreamState(
+            history=history,
+            pending=available[:, stable_frames:],
+        )
 
     @property
     def left_context(self) -> int:
@@ -163,6 +320,43 @@ class CausalConvTranspose1d(nn.Module):
             output += self.bias
         return output[:, : -self.stride]
 
+    def init_stream_state(
+        self,
+        batch_size: int,
+        *,
+        dtype: mx.Dtype,
+    ) -> SequenceStreamState:
+        return _empty_sequence_state(
+            batch_size,
+            int(self.weight.shape[-1]),
+            dtype,
+        )
+
+    def stream(
+        self,
+        value: mx.array,
+        state: SequenceStreamState,
+    ) -> tuple[mx.array, SequenceStreamState]:
+        frame_count = int(value.shape[1])
+        if frame_count == 0:
+            return (
+                mx.zeros(
+                    (int(value.shape[0]), 0, int(self.weight.shape[0])),
+                    dtype=value.dtype,
+                ),
+                state,
+            )
+        tail_length = int(state.tail.shape[1])
+        combined = mx.concatenate((state.tail, value), axis=1)
+        output = self(combined)[
+            :,
+            tail_length * self.stride : (tail_length + frame_count)
+            * self.stride,
+        ]
+        return output, SequenceStreamState(
+            _updated_tail(combined, self.left_context)
+        )
+
     @property
     def left_context(self) -> int:
         overlap = self.kernel_size - self.stride
@@ -234,6 +428,33 @@ class AliasFreeSnakeBeta(nn.Module):
             groups=channels,
         ).astype(value.dtype)
 
+    def init_stream_state(
+        self,
+        batch_size: int,
+        *,
+        dtype: mx.Dtype,
+    ) -> SequenceStreamState:
+        return _empty_sequence_state(
+            batch_size,
+            int(self.alpha.shape[0]),
+            dtype,
+        )
+
+    def stream(
+        self,
+        value: mx.array,
+        state: SequenceStreamState,
+    ) -> tuple[mx.array, SequenceStreamState]:
+        frame_count = int(value.shape[1])
+        if frame_count == 0:
+            return value, state
+        tail_length = int(state.tail.shape[1])
+        combined = mx.concatenate((state.tail, value), axis=1)
+        output = self(combined)[:, tail_length : tail_length + frame_count]
+        return output, SequenceStreamState(
+            _updated_tail(combined, self.left_context)
+        )
+
     @property
     def left_context(self) -> int:
         upsample_context = int(self.up_filter.shape[1]) - 1
@@ -278,6 +499,57 @@ class AMPBlock(nn.Module):
             update = self.activations[2 * index + 1](update)
             value = value + second(update)
         return value
+
+    def init_stream_state(
+        self,
+        batch_size: int,
+        *,
+        dtype: mx.Dtype,
+    ) -> AMPBlockStreamState:
+        return AMPBlockStreamState(
+            activations=tuple(
+                activation.init_stream_state(batch_size, dtype=dtype)
+                for activation in self.activations
+            ),
+            first_convs=tuple(
+                conv.init_stream_state(batch_size, dtype=dtype)
+                for conv in self.convs1
+            ),
+            second_convs=tuple(
+                conv.init_stream_state(batch_size, dtype=dtype)
+                for conv in self.convs2
+            ),
+        )
+
+    def stream(
+        self,
+        value: mx.array,
+        state: AMPBlockStreamState,
+    ) -> tuple[mx.array, AMPBlockStreamState]:
+        activation_states = list(state.activations)
+        first_conv_states = list(state.first_convs)
+        second_conv_states = list(state.second_convs)
+        for index, (first, second) in enumerate(
+            zip(self.convs1, self.convs2, strict=True)
+        ):
+            update, activation_states[2 * index] = self.activations[
+                2 * index
+            ].stream(value, activation_states[2 * index])
+            update, first_conv_states[index] = first.stream(
+                update, first_conv_states[index]
+            )
+            update, activation_states[2 * index + 1] = self.activations[
+                2 * index + 1
+            ].stream(update, activation_states[2 * index + 1])
+            update, second_conv_states[index] = second.stream(
+                update, second_conv_states[index]
+            )
+            value = value + update
+        return value, AMPBlockStreamState(
+            activations=tuple(activation_states),
+            first_convs=tuple(first_conv_states),
+            second_convs=tuple(second_conv_states),
+        )
 
     @property
     def left_context(self) -> int:
@@ -358,6 +630,112 @@ class BigVGANDecoder(nn.Module):
             value = sum(outputs[1:], outputs[0]) / len(outputs)
         return mx.clip(self.conv_post(self.activation_post(value)), -1.0, 1.0)
 
+    def init_stream_state(
+        self,
+        batch_size: int,
+        *,
+        dtype: mx.Dtype | None = None,
+    ) -> BigVGANStreamState:
+        stream_dtype = self.input_dtype if dtype is None else dtype
+        return BigVGANStreamState(
+            conv_pre=self.conv_pre.init_lookahead_state(
+                batch_size,
+                dtype=stream_dtype,
+            ),
+            upsamples=tuple(
+                upsample.init_stream_state(batch_size, dtype=stream_dtype)
+                for upsample in self.ups
+            ),
+            resblocks=tuple(
+                tuple(
+                    block.init_stream_state(batch_size, dtype=stream_dtype)
+                    for block in blocks
+                )
+                for blocks in self.resblocks
+            ),
+            activation_post=self.activation_post.init_stream_state(
+                batch_size,
+                dtype=stream_dtype,
+            ),
+            conv_post=self.conv_post.init_stream_state(
+                batch_size,
+                dtype=stream_dtype,
+            ),
+        )
+
+    def stream(
+        self,
+        value: mx.array,
+        state: BigVGANStreamState,
+        *,
+        final: bool = False,
+    ) -> tuple[mx.array, BigVGANStreamState]:
+        if value.dtype != self.input_dtype:
+            raise ValueError(
+                "BigVGAN decoder input dtype must match conv_pre weights: "
+                f"expected {self.input_dtype}, got {value.dtype}"
+            )
+        if int(value.shape[0]) != int(state.conv_pre.history.shape[0]):
+            raise ValueError("BigVGAN stream batch size changed")
+        if state.finalized:
+            if int(value.shape[1]) == 0:
+                return mx.zeros(
+                    (int(value.shape[0]), 0, 1), dtype=value.dtype
+                ), state
+            raise ValueError("BigVGAN stream is already finalized")
+
+        value, conv_pre_state = self.conv_pre.stream_lookahead(
+            value,
+            state.conv_pre,
+            final=final,
+        )
+        if int(value.shape[1]) == 0:
+            return mx.zeros(
+                (int(value.shape[0]), 0, 1), dtype=value.dtype
+            ), BigVGANStreamState(
+                conv_pre=conv_pre_state,
+                upsamples=state.upsamples,
+                resblocks=state.resblocks,
+                activation_post=state.activation_post,
+                conv_post=state.conv_post,
+                finalized=final,
+            )
+
+        upsample_states = list(state.upsamples)
+        resblock_states = [list(stage) for stage in state.resblocks]
+        for stage_index, (upsample, blocks) in enumerate(
+            zip(self.ups, self.resblocks, strict=True)
+        ):
+            value, upsample_states[stage_index] = upsample.stream(
+                value,
+                upsample_states[stage_index],
+            )
+            outputs = []
+            for block_index, block in enumerate(blocks):
+                output, resblock_states[stage_index][block_index] = block.stream(
+                    value,
+                    resblock_states[stage_index][block_index],
+                )
+                outputs.append(output)
+            value = sum(outputs[1:], outputs[0]) / len(outputs)
+
+        value, activation_post_state = self.activation_post.stream(
+            value,
+            state.activation_post,
+        )
+        value, conv_post_state = self.conv_post.stream(
+            value,
+            state.conv_post,
+        )
+        return mx.clip(value, -1.0, 1.0), BigVGANStreamState(
+            conv_pre=conv_pre_state,
+            upsamples=tuple(upsample_states),
+            resblocks=tuple(tuple(stage) for stage in resblock_states),
+            activation_post=activation_post_state,
+            conv_post=conv_post_state,
+            finalized=final,
+        )
+
     @property
     def input_dtype(self) -> mx.Dtype:
         return self.conv_pre.weight.dtype
@@ -366,34 +744,17 @@ class BigVGANDecoder(nn.Module):
     def stream_lookahead(self) -> int:
         return self.conv_pre.right_context
 
-    @property
-    def stream_left_context(self) -> int:
-        context = Fraction(self.conv_pre.left_context)
-        scale = Fraction(1)
-        for upsample, blocks in zip(self.ups, self.resblocks, strict=True):
-            context += scale * upsample.left_context
-            scale /= upsample.stride
-            context += scale * max(block.left_context for block in blocks)
-        context += scale * self.activation_post.left_context
-        context += scale * self.conv_post.left_context
-        return math.ceil(context)
-
-    def stream_window_size(self, maximum_chunk_size: int) -> int:
-        if maximum_chunk_size <= 0:
-            raise ValueError("maximum_chunk_size must be positive")
-        return (
-            int(maximum_chunk_size)
-            + self.stream_lookahead
-            + self.stream_left_context
-        )
-
 
 __all__ = [
     "AliasFreeSnakeBeta",
     "AMPBlock",
+    "AMPBlockStreamState",
     "BigVGANDecoder",
+    "BigVGANStreamState",
     "CausalConvTranspose1d",
     "Conv1d",
     "HIGH_PRECISION_OUTPUT_TILE",
     "HIGH_PRECISION_TIME_TILE",
+    "LookaheadStreamState",
+    "SequenceStreamState",
 ]
