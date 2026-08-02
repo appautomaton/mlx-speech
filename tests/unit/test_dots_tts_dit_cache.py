@@ -951,6 +951,65 @@ def test_bfloat16_later_patch_uses_projected_cache_dtypes(
     )
 
 
+@pytest.mark.parametrize("mode", ["meanflow", "soar"])
+def test_bfloat16_solver_input_hoists_invariant_projection_exactly(mode: str) -> None:
+    mx.random.seed(941)
+    model, projection = _model_and_projection(meanflow=mode == "meanflow")
+    model.set_dtype(mx.bfloat16)
+    projection.set_dtype(mx.bfloat16)
+    solver = (
+        CachedMeanFlowSolver(
+            model,
+            projection,
+            latent_dim=_LATENT_DIM,
+            patch_size=_PATCH_SIZE,
+        )
+        if mode == "meanflow"
+        else CachedSOARSolver(
+            model,
+            projection,
+            latent_dim=_LATENT_DIM,
+            patch_size=_PATCH_SIZE,
+        )
+    )
+    invariant = mx.random.normal((1, 2 * _UNIT_LENGTH - _PATCH_SIZE, _HIDDEN_SIZE))
+    invariant = invariant.astype(mx.bfloat16)
+    cfg_invariant = (
+        None
+        if mode == "meanflow"
+        else mx.random.normal(invariant.shape).astype(mx.bfloat16)
+    )
+    coordinate = mx.random.normal((1, _PATCH_SIZE, _LATENT_DIM)).astype(mx.bfloat16)
+    projected_coordinate = projection(coordinate).astype(mx.bfloat16)
+    conditional = mx.concatenate((invariant, projected_coordinate), axis=1)
+    if cfg_invariant is None:
+        branches = conditional
+    else:
+        branches = mx.concatenate(
+            (
+                conditional,
+                mx.concatenate((cfg_invariant, projected_coordinate), axis=1),
+            ),
+            axis=0,
+        )
+    expected = model.input_layer(branches)
+    projected_invariant = solver.runner.project_invariant_input(
+        invariant,
+        cfg_invariant,
+    )
+    actual = solver.runner._compose_solver_input(
+        coordinate,
+        invariant_input=invariant,
+        cfg_invariant_input=cfg_invariant,
+        projected_invariant=projected_invariant,
+    )
+    mx.eval(expected, actual)
+    np.testing.assert_array_equal(
+        actual.astype(mx.float32),
+        expected.astype(mx.float32),
+    )
+
+
 @pytest.mark.parametrize(
     ("requested", "expected"),
     [(1, 64), (64, 64), (65, 128), (129, 256), (257, 512), (512, 512)],
