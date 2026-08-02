@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from mlx_speech.models.dots_tts.audio_vae import (
+    DECODER_BATCH_TILE_FRAMES,
     AudioVAE,
     SLSTM,
     encoder_logical_workspace_bytes,
@@ -86,6 +87,30 @@ def test_tiled_batch_decode_matches_the_full_recurrent_bridge() -> None:
     actual = model.decode(latent)
     mx.eval(expected, actual)
     np.testing.assert_allclose(actual, expected, atol=1e-5, rtol=1e-5)
+
+
+def test_batch_decode_materializes_bounded_vocoder_tiles(monkeypatch) -> None:
+    model = _model()
+    frame_count = 2 * DECODER_BATCH_TILE_FRAMES + 7
+    latent = mx.ones((1, model.latent_dim, frame_count))
+    calls = []
+    original_decode_chunk = model.decode_chunk
+
+    def record_decode_chunk(value, state, *, final=False):
+        calls.append((int(value.shape[-1]), bool(final)))
+        return original_decode_chunk(value, state, final=final)
+
+    monkeypatch.setattr(model, "decode_chunk", record_decode_chunk)
+    waveform = model.decode(latent)
+    mx.eval(waveform)
+
+    assert calls == [
+        (DECODER_BATCH_TILE_FRAMES, False),
+        (DECODER_BATCH_TILE_FRAMES, False),
+        (7, False),
+        (0, True),
+    ]
+    assert waveform.shape == (1, 1, frame_count * model.hop_size)
 
 
 def test_padded_recurrent_tile_does_not_advance_state_past_valid_length() -> None:

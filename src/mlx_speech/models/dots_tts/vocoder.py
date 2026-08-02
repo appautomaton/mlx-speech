@@ -12,6 +12,73 @@ import numpy as np
 
 HIGH_PRECISION_OUTPUT_TILE = 32
 HIGH_PRECISION_TIME_TILE = 512
+_ALIAS_FREE_FILTER_SIZE = 12
+_ALIAS_FREE_RATIO = 2
+_ALIAS_FREE_OUTPUTS_PER_THREAD = 16
+
+
+_alias_free_snakebeta_kernel = mx.fast.metal_kernel(
+    name="dots_tts_alias_free_snakebeta",
+    input_names=["inp", "up_filter", "down_filter", "alpha", "beta"],
+    output_names=["out"],
+    source="""
+        constexpr int filter_size = 12;
+        constexpr int ratio = 2;
+        constexpr int outputs_per_thread = 16;
+        constexpr int activation_count = 2 * outputs_per_thread + filter_size - 2;
+
+        const int segment = int(thread_position_in_grid.x);
+        const int channel = int(thread_position_in_grid.y);
+        const int batch = int(thread_position_in_grid.z);
+        const int length = int(inp_shape[1]);
+        const int channels = int(inp_shape[2]);
+        const int output_start = segment * outputs_per_thread;
+        if (output_start >= length) {
+            return;
+        }
+
+        const float alpha_value = metal::precise::exp(float(alpha[channel]));
+        const float beta_value = metal::precise::exp(float(beta[channel]));
+        float activated[activation_count];
+
+        for (int local = 0; local < activation_count; ++local) {
+            int upsample_index = ratio * output_start - (filter_size - 1) + local;
+            upsample_index = max(upsample_index, 0);
+            float upsampled = 0.0f;
+            for (int tap = 0; tap < filter_size; ++tap) {
+                const int source_offset = upsample_index - tap;
+                if (source_offset >= 0 && (source_offset % ratio) == 0) {
+                    const int source_time = source_offset / ratio;
+                    if (source_time < length) {
+                        const int input_index =
+                            (batch * length + source_time) * channels + channel;
+                        const int filter_index = channel * filter_size + tap;
+                        upsampled +=
+                            float(inp[input_index]) * float(up_filter[filter_index]);
+                    }
+                }
+            }
+            upsampled *= float(ratio);
+            const float periodic = metal::precise::sin(upsampled * alpha_value);
+            activated[local] =
+                upsampled + periodic * periodic / (beta_value + 1.0e-9f);
+        }
+
+        const int valid_outputs = min(outputs_per_thread, length - output_start);
+        for (int local = 0; local < valid_outputs; ++local) {
+            float value = 0.0f;
+            for (int tap = 0; tap < filter_size; ++tap) {
+                const int filter_index = channel * filter_size + tap;
+                value +=
+                    activated[ratio * local + tap]
+                    * float(down_filter[filter_index]);
+            }
+            const int output_index =
+                (batch * length + output_start + local) * channels + channel;
+            out[output_index] = T(value);
+        }
+    """,
+)
 
 
 @dataclass(frozen=True)
@@ -398,6 +465,33 @@ class AliasFreeSnakeBeta(nn.Module):
         self.beta = mx.zeros((channels,))
 
     def __call__(self, value: mx.array) -> mx.array:
+        if (
+            self.ratio == _ALIAS_FREE_RATIO
+            and int(self.up_filter.shape[1]) == _ALIAS_FREE_FILTER_SIZE
+            and int(self.down_filter.shape[1]) == _ALIAS_FREE_FILTER_SIZE
+            and value.dtype in (mx.float16, mx.bfloat16)
+            and mx.metal.is_available()
+        ):
+            segment_count = (
+                int(value.shape[1]) + _ALIAS_FREE_OUTPUTS_PER_THREAD - 1
+            ) // _ALIAS_FREE_OUTPUTS_PER_THREAD
+            return _alias_free_snakebeta_kernel(
+                inputs=[
+                    value,
+                    self.up_filter,
+                    self.down_filter,
+                    self.alpha,
+                    self.beta,
+                ],
+                grid=(segment_count, int(value.shape[-1]), int(value.shape[0])),
+                threadgroup=(128, 1, 1),
+                template=[("T", value.dtype)],
+                output_shapes=[value.shape],
+                output_dtypes=[value.dtype],
+            )[0]
+        return self._eager(value)
+
+    def _eager(self, value: mx.array) -> mx.array:
         channels = int(value.shape[-1])
         upsampled = self.ratio * mx.conv_transpose1d(
             value.astype(mx.float32),

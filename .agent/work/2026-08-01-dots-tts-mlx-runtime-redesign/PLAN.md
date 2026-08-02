@@ -201,3 +201,29 @@ git diff --check
 - Concern: Slice 6 depends on the thin timer's `--compare` path even though Slice 1's command does not exercise it, so Slice 1 must add a focused raw before/after comparison test without reviving contracts, trials, or ledgers.
 - Action: Execute directly and serially, surface each matching risk before Slices 1, 3, 5, and 6, and keep the original path only in git history rather than behind runtime selectors.
 - Verified: Current source and uncommitted diff inspected; cleanup ownership, EOS ordering, DiT cache flow, AudioVAE compiled-window behavior, stateless BigVGAN boundary, verification commands, dependency order, rollback coverage, and absence of privileged capture checkpoints traced against PLAN and DESIGN.
+
+## Verification
+
+### Summary
+
+**Overall:** PASS
+**Passed:** 31 of 31 criteria
+**Remaining gaps:** none
+
+### Slice rollup
+
+- **Slice 1 — PASS (5/5):** deleted-platform file and symbol search returned no matches; dependency diff was empty; the thin-profiler tests were included in the 860-test verification run; the preserved starting JSON and locked configuration were readable.
+- **Slice 2 — PASS (5/5):** direct source inspection confirmed request-controlled EOS projection and post-patch decision ordering; EOS, rollback, close, cache, and interleaving coverage passed in the unit suite.
+- **Slice 3 — PASS (5/5):** direct inspection confirmed fast LayerNorm, reusable rotary/bias geometry, bounded model-owned compilation, and BF16 boundaries; DiT/cache/solver parity and bounded-cardinality tests passed.
+- **Slice 4 — PASS (5/5):** direct inspection confirmed batched fixed-row projection, 4/8/16 recurrent tiles, tensor valid length, and immutable returned state; bridge tile, residual, failure, and interleaving tests passed.
+- **Slice 5 — PASS (6/6):** direct inspection confirmed bounded request-owned lookahead, convolution, transpose, FIR, AMP, and finalization state with no composite rolling decoder window; one-shot/partition/seam/flush/failure/interleaving tests and real checkpoint/runtime waveform parity passed.
+- **Slice 6 — PASS (5/5):** independent JSON assertions confirmed all four locked timing cells faster (MF batch/stream 9.8%/54.3%, SOAR batch/stream 24.3%/52.3%), EOS completion, matching batch/stream sample counts, and sub-30-GiB memory. Independent report, SHA-256, and WAV checks confirmed 16 finite non-silent 48 kHz English/Mandarin speaker/continuation outputs, no patch-budget exhaustion, zero WER regression, and speaker regression inside threshold. Upload dry-run passed.
+
+### Commands and derived checks
+
+- `.venv/bin/python -m pytest -q tests/unit/ tests/checkpoint/test_dots_tts_base_load.py tests/checkpoint/test_dots_tts_int8_load.py tests/runtime/test_dots_tts_base.py` — 860 passed.
+- `RUN_LOCAL_INTEGRATION=1 ... pytest --collect-only -q tests/integration/` — confirmed the one-shot integration run covered all 16 collected cases; the already completed run reported 16 passed.
+- Derived timing check read `/tmp/dots-tts-before.json` and `/tmp/dots-tts-after.json` and asserted identical configuration, four matching cells, faster totals, EOS, output health, batch/stream sample parity, and memory limits. The one-shot timer was not rerun by design.
+- Derived quality check read `/tmp/dots-tts-final-quality/{report,records}.json`, verified all 16 output hashes, decoded every WAV, and asserted 48 kHz, finite non-silent samples, sample counts, patch bounds, WER/speaker thresholds, and peak memory. Quality generation was not rerun by design.
+- Deleted-platform/dependency/pure-MLX searches, scoped dots.tts Ruff, `git diff --check`, and Hugging Face upload dry-run passed. The broader Ruff invocation's 12 findings are confined to unchanged Dramabox, Fish, and Gemma tests outside this change.
+- **Skipped checks:** none. The plan's explicitly single-run timing and integration/quality generation gates were audited from their locked artifacts instead of repeated.

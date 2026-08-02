@@ -10,7 +10,7 @@ import PyTorch, Transformers, `mlx-lm`, or either reference checkout.
 
 All four runtime artifacts live in `appautomaton/dots-tts-mlx`.
 
-| Alias | Remote path | Stored precision | Gate size | Gate peak |
+| Alias | Remote path | Stored precision | Gate size | MLX allocator peak |
 | --- | --- | --- | ---: | ---: |
 | `dots-tts-soar` | `soar/mlx-int8/` | Qwen-selective int8 | 3.210 GiB | 6.963 GiB |
 | `dots-tts-soar-base` | `soar/mlx-base/` | Mixed BF16/FP32 | 4.557 GiB | 8.308 GiB |
@@ -27,10 +27,10 @@ guidance branch. The reproduced gate did not establish a universal quality or
 speed winner; choose the solver family for the behavior you need, then compare
 it on your own voices and text.
 
-The size and peak figures above come from the
+The size and MLX allocator peak figures above come from the
 [2026-07-30 local quantization gate](benchmarks/dots-tts-quant-gate-2026-07-30.md).
-They are observations from that workload, not minimum system-memory
-requirements.
+They do not include every buffer attributed to the Python process and must not
+be presented as total system-memory use.
 
 ## Voice cloning
 

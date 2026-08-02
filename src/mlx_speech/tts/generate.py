@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 
@@ -91,6 +92,10 @@ def _print_models() -> None:
         print(f"  {' ' * 20} {repo}\n")
 
 
+def _format_gib(value: int | None) -> str:
+    return "unavailable" if value is None else f"{value / 1024**3:.3f}GiB"
+
+
 def tts_main(args: argparse.Namespace) -> None:
     """Execute the TTS command with a pre-parsed argparse namespace."""
     if args.list_models:
@@ -108,10 +113,18 @@ def tts_main(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
+    import mlx.core as mx
+
     from . import load
     from ..audio import write_wav
+    from ..diagnostics import (
+        process_peak_physical_footprint_bytes,
+        snapshot_mlx_memory,
+    )
 
+    load_started = time.perf_counter()
     model = load(args.model, codec_path_or_repo=args.codec)
+    load_seconds = time.perf_counter() - load_started
 
     generate_kwargs: dict = {}
     if args.reference_audio is not None:
@@ -126,12 +139,33 @@ def tts_main(args: argparse.Namespace) -> None:
     if args.duration_seconds is not None:
         generate_kwargs["duration_seconds"] = args.duration_seconds
 
+    mx.reset_peak_memory()
+    request_started = time.perf_counter()
     result = model.generate(args.text, **generate_kwargs)
 
     output_path = write_wav(
         Path(args.output), result.waveform, sample_rate=result.sample_rate
     )
+    request_seconds = time.perf_counter() - request_started
+    audio_seconds = int(result.waveform.size) / int(result.sample_rate)
+    memory = snapshot_mlx_memory("after_generate")
+    process_peak = process_peak_physical_footprint_bytes()
     print(f"Wrote {output_path} (sample_rate={result.sample_rate})")
+    print(
+        "Runtime "
+        f"load={load_seconds:.3f}s "
+        f"request={request_seconds:.3f}s "
+        f"total={load_seconds + request_seconds:.3f}s "
+        f"audio={audio_seconds:.3f}s "
+        f"rtf={request_seconds / audio_seconds:.3f} "
+        f"process_peak={_format_gib(process_peak)}"
+    )
+    print(
+        "MLX memory "
+        f"active={_format_gib(memory.active_bytes)} "
+        f"cache={_format_gib(memory.cache_bytes)} "
+        f"peak={_format_gib(memory.peak_bytes)}"
+    )
 
 
 def main() -> None:

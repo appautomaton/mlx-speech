@@ -21,6 +21,7 @@ from .vocoder import (
 
 DECODER_STREAM_PROJECTION_BLOCK = 16
 DECODER_RECURRENT_TILES = (4, 8, 16)
+DECODER_BATCH_TILE_FRAMES = 64
 _COMPILED_VOCODER_CACHE_LIMIT = 12
 _COMPILED_VOCODER_WARM_FRAMES = DECODER_RECURRENT_TILES
 
@@ -505,35 +506,45 @@ class AudioVAE(nn.Module):
             )
         if int(latent.shape[-1]) <= 0:
             raise ValueError("AudioVAE decode latent must not be empty")
-        recurrent_dtype = self.dec_mi_layer.recurrent_dtype
-        if recurrent_dtype is None:
-            recurrent_dtype = self.dec_mi_layer.input.weight.dtype
-        recurrent_state = self.dec_mi_layer.recurrent.initial_state(
-            int(latent.shape[0]),
-            dtype=recurrent_dtype,
+        frame_count = int(latent.shape[-1])
+        tile_size = min(DECODER_BATCH_TILE_FRAMES, frame_count)
+        state = self.init_decode_state(
+            batch_size=int(latent.shape[0]),
+            maximum_chunk_size=tile_size,
         )
-        value, _recurrent_state = self._execute_recurrent_tiles(
-            latent,
-            recurrent_state,
-            use_compiled=True,
-        )
-        value = value.astype(self.decoder.input_dtype)
-        decoder_state = self.decoder.init_stream_state(
-            int(value.shape[0]),
-            dtype=value.dtype,
-        )
-        waveform, decoder_state = self.decoder.stream(
-            value,
-            decoder_state,
-            final=False,
-        )
-        tail, _decoder_state = self.decoder.stream(
-            value[:, :0],
-            decoder_state,
+        waveforms = []
+        for start in range(0, frame_count, tile_size):
+            end = min(start + tile_size, frame_count)
+            waveform, state = self.decode_chunk(
+                latent[:, :, start:end],
+                state,
+            )
+            mx.eval(
+                waveform,
+                *state.decoder_state.arrays(),
+                *(
+                    tensor
+                    for layer_state in state.recurrent_state
+                    for tensor in layer_state
+                ),
+            )
+            waveforms.append(waveform)
+        tail, state = self.decode_chunk(
+            latent[:, :, :0],
+            state,
             final=True,
         )
-        waveform = mx.concatenate((waveform, tail), axis=1)
-        return waveform.astype(mx.float32).transpose(0, 2, 1)
+        mx.eval(
+            tail,
+            *state.decoder_state.arrays(),
+            *(
+                tensor
+                for layer_state in state.recurrent_state
+                for tensor in layer_state
+            ),
+        )
+        waveforms.append(tail)
+        return mx.concatenate(waveforms, axis=-1)
 
     def init_decode_state(
         self,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import math
 from collections import OrderedDict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from numbers import Integral
 from pathlib import Path
@@ -44,6 +45,18 @@ _RESAMPLE_KAISER_BETA = 14.769656459379492
 _RESAMPLE_WORKSPACE_BYTES = 32 * 1024 * 1024
 _RESAMPLE_MAX_OUTPUT_BYTES = 256 * 1024 * 1024
 _PROMPT_FEATURE_CACHE_LIMIT = 256
+_BATCH_CACHE_LIMIT_BYTES = 1024**3
+
+
+@contextmanager
+def _bounded_mlx_cache(limit: int) -> Iterator[None]:
+    previous_limit = mx.set_cache_limit(limit)
+    if previous_limit < limit:
+        mx.set_cache_limit(previous_limit)
+    try:
+        yield
+    finally:
+        mx.set_cache_limit(previous_limit)
 
 
 @dataclass(frozen=True)
@@ -1385,44 +1398,45 @@ class DotsTTSGenerator:
         """Generate all payload latents and decode one complete waveform."""
 
         self._validate_stream_chunk_patches(stream_chunk_patches)
-        patches = list(
-            self._generate_latent_patches(
-                text,
-                reference_audio=reference_audio,
-                reference_text=reference_text,
-                reference_sample_rate=reference_sample_rate,
-                max_audio_patches=max_audio_patches,
-                solver_steps=solver_steps,
-                guidance_scale=guidance_scale,
-                speaker_scale=speaker_scale,
-                language=language,
-                seed=seed,
-                eos_threshold=eos_threshold,
-                template=template,
+        with _bounded_mlx_cache(_BATCH_CACHE_LIMIT_BYTES):
+            patches = list(
+                self._generate_latent_patches(
+                    text,
+                    reference_audio=reference_audio,
+                    reference_text=reference_text,
+                    reference_sample_rate=reference_sample_rate,
+                    max_audio_patches=max_audio_patches,
+                    solver_steps=solver_steps,
+                    guidance_scale=guidance_scale,
+                    speaker_scale=speaker_scale,
+                    language=language,
+                    seed=seed,
+                    eos_threshold=eos_threshold,
+                    template=template,
+                )
             )
-        )
-        latent = mx.concatenate(patches, axis=1).transpose(0, 2, 1)
-        decoded = self.components.audio_vae.decode(latent)
-        if decoded.ndim != 3 or tuple(int(size) for size in decoded.shape[:2]) != (
-            1,
-            1,
-        ):
-            raise RuntimeError(
-                f"dots.tts AudioVAE returned invalid waveform {decoded.shape}"
+            latent = mx.concatenate(patches, axis=1).transpose(0, 2, 1)
+            decoded = self.components.audio_vae.decode(latent)
+            if decoded.ndim != 3 or tuple(int(size) for size in decoded.shape[:2]) != (
+                1,
+                1,
+            ):
+                raise RuntimeError(
+                    f"dots.tts AudioVAE returned invalid waveform {decoded.shape}"
+                )
+            waveform = decoded[0, 0].astype(mx.float32)
+            finite, non_silent = _materialize_waveform_health(waveform)
+            if not finite:
+                raise RuntimeError("dots.tts generation produced non-finite audio")
+            if int(waveform.size) == 0:
+                raise RuntimeError("dots.tts generation produced empty audio")
+            if not non_silent:
+                raise RuntimeError("dots.tts generation produced silent audio")
+            return DotsTTSSynthesisOutput(
+                waveform=waveform,
+                sample_rate=self.sample_rate,
+                num_patches=len(patches),
             )
-        waveform = decoded[0, 0].astype(mx.float32)
-        finite, non_silent = _materialize_waveform_health(waveform)
-        if not finite:
-            raise RuntimeError("dots.tts generation produced non-finite audio")
-        if int(waveform.size) == 0:
-            raise RuntimeError("dots.tts generation produced empty audio")
-        if not non_silent:
-            raise RuntimeError("dots.tts generation produced silent audio")
-        return DotsTTSSynthesisOutput(
-            waveform=waveform,
-            sample_rate=self.sample_rate,
-            num_patches=len(patches),
-        )
 
 
 __all__ = [

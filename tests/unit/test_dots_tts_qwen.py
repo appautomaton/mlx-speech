@@ -160,6 +160,23 @@ def test_dots_qwen_keeps_query_dtype_rope_for_bf16() -> None:
     assert all(values.dtype == mx.bfloat16 for _, values in output.cache)
 
 
+def test_dots_qwen_builds_rotary_geometry_once_for_all_layers(monkeypatch) -> None:
+    model = DotsTTSQwen(_tiny_config(num_hidden_layers=3))
+    calls = 0
+    original = model.model.rotary_emb
+
+    def count_rotary(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(model.model, "rotary_emb", count_rotary)
+    output = model.step(input_ids=mx.array([[1, 2]], dtype=mx.int32))
+    mx.eval(output.last_hidden_state)
+
+    assert calls == 1
+
+
 def test_dots_qwen_exact_cache_capacity_is_slice_written_and_bounded() -> None:
     model = DotsTTSQwen(_tiny_config(max_position_embeddings=16))
     _set_deterministic_weights(model)

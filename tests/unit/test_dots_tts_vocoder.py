@@ -43,6 +43,30 @@ def test_alias_free_snakebeta_preserves_shape_and_is_finite() -> None:
     assert activation.left_context == 11
 
 
+@pytest.mark.skipif(not mx.metal.is_available(), reason="requires Metal")
+@pytest.mark.parametrize("length", (1, 7, 33))
+@pytest.mark.parametrize("dtype", (mx.float16, mx.bfloat16))
+def test_fused_alias_free_snakebeta_matches_eager(
+    length: int,
+    dtype: mx.Dtype,
+) -> None:
+    mx.random.seed(42 + length)
+    activation = AliasFreeSnakeBeta(3)
+    activation.set_dtype(dtype)
+    activation.alpha = mx.random.normal((3,)) * 0.2
+    activation.beta = mx.random.normal((3,)) * 0.2
+    value = mx.random.normal((1, length, 3)).astype(dtype)
+    expected = activation._eager(value)
+    actual = activation(value)
+    mx.eval(expected, actual)
+    np.testing.assert_allclose(
+        actual.astype(mx.float32),
+        expected.astype(mx.float32),
+        atol=5e-3,
+        rtol=5e-3,
+    )
+
+
 @pytest.mark.parametrize("kind", ("conv", "transpose", "activation", "amp"))
 def test_causal_primitives_preserve_full_sequence_results_across_partitions(
     kind: str,

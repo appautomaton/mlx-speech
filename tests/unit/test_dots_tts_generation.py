@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from mlx_speech.generation.dots_tts import (
+    _BATCH_CACHE_LIMIT_BYTES,
     DEFAULT_MAX_AUDIO_PATCHES,
     _RESAMPLE_WORKSPACE_BYTES,
     _DotsTTSRequestRNG,
@@ -17,10 +18,26 @@ from mlx_speech.generation.dots_tts import (
     DotsTTSPromptConditioning,
     DotsTTSSynthesisOutput,
     _build_fm_attention_mask,
+    _bounded_mlx_cache,
     _high_quality_resample,
     _resample_plan,
 )
 from mlx_speech.models.dots_tts.text import DotsTTSTokenizer
+
+
+def test_batch_cache_limit_is_bounded_and_restored(monkeypatch) -> None:
+    current_limit = 9 * 1024**3
+
+    def set_cache_limit(limit: int) -> int:
+        nonlocal current_limit
+        previous_limit = current_limit
+        current_limit = limit
+        return previous_limit
+
+    monkeypatch.setattr(mx, "set_cache_limit", set_cache_limit)
+    with _bounded_mlx_cache(_BATCH_CACHE_LIMIT_BYTES):
+        assert current_limit == _BATCH_CACHE_LIMIT_BYTES
+    assert current_limit == 9 * 1024**3
 
 
 class _Backend:

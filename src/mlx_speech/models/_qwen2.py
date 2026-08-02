@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Literal, Protocol
 
 import mlx.core as mx
@@ -37,6 +38,14 @@ _LegacyQwen2LayerCache = tuple[mx.array, mx.array]
 _QWEN2_CACHE_GROWTH = 256
 
 
+@lru_cache(maxsize=16)
+def _qwen2_inv_freq(dim: int, base: float) -> mx.array:
+    exponent = mx.arange(0, dim, 2, dtype=mx.float32) / dim
+    frequencies = 1.0 / (base**exponent)
+    mx.eval(frequencies)
+    return frequencies
+
+
 class Qwen2RMSNorm(nn.Module):
     """Qwen2 RMSNorm."""
 
@@ -58,10 +67,10 @@ class Qwen2RotaryEmbedding(nn.Module):
             raise ValueError(f"Qwen2 RoPE dimension must be even, got {dim}.")
         self._dim = dim
         self._base = float(base)
+        _qwen2_inv_freq(self._dim, self._base)
 
     def _inv_freq(self) -> mx.array:
-        exponent = mx.arange(0, self._dim, 2, dtype=mx.float32) / self._dim
-        return 1.0 / (self._base**exponent)
+        return _qwen2_inv_freq(self._dim, self._base)
 
     def __call__(
         self,
@@ -161,6 +170,7 @@ class Qwen2Attention(nn.Module):
         x: mx.array,
         *,
         mask: mx.array | None = None,
+        position_embeddings: tuple[mx.array, mx.array] | None = None,
         cache: Qwen2LayerCache | _LegacyQwen2LayerCache | None = None,
         cache_capacity: int | None = None,
         max_cache_capacity: int | None = None,
@@ -198,8 +208,13 @@ class Qwen2Attention(nn.Module):
                 "Qwen2 attention cache exceeds max_position_embeddings: "
                 f"{offset + seq_len} > {self.max_position_embeddings}."
             )
-        rotary_dtype = q.dtype if self.rotary_dtype_policy == "query" else mx.float32
-        cos, sin = self.rotary_emb(offset, seq_len, dtype=rotary_dtype)
+        if position_embeddings is None:
+            rotary_dtype = (
+                q.dtype if self.rotary_dtype_policy == "query" else mx.float32
+            )
+            cos, sin = self.rotary_emb(offset, seq_len, dtype=rotary_dtype)
+        else:
+            cos, sin = position_embeddings
         q, k = _apply_rotary_pos_emb(q, k, cos, sin)
 
         if isinstance(cache, BoundedKVCache):
@@ -302,6 +317,7 @@ class Qwen2DecoderLayer(nn.Module):
         x: mx.array,
         *,
         mask: mx.array | None = None,
+        position_embeddings: tuple[mx.array, mx.array] | None = None,
         cache: Qwen2LayerCache | _LegacyQwen2LayerCache | None = None,
         cache_capacity: int | None = None,
         max_cache_capacity: int | None = None,
@@ -311,6 +327,7 @@ class Qwen2DecoderLayer(nn.Module):
         h, new_cache = self.self_attn(
             self.input_layernorm(x),
             mask=mask,
+            position_embeddings=position_embeddings,
             cache=cache,
             cache_capacity=cache_capacity,
             max_cache_capacity=max_cache_capacity,
@@ -347,6 +364,10 @@ class Qwen2Model(nn.Module):
         self.config = config
         self.rotary_dtype_policy = rotary_dtype_policy
         self.head_dim = config.hidden_size // config.num_attention_heads
+        self.rotary_emb = Qwen2RotaryEmbedding(
+            self.head_dim,
+            base=config.rope_theta,
+        )
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size)
         self.layers = [
             Qwen2DecoderLayer(
@@ -510,6 +531,16 @@ class Qwen2Model(nn.Module):
                 if isinstance(layer_cache, BoundedKVCache):
                     layer_cache.validate_append_length(seq_len)
         mask = self._build_causal_mask(offset, seq_len)
+        rotary_dtype = (
+            hidden_states.dtype
+            if self.rotary_dtype_policy == "query"
+            else mx.float32
+        )
+        position_embeddings = self.rotary_emb(
+            offset,
+            seq_len,
+            dtype=rotary_dtype,
+        )
 
         if cache_capacity is None:
             initial_capacity = min(
@@ -540,6 +571,7 @@ class Qwen2Model(nn.Module):
                 hidden_states, next_cache = layer(
                     hidden_states,
                     mask=mask,
+                    position_embeddings=position_embeddings,
                     cache=layer_cache,
                     cache_capacity=initial_capacity,
                     max_cache_capacity=max_cache_capacity,
