@@ -10,6 +10,34 @@ import mlx.nn as nn
 from .._cache import BoundedKVCache
 
 
+class _FusedLinear(nn.Module):
+    """One weight-exact projection assembled from adjacent Linear layers."""
+
+    def __init__(self, layers: tuple[nn.Linear, ...]):
+        super().__init__()
+        if not layers:
+            raise ValueError("fused linear requires at least one source layer")
+        input_dims = int(layers[0].weight.shape[1])
+        weight_dtype = layers[0].weight.dtype
+        has_bias = "bias" in layers[0]
+        if any(
+            int(layer.weight.shape[1]) != input_dims
+            or layer.weight.dtype != weight_dtype
+            or ("bias" in layer) != has_bias
+            for layer in layers
+        ):
+            raise ValueError("fused linear source projections are incompatible")
+        self.weight = mx.concatenate(tuple(layer.weight for layer in layers), axis=0)
+        if has_bias:
+            self.bias = mx.concatenate(tuple(layer.bias for layer in layers), axis=0)
+        self.freeze()
+
+    def __call__(self, value: mx.array) -> mx.array:
+        if "bias" in self:
+            return mx.addmm(self["bias"], value, self["weight"].T)
+        return value @ self["weight"].T
+
+
 class CausalConv1d(nn.Module):
     """Channels-last causal convolution with explicit MLX-layout weights."""
 
@@ -87,6 +115,18 @@ class SemanticAttention(nn.Module):
         self.v_proj = nn.Linear(hidden_size, hidden_size, bias=False)
         self.o_proj = nn.Linear(hidden_size, hidden_size, bias=True)
 
+    def fuse_qkv_for_inference(self) -> None:
+        """Replace three projections with one weight-exact MLX matmul."""
+
+        if getattr(self, "qkv_proj", None) is not None:
+            return
+        fused = _FusedLinear((self.q_proj, self.k_proj, self.v_proj))
+        mx.eval(fused.parameters())
+        self.qkv_proj = fused
+        del self.q_proj
+        del self.k_proj
+        del self.v_proj
+
     @staticmethod
     def _mask(offset: int, length: int, *, dtype: mx.Dtype) -> mx.array | None:
         if length == 1:
@@ -104,11 +144,16 @@ class SemanticAttention(nn.Module):
         cache_capacity: int | None = None,
     ) -> tuple[mx.array, SemanticLayerCache]:
         batch, length, _ = value.shape
-        query = self.q_proj(value).reshape(batch, length, self.num_heads, self.head_dim)
-        keys = self.k_proj(value).reshape(batch, length, self.num_heads, self.head_dim)
-        values = self.v_proj(value).reshape(
-            batch, length, self.num_heads, self.head_dim
-        )
+        qkv_proj = getattr(self, "qkv_proj", None)
+        if qkv_proj is None:
+            query = self.q_proj(value)
+            keys = self.k_proj(value)
+            values = self.v_proj(value)
+        else:
+            query, keys, values = mx.split(qkv_proj(value), 3, axis=-1)
+        query = query.reshape(batch, length, self.num_heads, self.head_dim)
+        keys = keys.reshape(batch, length, self.num_heads, self.head_dim)
+        values = values.reshape(batch, length, self.num_heads, self.head_dim)
         offset = 0
         if cache is not None:
             cached_keys, _ = cache.fetch()

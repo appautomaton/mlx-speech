@@ -8,6 +8,7 @@ import mlx.core as mx
 import mlx.nn as nn
 
 from .config import DotsTTSTransformerConfig
+from .layers import _FusedLinear
 
 
 def _silu(value: mx.array) -> mx.array:
@@ -207,6 +208,18 @@ class DiTAttention(nn.Module):
             RotaryEmbedding(self.head_dim, rotary_theta) if rotary_bias else None
         )
 
+    def fuse_qkv_for_inference(self) -> None:
+        """Replace three projections with one weight-exact MLX matmul."""
+
+        if getattr(self, "qkv_proj", None) is not None:
+            return
+        fused = _FusedLinear((self.q_proj, self.k_proj, self.v_proj))
+        mx.eval(fused.parameters())
+        self.qkv_proj = fused
+        del self.q_proj
+        del self.k_proj
+        del self.v_proj
+
     def _norm(self, name: str) -> nn.Module:
         if name == "RMSNorm":
             return AffineRMSNorm(self.head_dim)
@@ -235,17 +248,23 @@ class DiTAttention(nn.Module):
 
         batch_size, sequence_length, _ = value.shape
 
-        def project(layer: nn.Linear) -> mx.array:
-            return (
-                layer(value)
-                .reshape(batch_size, sequence_length, self.num_heads, self.head_dim)
-                .transpose(0, 2, 1, 3)
-            )
+        qkv_proj = getattr(self, "qkv_proj", None)
+        if qkv_proj is None:
+            query = self.q_proj(value)
+            key = self.k_proj(value)
+            projected_value = self.v_proj(value)
+        else:
+            query, key, projected_value = mx.split(qkv_proj(value), 3, axis=-1)
+
+        def reshape(projected: mx.array) -> mx.array:
+            return projected.reshape(
+                batch_size, sequence_length, self.num_heads, self.head_dim
+            ).transpose(0, 2, 1, 3)
 
         query, key, projected_value = (
-            project(self.q_proj),
-            project(self.k_proj),
-            project(self.v_proj),
+            reshape(query),
+            reshape(key),
+            reshape(projected_value),
         )
         if self.q_norm is not None and self.k_norm is not None:
             query = self.q_norm(query)
@@ -426,6 +445,12 @@ class DiT(nn.Module):
         self.blocks = [DiTBlock(config) for _ in range(config.num_layers)]
         self.output_layer = DiTFinalLayer(config.hidden_size, output_size)
 
+    def fuse_for_inference(self) -> None:
+        """Fuse self-attention projections after strict checkpoint loading."""
+
+        for block in self.blocks:
+            block.attn.fuse_qkv_for_inference()
+
     def prepare_condition(
         self,
         timesteps: mx.array,
@@ -461,13 +486,14 @@ class DiT(nn.Module):
             raise ValueError(
                 "DiT modulation condition must have shape (batch, hidden_size)"
             )
+        activated = _silu(condition)
         block_modulations = tuple(
-            tuple(mx.split(block.adaLN_modulation(_silu(condition)), 6, axis=-1))
+            tuple(mx.split(block.adaLN_modulation(activated), 6, axis=-1))
             for block in self.blocks
         )
         final_modulation = tuple(
             mx.split(
-                self.output_layer.adaLN_modulation(_silu(condition)),
+                self.output_layer.adaLN_modulation(activated),
                 2,
                 axis=-1,
             )

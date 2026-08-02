@@ -173,6 +173,29 @@ def test_dit_projected_attention_supports_a_rectangular_cached_prefix() -> None:
     np.testing.assert_allclose(cached, full, atol=2e-5, rtol=2e-5)
 
 
+def test_dit_inference_fuses_qkv_without_changing_projection() -> None:
+    mx.random.seed(73)
+    model = DiT(8, 4, _config(layers=2))
+    value = mx.random.normal((1, 5, 8))
+    positions = mx.arange(5, dtype=mx.float32)[None]
+    expected = model.blocks[0].attn.project(value, positions=positions)
+    expected_output = model(value, mx.array([0.25]), positions=positions)
+    mx.eval(expected, expected_output)
+
+    model.fuse_for_inference()
+    actual = model.blocks[0].attn.project(value, positions=positions)
+    actual_output = model(value, mx.array([0.25]), positions=positions)
+    mx.eval(actual, actual_output)
+    for result, reference in zip(actual, expected, strict=True):
+        np.testing.assert_allclose(result, reference, atol=1e-6, rtol=1e-6)
+    np.testing.assert_allclose(actual_output, expected_output, atol=1e-6, rtol=1e-6)
+
+    parameters = set(tree_flatten(model.parameters(), destination={}))
+    assert "blocks.0.attn.qkv_proj.weight" in parameters
+    assert not any("blocks.0.attn.q_proj" in name for name in parameters)
+    model.fuse_for_inference()
+
+
 def test_preparing_dit_modulations_does_not_change_parameter_names() -> None:
     model = DiT(8, 4, _config(layers=2), meanflow=True)
     before = set(tree_flatten(model.parameters(), destination={}))

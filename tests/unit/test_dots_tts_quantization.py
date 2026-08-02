@@ -110,6 +110,73 @@ def test_quantization_selects_every_eligible_native_qwen_module_only() -> None:
     assert output.logits is not None and output.logits.dtype == mx.bfloat16
 
 
+def test_quantized_qwen_fuses_decode_projections_after_loading() -> None:
+    core = _core()
+    paths = eligible_qwen_quantization_paths(core)
+    quantize_dots_tts_core(core, _quantization(paths))
+    layer = core.qwen.model.layers[0]
+    value = mx.random.normal((1, 2, 64)).astype(mx.bfloat16)
+    expected_qkv = (
+        layer.self_attn.q_proj(value),
+        layer.self_attn.k_proj(value),
+        layer.self_attn.v_proj(value),
+    )
+    expected_gate_up = (
+        layer.mlp.gate_proj(value),
+        layer.mlp.up_proj(value),
+    )
+    mx.eval(expected_qkv, expected_gate_up)
+
+    core.qwen.model.fuse_for_inference()
+    actual_qkv = layer.self_attn.qkv_proj.split(value)
+    actual_gate_up = layer.mlp.gate_up_proj.split(value)
+    mx.eval(actual_qkv, actual_gate_up)
+    for actual, expected in zip(
+        (*actual_qkv, *actual_gate_up),
+        (*expected_qkv, *expected_gate_up),
+        strict=True,
+    ):
+        assert float(mx.max(mx.abs(actual - expected)).item()) <= 0.02
+
+    parameters = tree_flatten(core.parameters(), destination={})
+    assert parameters["qwen.model.layers.0.self_attn.qkv_proj.weight"].dtype == mx.uint32
+    assert parameters["qwen.model.layers.0.mlp.gate_up_proj.weight"].dtype == mx.uint32
+    assert not any("layers.0.self_attn.q_proj" in name for name in parameters)
+    assert not any("layers.0.mlp.gate_proj" in name for name in parameters)
+    core.qwen.model.fuse_for_inference()
+
+
+def test_base_qwen_fuses_decode_projections_without_quantization() -> None:
+    core = _core()
+    input_ids = mx.array([[1, 2]], dtype=mx.int32)
+    expected = core.qwen(input_ids=input_ids)
+    mx.eval(expected.last_hidden_state, expected.eos_logits, expected.logits)
+
+    core.qwen.model.fuse_for_inference()
+    actual = core.qwen(input_ids=input_ids)
+    mx.eval(actual.last_hidden_state, actual.eos_logits, actual.logits)
+    assert (
+        float(
+            mx.max(
+                mx.abs(actual.last_hidden_state - expected.last_hidden_state)
+            ).item()
+        )
+        <= 0.02
+    )
+    assert float(mx.max(mx.abs(actual.eos_logits - expected.eos_logits)).item()) <= 0.02
+    assert float(mx.max(mx.abs(actual.logits - expected.logits)).item()) <= 0.02
+
+    parameters = tree_flatten(core.parameters(), destination={})
+    assert (
+        parameters["qwen.model.layers.0.self_attn.qkv_proj.weight"].dtype
+        == mx.bfloat16
+    )
+    assert (
+        parameters["qwen.model.layers.0.mlp.gate_up_proj.weight"].dtype
+        == mx.bfloat16
+    )
+
+
 def test_quantization_metadata_reconstructs_an_exact_complete_predicate() -> None:
     core = _core()
     paths = eligible_qwen_quantization_paths(core)

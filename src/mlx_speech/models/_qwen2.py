@@ -38,6 +38,88 @@ _LegacyQwen2LayerCache = tuple[mx.array, mx.array]
 _QWEN2_CACHE_GROWTH = 256
 
 
+class _FusedQwenProjection(nn.Module):
+    """Inference-only, weight-exact concatenation of Qwen projections."""
+
+    def __init__(self, layers: tuple[nn.Module, ...]):
+        super().__init__()
+        if not layers:
+            raise ValueError("fused Qwen projection requires source layers")
+        quantized = isinstance(layers[0], nn.QuantizedLinear)
+        expected_type = nn.QuantizedLinear if quantized else nn.Linear
+        if any(not isinstance(layer, expected_type) for layer in layers):
+            raise TypeError("fused Qwen projections must use one Linear type")
+        has_bias = "bias" in layers[0]
+        input_width = int(layers[0].weight.shape[1])
+        if any(
+            int(layer.weight.shape[1]) != input_width
+            or layer.weight.dtype != layers[0].weight.dtype
+            or ("bias" in layer) != has_bias
+            for layer in layers
+        ):
+            raise ValueError("fused Qwen source projections are incompatible")
+
+        object.__setattr__(
+            self,
+            "output_widths",
+            tuple(int(layer.weight.shape[0]) for layer in layers),
+        )
+        self.weight = mx.concatenate(tuple(layer.weight for layer in layers), axis=0)
+        if has_bias:
+            self.bias = mx.concatenate(tuple(layer.bias for layer in layers), axis=0)
+        self.quantized = quantized
+        if quantized:
+            first = layers[0]
+            self.group_size = int(first.group_size)
+            self.bits = int(first.bits)
+            self.mode = str(first.mode)
+            if any(
+                int(layer.group_size) != self.group_size
+                or int(layer.bits) != self.bits
+                or str(layer.mode) != self.mode
+                for layer in layers[1:]
+            ):
+                raise ValueError("fused Qwen quantization parameters differ")
+            self.scales = mx.concatenate(
+                tuple(layer.scales for layer in layers), axis=0
+            )
+            quant_biases = tuple(layer.get("biases") for layer in layers)
+            if any(biases is None for biases in quant_biases):
+                if not all(biases is None for biases in quant_biases):
+                    raise ValueError("fused Qwen quantization biases differ")
+            else:
+                self.biases = mx.concatenate(quant_biases, axis=0)
+        self.freeze()
+
+    def __call__(self, value: mx.array) -> mx.array:
+        if self.quantized:
+            value = mx.quantized_matmul(
+                value,
+                self["weight"],
+                scales=self["scales"],
+                biases=self.get("biases"),
+                transpose=True,
+                group_size=self.group_size,
+                bits=self.bits,
+                mode=self.mode,
+            )
+            if "bias" in self:
+                value = value + self["bias"]
+            return value
+        if "bias" in self:
+            return mx.addmm(self["bias"], value, self["weight"].T)
+        return value @ self["weight"].T
+
+    def split(self, value: mx.array) -> tuple[mx.array, ...]:
+        projected = self(value)
+        boundaries = []
+        offset = 0
+        for width in self.output_widths[:-1]:
+            offset += width
+            boundaries.append(offset)
+        return tuple(mx.split(projected, boundaries, axis=-1))
+
+
 @lru_cache(maxsize=16)
 def _qwen2_inv_freq(dim: int, base: float) -> mx.array:
     exponent = mx.arange(0, dim, 2, dtype=mx.float32) / dim
@@ -165,6 +247,18 @@ class Qwen2Attention(nn.Module):
             base=config.rope_theta,
         )
 
+    def fuse_qkv_for_inference(self) -> None:
+        """Replace three decode projections with one weight-exact MLX matmul."""
+
+        if getattr(self, "qkv_proj", None) is not None:
+            return
+        fused = _FusedQwenProjection((self.q_proj, self.k_proj, self.v_proj))
+        mx.eval(fused.parameters())
+        self.qkv_proj = fused
+        del self.q_proj
+        del self.k_proj
+        del self.v_proj
+
     def __call__(
         self,
         x: mx.array,
@@ -178,19 +272,25 @@ class Qwen2Attention(nn.Module):
     ) -> tuple[mx.array, Qwen2LayerCache]:
         batch_size, seq_len, _ = x.shape
 
-        q = self.q_proj(x).reshape(
+        qkv_proj = getattr(self, "qkv_proj", None)
+        if qkv_proj is None:
+            q, k, v = self.q_proj(x), self.k_proj(x), self.v_proj(x)
+        else:
+            q, k, v = qkv_proj.split(x)
+
+        q = q.reshape(
             batch_size,
             seq_len,
             self.num_heads,
             self.head_dim,
         )
-        k = self.k_proj(x).reshape(
+        k = k.reshape(
             batch_size,
             seq_len,
             self.num_kv_heads,
             self.head_dim,
         )
-        v = self.v_proj(x).reshape(
+        v = v.reshape(
             batch_size,
             seq_len,
             self.num_kv_heads,
@@ -286,8 +386,24 @@ class Qwen2MLP(nn.Module):
             bias=False,
         )
 
+    def fuse_gate_up_for_inference(self) -> None:
+        """Replace the two SwiGLU input projections with one MLX matmul."""
+
+        if getattr(self, "gate_up_proj", None) is not None:
+            return
+        fused = _FusedQwenProjection((self.gate_proj, self.up_proj))
+        mx.eval(fused.parameters())
+        self.gate_up_proj = fused
+        del self.gate_proj
+        del self.up_proj
+
     def __call__(self, x: mx.array) -> mx.array:
-        return self.down_proj(nn.silu(self.gate_proj(x)) * self.up_proj(x))
+        gate_up_proj = getattr(self, "gate_up_proj", None)
+        if gate_up_proj is None:
+            gate, up = self.gate_proj(x), self.up_proj(x)
+        else:
+            gate, up = gate_up_proj.split(x)
+        return self.down_proj(nn.silu(gate) * up)
 
 
 class Qwen2DecoderLayer(nn.Module):
@@ -380,6 +496,13 @@ class Qwen2Model(nn.Module):
 
     def get_input_embeddings(self) -> nn.Embedding:
         return self.embed_tokens
+
+    def fuse_for_inference(self) -> None:
+        """Install the low-dispatch projection layout after checkpoint loading."""
+
+        for layer in self.layers:
+            layer.self_attn.fuse_qkv_for_inference()
+            layer.mlp.fuse_gate_up_for_inference()
 
     def tied_logits(self, hidden_states: mx.array) -> mx.array:
         """Project hidden states with the token embedding weight."""

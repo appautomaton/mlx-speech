@@ -567,6 +567,13 @@ def load_dots_tts_components(model_dir: str | Path) -> LoadedDotsTTSComponents:
             expected_dtype=expected("speaker"),
         ),
     )
+    # The serialized layout remains explicit and auditable. Once strict loading
+    # succeeds, inference uses the same weight-exact Q/K/V fusion as the official
+    # PyTorch pipeline so small autoregressive steps launch one projection.
+    core.qwen.model.fuse_for_inference()
+    core.semantic_encoder.fuse_for_inference()
+    core.dit.fuse_for_inference()
+    mx.clear_cache()
     with safe_open(
         layout.model_dir / "latent_stats.safetensors", framework="numpy"
     ) as handle:

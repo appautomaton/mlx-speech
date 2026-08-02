@@ -3,6 +3,7 @@ from __future__ import annotations
 import mlx.core as mx
 import numpy as np
 import pytest
+from mlx.utils import tree_flatten
 
 from mlx_speech.models.dots_tts.semantic_encoder import VAESemanticEncoder
 
@@ -49,6 +50,23 @@ def test_semantic_encoder_is_causal_across_patches() -> None:
     np.testing.assert_allclose(
         original_output[:, :1], changed_output[:, :1], atol=2e-5, rtol=2e-5
     )
+
+
+def test_semantic_inference_fuses_qkv_without_changing_output() -> None:
+    model = _encoder()
+    latent = mx.random.normal((1, 8, 4))
+    expected = model(latent)
+    mx.eval(expected)
+
+    model.fuse_for_inference()
+    actual = model(latent)
+    mx.eval(actual)
+    np.testing.assert_allclose(actual, expected, atol=1e-6, rtol=1e-6)
+
+    parameters = set(tree_flatten(model.parameters(), destination={}))
+    assert "encoder.layers.0.attn.qkv_proj.weight" in parameters
+    assert not any("encoder.layers.0.attn.q_proj" in name for name in parameters)
+    model.fuse_for_inference()
 
 
 def test_semantic_state_tracks_conv_tail_and_layer_caches() -> None:

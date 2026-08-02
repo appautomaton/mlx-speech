@@ -95,6 +95,12 @@ class VAESemanticEncoder(nn.Module):
                 f"semantic input time must be divisible by {self.patch_size}, got {time}"
             )
 
+    def fuse_for_inference(self) -> None:
+        """Fuse self-attention projections after strict checkpoint loading."""
+
+        for layer in self.encoder.layers:
+            layer.attn.fuse_qkv_for_inference()
+
     def _project(self, value: mx.array) -> mx.array:
         batch, tokens, hidden = value.shape
         rate = self.output_downsample_rate

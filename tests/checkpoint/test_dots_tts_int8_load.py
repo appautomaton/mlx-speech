@@ -27,12 +27,43 @@ def test_dots_tts_int8_strict_loads_exact_selective_predicate(variant: str) -> N
     assert all(not report.runtime_dtype_mismatches for report in loaded.reports)
 
     parameters = tree_flatten(loaded.core.parameters(), destination={})
-    for path in metadata.quantization.quantized_paths:
+    fused_suffixes = {
+        ".self_attn.q_proj",
+        ".self_attn.k_proj",
+        ".self_attn.v_proj",
+        ".mlp.gate_proj",
+        ".mlp.up_proj",
+    }
+    retained_paths = tuple(
+        path
+        for path in metadata.quantization.quantized_paths
+        if not any(path.endswith(suffix) for suffix in fused_suffixes)
+    )
+    for path in retained_paths:
         assert parameters[f"{path}.weight"].dtype == mx.uint32
         assert parameters[f"{path}.scales"].dtype == mx.bfloat16
         assert parameters[f"{path}.biases"].dtype == mx.bfloat16
+    for index in range(loaded.layout.qwen_config.num_hidden_layers):
+        prefix = f"qwen.model.layers.{index}"
+        for fused_path in (
+            f"{prefix}.self_attn.qkv_proj",
+            f"{prefix}.mlp.gate_up_proj",
+        ):
+            assert parameters[f"{fused_path}.weight"].dtype == mx.uint32
+            assert parameters[f"{fused_path}.scales"].dtype == mx.bfloat16
+            assert parameters[f"{fused_path}.biases"].dtype == mx.bfloat16
+    assert not any(
+        any(name.startswith(f"{path}.") for name in parameters)
+        for path in metadata.quantization.quantized_paths
+        if any(path.endswith(suffix) for suffix in fused_suffixes)
+    )
     assert parameters["qwen.eos_proj.linear1.weight"].dtype == mx.bfloat16
     assert parameters["semantic_encoder.ds_proj.weight"].dtype == mx.bfloat16
+    assert (
+        parameters["semantic_encoder.encoder.layers.0.attn.qkv_proj.weight"].dtype
+        == mx.bfloat16
+    )
+    assert parameters["dit.blocks.0.attn.qkv_proj.weight"].dtype == mx.bfloat16
 
     base = artifact.parent / "mlx-base"
     int8_bytes = sum(path.stat().st_size for path in artifact.rglob("*") if path.is_file())
