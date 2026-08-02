@@ -14,20 +14,6 @@ Five lifecycle stages: `frame → plan → execute → verify → verified`. `re
 | `verify` | Independent audit against acceptance criteria | Verification report, `VERIFY-GAP` on fail |
 | `verified` | Terminal. Change is complete. | Completion summary |
 
-## Skill Structure
-
-Every skill follows this skeleton:
-
-```
-Preamble        -> identity, "does not" boundary, loading discipline
-Quality Gate    -> checks before finalizing. Each skill ships a quality.md reference
-Do              -> skill-specific procedure, ending in the stop-issuing step when the skill stops
-Output          -> artifacts produced and state changes
-Rules           -> guardrails
-```
-
-Conditional reference reads (`Read references/X.md when Y`) appear inline at their procedural trigger points.
-
 ## State Contract
 
 - Machine state lives in `.agent/.automaton/state/current.json`.
@@ -38,7 +24,7 @@ Conditional reference reads (`Read references/X.md when Y`) appear inline at the
 
 ## Quality Gate
 
-Every skill ships `references/quality.md` with four sections: anti-patterns, better shape, prose hygiene, and a final check. Read it when the skill's output drifts toward vagueness, theater, or inflation. The Quality Gate in each SKILL.md names the skill-specific trigger. All artifacts must pass `.agent/.automaton/references/ANTI-SLOP.md`.
+Every skill ships `references/quality.md`, which is the sole home of its own shape. Read it when the skill's output drifts toward vagueness, theater, or inflation. The Quality Gate in each SKILL.md names the skill-specific trigger. All artifacts must pass `.agent/.automaton/references/ANTI-SLOP.md`.
 
 ## GATE and STOP Tags
 

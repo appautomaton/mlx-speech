@@ -25,6 +25,9 @@ jobs:
 
       - name: Run unit tests
         run: uv run pytest tests/unit/ -q
+        env:
+          # GitHub's virtualized macOS runner reports Metal but aborts custom kernels.
+          MLX_SPEECH_DISABLE_CUSTOM_METAL: "1"
 
       - name: Run checkpoint tests
         # Skips cleanly when local checkpoints are absent, which is always on CI.

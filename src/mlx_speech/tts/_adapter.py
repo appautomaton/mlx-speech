@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Iterator, Protocol, runtime_checkable
 
 import mlx.core as mx
 
@@ -42,3 +42,21 @@ class TTSModel(Protocol):
         # Backend escape hatch
         **kwargs,
     ) -> TTSOutput: ...
+
+
+@runtime_checkable
+class StreamingTTSModel(TTSModel, Protocol):
+    """Optional protocol for TTS models that yield waveform chunks."""
+
+    def generate_stream(
+        self,
+        text: str | None = None,
+        *,
+        reference_audio: str | Path | mx.array | None = None,
+        reference_text: str | None = None,
+        max_new_tokens: int | None = None,
+        edit_type: str | None = None,
+        edit_info: str | None = None,
+        duration_seconds: float | None = None,
+        **kwargs,
+    ) -> Iterator[TTSOutput]: ...

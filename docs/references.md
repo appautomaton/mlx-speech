@@ -33,6 +33,14 @@ As of March 29, 2026:
   — Refreshed from `6408d2a` to pick up Nemotron 3.5 ASR support (PRs #771, #774
   cache-aware `stream_generate`, #775 shared `nemo/` package, #817 OOM fix).
   `mlx_audio/stt/models/nemotron_asr/` is the MLX-side reference for the v7 plan.
+- `.references/dots.tts`: `main` at `5ed719e3d36f5a3f6d8037ca9a7009d4fd0520ba`
+  (v0.2.1, 2026-07-06) — Official PyTorch source for dots.tts inference,
+  fine-tuning, MeanFlow distillation, checkpoint behavior, and parity oracles.
+  Read-only; never imported by the MLX runtime.
+- `.references/dots-tts-mlx`: `main` at `f64479f51a2a9d7093533732cae86e765d8fb96e`
+  (v0.7.0, 2026-06-10) — Pure-MLX, inference-only dots.tts reference supporting
+  SOAR and MeanFlow checkpoints, voice cloning, waveform generation, conversion,
+  and quantization. Read-only; not a runtime dependency.
 - `.references/transformers`: `main` at `8213e0d920d52cb00dcade16b6d1f6e952ac0a8c` (sparse: `src/transformers/models/cohere_asr`, `src/transformers/models/moonshine`, `src/transformers/models/parakeet`)
 - `.references/Step-Audio-EditX`: `main` at `8fa0a3e96979d3c47f6e6b531d234ff98acac878`
 - `.references/DramaBox`: `main` at `a70a5818e103c1c9fef22409c1e0c707ebf4f8a7` (2026-05-23)

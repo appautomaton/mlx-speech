@@ -1,48 +1,19 @@
 # Landscape Awareness
 
-After understanding the problem through questioning, search for what the world thinks. This is NOT competitive research. It is understanding conventional wisdom so you can evaluate where it is wrong.
+Load this in any mode when market, ecosystem, competitor, or current-state evidence would change the frame. This is not competitive research. It is checking what the space already assumes, so the frame can say where that assumption does not hold here.
 
-## Three-Layer Synthesis
+## Consent Gate
 
-For each search result, run this analysis:
+Searching sends the user's problem space to a search provider. Ask before the first search, naming what is sent, per the Asking The User convention in `.agent/.automaton/references/FRAMEWORK.md`. One consent covers the diagnostic's searches. On a decline, skip searching and say the frame rests on in-distribution knowledge.
 
-- **[Layer 1]** What does everyone already know about this space? What is the tried-and-true approach?
-- **[Layer 2]** What are the search results and current discourse saying?
-- **[Layer 3]** Given what WE learned in the diagnostic, is there a reason the conventional approach is wrong?
+## Query Boundary
 
-## Eureka Check
+Search generalized category terms, never the user's product name, proprietary concept, or unreleased idea: "task management app landscape", not the name of their stealth product. This boundary holds in every mode and applies to every query in the session.
 
-If Layer 3 reasoning reveals a genuine insight, name it explicitly:
+If search is unavailable, say so and proceed on in-distribution knowledge.
 
-> EUREKA: Everyone does X because they assume [assumption]. But [evidence from our conversation] suggests that's wrong here. This means [implication].
+## Using The Result
 
-If no eureka moment exists, say: "The conventional wisdom seems sound here. Let's build on it." Carry the result into Cover The Request and the alternatives you present.
+Read enough to know what the space already assumes, then say whether the diagnostic gave you a reason that assumption is wrong here. A named exception is the finding worth carrying. Agreement is also a result: say the conventional approach holds and build on it.
 
-## Search Guidelines
-
-- Use **generalized category terms**, never the user's specific product name, proprietary concept, or stealth idea.
-- Example: search "task management app landscape" not "SuperTodo AI-powered task killer."
-- If search is unavailable, note: "Search unavailable. Proceeding with in-distribution knowledge only."
-
-**Startup mode:** Search for:
-- "[problem space] startup approach {current year}"
-- "[problem space] common mistakes"
-- "why [incumbent solution] fails" OR "why [incumbent solution] works"
-
-**Builder mode:** Search for:
-- "[thing being built] existing solutions"
-- "[thing being built] open source alternatives"
-- "best [thing category] {current year}"
-
-Read the top 2-3 results. Feed findings into Cover The Request and the alternatives you present.
-
-## Privacy Gate
-
-Before searching, ask the user:
-
-> I'd like to search for what the world thinks about this space to inform our discussion. This sends generalized category terms (not your specific idea) to a search provider. OK to proceed?
-
-- A) Yes, search away
-- B) Skip, keep this session private
-
-If B: skip this phase entirely. Use only in-distribution knowledge.
+Carry either outcome into Cover The Request and the alternatives you present.

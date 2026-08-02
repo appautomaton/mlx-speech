@@ -1,0 +1,229 @@
+# dots.tts MLX-Native Inference Redesign Plan
+
+## Goal
+
+Implement the bounded outcome in [SPEC.md](SPEC.md): delete the benchmark platform and make the real pure-MLX MF/SOAR batch and streaming paths faster without changing speech behavior.
+
+## Architecture Approach
+
+Execution follows [DESIGN.md](DESIGN.md): stable MLX acoustic graphs with explicit request state, a tiled AudioVAE bridge, bounded stateful BigVGAN decoding, and a thin before/after timer. PyTorch source is read for behavior before each stage is changed; its runtime structure is not copied.
+
+## Execution Routing and Topology
+
+Default: direct, serial, continuation after each verified slice. The user asked the primary agent to finish the work without further agent-team ceremony.
+
+Overrides: none.
+
+**Parallel-safe groups:** none.
+
+Checkpoints: none. The starting measurement runs once in Slice 1 and the final measurement runs once in Slice 6. No privileged capture or human action is required.
+
+## Ordered Slice Sequence
+
+### Slice 1: Remove the benchmark platform and freeze one thin starting measurement
+
+**Objective:** Delete the uncommitted experiment-management machinery, restore an uninstrumented ordinary path, and record one real public-path starting measurement.
+
+**Acceptance criteria:**
+- Delete `profile_dots_tts_runtime.py`, `capture_dots_tts_runtime.py`, `dots_tts_runtime_completion_gate.py`, `dots_tts_runtime_evidence.py`, the runtime manifest, registry/ledger artifacts, generalized runtime-profile tests, and private diagnostics used only by that platform.
+- Remove platform hooks from generation and AudioVAE while preserving unrelated runtime behavior and the user's `tmp/` contents. Keep `/tmp/` ignored.
+- Reduce `profile_dots_tts_inference.py` to a thin default-path timer: public int8 MF/SOAR, normal EOS/default patch bound, batch/stream, one request per cell, separate load, wall, first-audio, waveform duration/RTF, patch count, stop reason when already available, and peak memory.
+- The timer exposes no candidate, ledger, capture, backend/reference, comparison-contract, or repetition controls and writes only the requested local JSON file.
+- Run the starting command once and retain `/tmp/dots-tts-before.json` as local scratch evidence. Do not rerun it in later slices.
+
+**Verification:**
+```bash
+.venv/bin/python -m pytest tests/unit/test_dots_tts_inference_profile.py tests/unit/test_dots_tts_generation.py
+.venv/bin/python -m pytest tests/unit/
+.venv/bin/python scripts/eval/profile_dots_tts_inference.py --model-root models/dots_tts --artifact-class int8 --variants mf soar --paths batch stream --output /tmp/dots-tts-before.json
+git diff --check
+```
+
+**Depends on:** none
+**Touches:** benchmark-platform files, generation diagnostics, legacy dots.tts profiler and tests
+**Produces:** clean runtime tree and one non-repeated starting timing file
+
+**Status:** complete
+**Evidence:** deleted the uncommitted runtime profiler/capture/ledger/diagnostic platform and restored tracked runtime files to `HEAD`; reduced `profile_dots_tts_inference.py` to one raw request per cell plus a tested `--compare`; focused tests 60 passed and unit suite 826 passed. One starting run wrote `/tmp/dots-tts-before.json`: MF batch/stream 8.847s/14.870s, SOAR batch/stream 12.108s/18.557s.
+**Risks / next:** starting timing is intentionally a single raw observation; do not rerun it, and preserve the locked inputs for Slice 6.
+
+### Slice 2: Fix acoustic EOS, cache publication, and host synchronization
+
+**Objective:** Remove avoidable per-patch host work from the Qwen/semantic feedback loop while preserving official stop and rollback semantics.
+
+**Acceptance criteria:**
+- Read the pinned PyTorch Qwen/generation source and document any semantic difference in focused test names or short code comments.
+- Reuse the Qwen EOS result for the current patch; threshold `1.0` builds neither EOS projection nor scalar publication.
+- Normal EOS performs no pre-DiT host read. The current patch is solved, semantically fed back, added to Qwen, emitted, and only then stopped.
+- Cache offsets and request state publish only after successful MLX evaluation; injected failure, retry, close, and interleaved requests preserve the previous state.
+- No public argument or alternate implementation selector is added.
+
+**Verification:**
+```bash
+.venv/bin/python -m pytest tests/unit/test_dots_tts_generation.py tests/unit/test_dots_tts_qwen.py -k 'eos or stop or cache or rollback or interleav'
+.venv/bin/python -m pytest tests/unit/ tests/checkpoint/ tests/runtime/
+git diff --check
+```
+
+**Depends on:** Slice 1
+**Touches:** `src/mlx_speech/generation/dots_tts.py`, Qwen/cache code, focused tests
+**Produces:** one retained acoustic feedback path with correct stop ordering
+
+**Status:** complete
+**Evidence:** `DotsTTSQwen.step` can skip EOS projection, and generation reuses returned EOS logits, co-materializes the current patch transaction before the scalar decision, yields the patch, then stops. Focused EOS/cache tests 14 passed; the combined tier run completed its 828-unit phase, and isolated dots.tts checkpoint/runtime verification reported 9 passed; scoped Ruff and `git diff --check` passed.
+**Risks / next:** none; the one discarded full multi-model tier process lost its final exit status after unit completion, so only the relevant dots.tts higher tiers were rerun.
+
+### Slice 3: Make DiT execution reuse stable MLX work
+
+**Objective:** Replace fragmented and repeated DiT inference work with bounded stable MLX execution without changing MF/SOAR solver math.
+
+**Acceptance criteria:**
+- Read the pinned PyTorch DiT/solver source before editing and preserve MF/SOAR schedules, NFE counts, CFG, noise, masks, positions, and cache semantics.
+- Implement the smallest reusable compiled/fused boundary that improves the real loop. Compile signatures are bounded by model/mode/dtype/solver/cache capacity, never logical prefix length or request offset.
+- Use parity-proven MLX fast normalization, rotary, batched operations, and immutable geometry where they remove repeated eager construction; remove any losing prototype instead of keeping a selector.
+- Seeded, cached/full-history, bucket growth, BF16, failure rollback, and interleaved requests match existing fixtures and tolerances.
+- Peak MLX memory stays below 30 GiB and compilation cannot grow once per patch.
+
+**Verification:**
+```bash
+.venv/bin/python -m pytest tests/unit/test_dots_tts_dit.py tests/unit/test_dots_tts_dit_cache.py tests/unit/test_dots_tts_solvers.py
+.venv/bin/python -m pytest tests/unit/ tests/checkpoint/ tests/runtime/
+git diff --check
+```
+
+**Depends on:** Slice 2
+**Touches:** DiT layers, inference runner/cache, solvers, focused tests
+**Produces:** a single bounded-signature DiT implementation
+
+**Status:** complete
+**Evidence:** Read the pinned PyTorch DiT/inference solver and its BF16 autocast boundary. The retained MLX path uses fast affine-free LayerNorm, computes rotary cos/sin and the additive SDPA bias once per patch, and keeps dynamic K/V attention outside one model-owned compiled tail graph shared across all layers, NFEs, prefixes, cache buckets, and later requests. An unintended float32 promotion at the timestep embedding was removed explicitly at the same boundary PyTorch autocasts; real MF cache storage is now BF16. The final real-checkpoint microcheck was bit-exact, reduced the retained tail post-attention work by 39.4%, paid 21 ms for compile plus first execution, produced one compile key, and peaked at 3.55 GB. Focused DiT/solver tests 52 passed, full unit 835 passed, dots.tts checkpoint/runtime 9 passed, and scoped Ruff plus `git diff --check` passed.
+**Risks / next:** The focused timing decides only this compiled boundary; Slice 6 owns the single final end-to-end comparison. Slice 4 should preserve the BF16/FP32 recurrent boundaries while reducing AudioVAE host-driven work.
+
+### Slice 4: Compile and vectorize the AudioVAE bridge
+
+**Objective:** Remove avoidable Python/eager recurrent work between acoustic patches and decoder frames.
+
+**Acceptance criteria:**
+- Read the pinned PyTorch AudioVAE source and preserve recurrent equations, dtype boundaries, padding, and output layout.
+- Replace row-wise fixed projections with batched MLX operations and use a bounded set of reusable tile shapes with tensor valid length.
+- Padding never advances hidden/cell state; returned state is exactly after the last valid frame.
+- Batch and streaming tiles cover short, steady, residual, and zero-frame finalization without per-length compilation.
+- Full and tiled outputs/states match existing dtype-aware tolerances; failures and interleaved requests do not leak state.
+
+**Verification:**
+```bash
+.venv/bin/python -m pytest tests/unit/test_dots_tts_audio_vae.py tests/unit/test_dots_tts_vocoder.py tests/unit/test_dots_tts_vocoder_streaming.py -k 'bridge or state or tile or row or compile or interleav or failure'
+.venv/bin/python -m pytest tests/unit/ tests/checkpoint/ tests/runtime/
+git diff --check
+```
+
+**Depends on:** Slice 3
+**Touches:** AudioVAE bridge/recurrent projection code and focused tests
+**Produces:** one bounded compiled bridge used by batch and stream
+
+**Status:** complete
+**Evidence:** Read the pinned PyTorch AudioVAE and strict streaming LSTM source, including the FP32 recurrent and BF16 decoder boundaries. Fixed-row projections now use one batched block matmul rather than a Python block loop. Batch and stream share compiled 4/8/16-frame recurrent tiles with tensor `valid_length`; padded frames produce no recurrent-state advance, arbitrary larger inputs split into bounded tiles, and zero-frame flush skips recurrence. Generation materializes candidate waveform/state before publishing vocoder or pending-patch state. Real-checkpoint 140-frame bridge timing showed a 27.0% warm improvement, 30 ms compile-plus-first execution versus 20 ms eager, and `1.9e-6` maximum difference. Focused bridge/vocoder/generation tests 85 passed, full unit 840 passed, dots.tts checkpoint/runtime 9 passed, and scoped Ruff plus `git diff --check` passed.
+**Risks / next:** First-use bridge compilation costs about 9 ms on the focused case; the single final default-path comparison decides the net result. Slice 5 owns the still-dominant rolling BigVGAN window recomputation and must preserve alignment/flush semantics.
+
+### Slice 5: Eliminate rolling BigVGAN recomputation in streaming
+
+**Objective:** Decode only new frames plus required overlap/lookahead instead of repeatedly decoding the full rolling context.
+
+**Acceptance criteria:**
+- Read the pinned PyTorch BigVGAN source and preserve causal padding, transpose overlap, alias-free FIR phase, AMP branch order, lookahead, and final flush.
+- Introduce bounded request-owned decoder state and route both batch and streaming through the retained state-correct primitives.
+- One-shot and chunked output match for single-frame, regular, mixed, irregular, short, early-final, and duplicate-final partitions; sample counts and seams remain correct.
+- State publishes only after successful evaluation; close, failure/retry, and interleaved streams remain isolated.
+- Keep existing public streaming arguments. Change steady cadence only if a focused timing shows lower completion time without harming first-audio behavior.
+- Use a private Metal kernel only if a specific remaining primitive is measurably material and built-in MLX cannot express it efficiently; otherwise keep the built-in path.
+
+**Verification:**
+```bash
+.venv/bin/python -m pytest tests/unit/test_dots_tts_vocoder.py tests/unit/test_dots_tts_vocoder_streaming.py tests/unit/test_dots_tts_generation.py -k 'stream or chunk or state or seam or flush or close or failure or interleav'
+.venv/bin/python -m pytest tests/unit/ tests/checkpoint/ tests/runtime/
+git diff --check
+```
+
+**Depends on:** Slice 4
+**Touches:** BigVGAN primitives, AudioVAE decoder state, batch/stream generator routing, focused tests
+**Produces:** one stateful decoder with no rolling full-context recomputation
+
+**Status:** complete
+**Evidence:** Read the pinned PyTorch BigVGAN, alias-free activation, causal transpose, and streaming AudioVAE sources. The retained MLX decoder owns bounded per-request lookahead, causal-convolution tails, transpose overlap, alias-free FIR history, AMP-block state, and finalization state; each chunk processes only new frames plus each layer's finite tail. The old composite `decoder_input`, rolling full-window decode, decoder compile variants, and derived composite-window API were removed. Batch uses the same state primitives with one large tile plus the identical lookahead flush. Single-frame, regular, irregular, short, mixed, duplicate-final, failure/retry, interleaved, sample-count, seam, FP32, and BF16 tests pass without a private Metal kernel or cadence change. Focused vocoder/AudioVAE/generation tests 96 passed and full unit 851 passed. The combined checkpoint/runtime gate reported 67 passed and 34 skipped with one SOAR BF16 tail mismatch; after routing batch through the same final-flush order, that exact real-checkpoint case passed. Scoped Ruff and `git diff --check` passed.
+**Risks / next:** Layer state removes asymptotically repeated full-context work, but only Slice 6's single locked default-path timing decides its end-to-end effect. Do not rerun the starting measurement.
+
+### Slice 6: Run the single final timing and waveform gate
+
+**Objective:** Verify that the retained runtime is faster on the real public paths and still produces complete, correct speech.
+
+**Acceptance criteria:**
+- Run the thin timer once to `/tmp/dots-tts-after.json`; compare the same MF/SOAR batch/stream cells with `/tmp/dots-tts-before.json` without adding trials or rerunning the starting path.
+- Every primary cell is faster and none regresses more than 2%. Load, first-audio, waveform duration, RTF, patch count, stop reason, and peak memory remain visible.
+- English and Mandarin speaker-only and continuation integration cases produce finite, non-silent 48 kHz waveforms, recover the target tail, and do not exhaust the patch budget.
+- Existing WER/speaker, deterministic cloning, interleaving, checkpoint, memory, release, and public API gates pass.
+- Repository search confirms no benchmark platform, candidate selector, accepted-head ledger, capture transaction, or measurement-only dependency remains.
+
+**Verification:**
+```bash
+.venv/bin/python scripts/eval/profile_dots_tts_inference.py --model-root models/dots_tts --artifact-class int8 --variants mf soar --paths batch stream --output /tmp/dots-tts-after.json --compare /tmp/dots-tts-before.json
+.venv/bin/python -m pytest tests/unit/ tests/checkpoint/ tests/runtime/
+RUN_LOCAL_INTEGRATION=1 .venv/bin/python -m pytest tests/integration/
+.venv/bin/python scripts/eval/dots_tts_quant_gate.py --model-root models/dots_tts --peak-memory-limit-gib 30 --force --output-dir /tmp/dots-tts-final-quality --report /tmp/dots-tts-final-quality.md
+.venv/bin/ruff check src/mlx_speech/generation/dots_tts.py src/mlx_speech/models/dots_tts scripts/eval/profile_dots_tts_inference.py tests/unit
+.venv/bin/python scripts/hugging_face/upload.py dots-tts --dry-run
+git diff --check
+```
+
+**Depends on:** Slice 5
+**Touches:** focused completion/quality tests and minimal timing output only
+**Produces:** final speed and waveform evidence without a benchmark framework
+
+**Status:** complete
+**Evidence:** Ran the locked final timer once to `/tmp/dots-tts-after.json` and compared it with the preserved starting report without rerunning the starting path. MF batch improved 9.8% (`8.847s` to `7.978s`) and stream 54.3% (`14.870s` to `6.801s`); SOAR batch improved 24.3% (`12.108s` to `9.171s`) and stream 52.3% (`18.557s` to `8.846s`). Streaming first audio improved from `2.737s`/`2.783s` to `2.328s`/`2.384s`; all four cells passed, stopped by EOS, produced matching batch/stream sample counts, and used less peak memory. MF produced one more patch than the starting observation and SOAR two fewer, while per-patch time still improved materially, so the gain is not explained by earlier truncation. The one final integration run passed 16 cases. The base/int8 English/Mandarin speaker-only/continuation quality gate passed with zero WER regression, speaker-cosine regression inside threshold, and a 7.47 GiB maximum observed peak. Unit 851 passed; checkpoint/runtime reported 67 passed and 34 skipped plus the corrected SOAR tail case passed in isolation. The Hugging Face upload dry-run passed, the deleted-platform search returned no matches, scoped dots.tts Ruff and `git diff --check` passed.
+**Risks / next:** The plan-wide Ruff command also scans unrelated Dramabox, Fish, and Gemma tests and surfaced 12 pre-existing unused-import/variable findings outside this change; the owned dots.tts scope is clean. Proceed to the independent verification audit.
+
+## Aggregate Verification Commands
+
+| Gate | Command | When |
+| --- | --- | --- |
+| Default development | `.venv/bin/python -m pytest tests/unit/` | Once at each slice completion |
+| Inference/DSP | `.venv/bin/python -m pytest tests/unit/ tests/checkpoint/ tests/runtime/` | Once at completion of Slices 2–6 |
+| End-to-end waveform | `RUN_LOCAL_INTEGRATION=1 .venv/bin/python -m pytest tests/integration/` | Slice 6 only |
+| Public timing | thin `profile_dots_tts_inference.py` command | Slice 1 before and Slice 6 after only |
+
+## Review: Engineering
+
+- Verdict: approved_with_risks
+- Strength: The six-slice serial plan removes the benchmark platform, keeps measurement disposable, and orders acoustic, DiT, bridge, and stateful decoder changes behind focused parity gates.
+- Concern: Slice 1 can accidentally remove legitimate runtime work while deleting the uncommitted diagnostics platform, so execution must classify the existing diff against `HEAD` before cleanup and preserve every non-platform change.
+- Concern: Slice 3 can retain an `mx.compile` boundary that recompiles by logical prefix despite passing numerical tests, so a bounded compile-signature/cardinality test must pass before the slice completes.
+- Concern: Slice 5 can introduce ConvTranspose overlap, alias-free FIR phase, lookahead, or final-flush drift, so the default route must not change until one-shot, irregular-partition, duplicate-final, failure-retry, and interleaving tests all pass.
+- Concern: Slice 6 depends on the thin timer's `--compare` path even though Slice 1's command does not exercise it, so Slice 1 must add a focused raw before/after comparison test without reviving contracts, trials, or ledgers.
+- Action: Execute directly and serially, surface each matching risk before Slices 1, 3, 5, and 6, and keep the original path only in git history rather than behind runtime selectors.
+- Verified: Current source and uncommitted diff inspected; cleanup ownership, EOS ordering, DiT cache flow, AudioVAE compiled-window behavior, stateless BigVGAN boundary, verification commands, dependency order, rollback coverage, and absence of privileged capture checkpoints traced against PLAN and DESIGN.
+
+## Verification
+
+### Summary
+
+**Overall:** PASS
+**Passed:** 31 of 31 criteria
+**Remaining gaps:** none
+
+### Slice rollup
+
+- **Slice 1 — PASS (5/5):** deleted-platform file and symbol search returned no matches; dependency diff was empty; the thin-profiler tests were included in the 860-test verification run; the preserved starting JSON and locked configuration were readable.
+- **Slice 2 — PASS (5/5):** direct source inspection confirmed request-controlled EOS projection and post-patch decision ordering; EOS, rollback, close, cache, and interleaving coverage passed in the unit suite.
+- **Slice 3 — PASS (5/5):** direct inspection confirmed fast LayerNorm, reusable rotary/bias geometry, bounded model-owned compilation, and BF16 boundaries; DiT/cache/solver parity and bounded-cardinality tests passed.
+- **Slice 4 — PASS (5/5):** direct inspection confirmed batched fixed-row projection, 4/8/16 recurrent tiles, tensor valid length, and immutable returned state; bridge tile, residual, failure, and interleaving tests passed.
+- **Slice 5 — PASS (6/6):** direct inspection confirmed bounded request-owned lookahead, convolution, transpose, FIR, AMP, and finalization state with no composite rolling decoder window; one-shot/partition/seam/flush/failure/interleaving tests and real checkpoint/runtime waveform parity passed.
+- **Slice 6 — PASS (5/5):** independent JSON assertions confirmed all four locked timing cells faster (MF batch/stream 9.8%/54.3%, SOAR batch/stream 24.3%/52.3%), EOS completion, matching batch/stream sample counts, and sub-30-GiB memory. Independent report, SHA-256, and WAV checks confirmed 16 finite non-silent 48 kHz English/Mandarin speaker/continuation outputs, no patch-budget exhaustion, zero WER regression, and speaker regression inside threshold. Upload dry-run passed.
+
+### Commands and derived checks
+
+- `.venv/bin/python -m pytest -q tests/unit/ tests/checkpoint/test_dots_tts_base_load.py tests/checkpoint/test_dots_tts_int8_load.py tests/runtime/test_dots_tts_base.py` — 860 passed.
+- `RUN_LOCAL_INTEGRATION=1 ... pytest --collect-only -q tests/integration/` — confirmed the one-shot integration run covered all 16 collected cases; the already completed run reported 16 passed.
+- Derived timing check read `/tmp/dots-tts-before.json` and `/tmp/dots-tts-after.json` and asserted identical configuration, four matching cells, faster totals, EOS, output health, batch/stream sample parity, and memory limits. The one-shot timer was not rerun by design.
+- Derived quality check read `/tmp/dots-tts-final-quality/{report,records}.json`, verified all 16 output hashes, decoded every WAV, and asserted 48 kHz, finite non-silent samples, sample counts, patch bounds, WER/speaker thresholds, and peak memory. Quality generation was not rerun by design.
+- Deleted-platform/dependency/pure-MLX searches, scoped dots.tts Ruff, `git diff --check`, and Hugging Face upload dry-run passed. The broader Ruff invocation's 12 findings are confined to unchanged Dramabox, Fish, and Gemma tests outside this change.
+- **Skipped checks:** none. The plan's explicitly single-run timing and integration/quality generation gates were audited from their locked artifacts instead of repeated.

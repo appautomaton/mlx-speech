@@ -4,14 +4,37 @@ Load this only when Choose Depth says the request needs conversation before a sp
 
 Ask only questions that make the objective frameable. Never ask what the repo can answer: explore or dispatch the librarian first. Follow the Asking The User convention in `.agent/.automaton/references/FRAMEWORK.md`.
 
-## Mode References
+The routing below is the contract. The wording is yours: ask each topic as your own question, in the user's language.
 
-- Startup mode: `startup-diagnostic.md` when demand, user, market, or customer evidence matters.
-- Builder mode: `builder-diagnostic.md` when the work is personal, exploratory, open-source, or design-partner shaped.
-- Content mode: `content-intake.md` when the deliverable is prose.
-- Any mode: `landscape-awareness.md` when market, ecosystem, competitor, or current-state evidence would change the frame. Its consent gate governs every outbound search.
+## Mode Routing
 
-When the shape is not feature, shape questions take priority over mode questions: read `shape-questions.md` alongside the mode diagnostic. For Startup or Builder doctrine, read `operating-principles.md`.
+**Startup mode** when demand, user, market, or customer evidence matters. Topics: demand evidence, the status quo workaround and its cost, the specific person who needs this, the narrowest wedge, unassisted observation, future fit.
+
+| Product stage | Topics |
+| --- | --- |
+| Pre-product | demand, status quo, specific person |
+| Has users | status quo, wedge, observation |
+| Has paying customers | wedge, observation, future fit |
+| Pure engineering or infrastructure | status quo, wedge |
+
+**Builder mode** when the work is personal, exploratory, open-source, or design-partner shaped. Topics: the coolest version, who they would show it to, the fastest usable path, the closest existing thing and how theirs differs, the 10x version.
+
+**Content mode** when the deliverable is prose: read `content-framing.md`. Content is a peer mode alongside Startup and Builder, not an overlay on them.
+
+**Any mode:** read `landscape-awareness.md` when market, ecosystem, competitor, or current-state evidence would change the frame. Its consent gate governs every outbound search.
+
+## Scale Routing
+
+| Work scale | Startup topics | Builder topics |
+| --- | --- | --- |
+| bug | status quo, then alternatives | fastest path, difference |
+| feature | route by product stage | all five |
+| capability | demand, status quo, observation | coolest version, difference, 10x |
+| roadmap | demand, status quo, specific person, then decompose | coolest version, audience, then decompose |
+
+The wedge and fastest-path topics probe what the user treats as core value. They do not set scope. Do not replace a capability-sized goal with the answer to a smallest-version question, and do not redirect a user who brought a larger vision onto the fast path.
+
+When the shape is not feature, shape questions take priority and the routing above fills the remaining gaps: read `shape-questions.md`.
 
 ## Follow-Up Discipline
 

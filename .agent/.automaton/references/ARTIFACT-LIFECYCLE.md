@@ -57,13 +57,7 @@ The two-move model (**Continue inline** / **Stop and hand off**) is in `FRAMEWOR
 
 `auto-verify` is the mandatory gate, not an optional review, so `execute → verify` continues inline. The audit re-derives from fresh command output, never from execute's reasoning. `auto-resume` orients and stops: it reports findings and recommends a next skill rather than continuing, so the user keeps the direction. `stage: verified` is terminal. Any `auto-frame` mention at `verified` is for a new objective, not a same-change handoff.
 
-Each handoff carries five durable elements:
-
-1. **Exit gate** -> condition required to advance.
-2. **Artifacts produced or updated** -> files written for the active change.
-3. **State mutation** -> `current.json` fields changed through `sync-status.mjs`: `stage`, canonical pointers, or review verdicts.
-4. **Diagnostic handling** -> `error` diagnostics block advancement. `warning` diagnostics surface to the next stage.
-5. **Next-stage recommendation, blocker, or completion note** -> what to invoke next, what blocks progress, or that the active change is complete.
+What a handoff carries is the Stage Handoffs table above, read row by row. One rule the table has no column for: **diagnostic handling**. `error` diagnostics block advancement, and `warning` diagnostics surface to the next stage.
 
 ## Checkpoint Semantics
 

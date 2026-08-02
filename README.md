@@ -39,6 +39,8 @@ model name links to a guide covering behavior, flags, and known limitations.
 | `moss-sound-effect` | [OpenMOSS Sound Effect](https://github.com/appautomaton/mlx-speech/blob/main/docs/moss-sound-effect.md) — text-to-sound-effect generation | [4-bit](https://huggingface.co/appautomaton/openmoss-sound-effect-mlx) |
 | `step-audio` | [Step-Audio-EditX](https://github.com/appautomaton/mlx-speech/blob/main/docs/step-audio-editx.md) — voice cloning, audio editing | [int8](https://huggingface.co/appautomaton/step-audio-editx-8bit-mlx) |
 | `dramabox` | [DramaBox](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md) — Resemble flow-matching diffusion TTS, 48 kHz stereo | [bf16](https://huggingface.co/appautomaton/dramabox-tts-3.3b-bf16-mlx)¹ |
+| `dots-tts-soar` | [dots.tts SOAR](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) — continuous autoregressive flow-matching TTS and voice cloning | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
+| `dots-tts-mf` | [dots.tts MeanFlow](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) — distilled continuous autoregressive TTS and voice cloning | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
 
 **Speech-to-text**
 

@@ -1,35 +1,35 @@
 {
   "schema": 1,
-  "automaton_version": "0.4.0",
-  "installed_at": "2026-07-29T02:31:35.862Z",
+  "automaton_version": "0.4.4",
+  "installed_at": "2026-07-31T22:10:58.582Z",
   "owners": {
     "project": {
-      "automaton_version": "0.4.0",
-      "installed_at": "2026-07-29T02:31:35.841Z"
+      "automaton_version": "0.4.4",
+      "installed_at": "2026-07-31T22:10:58.563Z"
     },
     "claude": {
-      "automaton_version": "0.4.0",
-      "installed_at": "2026-07-29T02:31:31.454Z"
+      "automaton_version": "0.4.4",
+      "installed_at": "2026-07-31T22:10:54.840Z"
     },
     "codex": {
-      "automaton_version": "0.4.0",
-      "installed_at": "2026-07-29T02:31:35.862Z"
+      "automaton_version": "0.4.4",
+      "installed_at": "2026-07-31T22:10:58.582Z"
     }
   },
   "files": [
     {
       "path": ".claude/skills/auto-eng-review/SKILL.md",
-      "hash": "f4328ab5c82ef04054ad93f2510e90fe90846e844e4787c2405901ae6810fe6c",
+      "hash": "366c3bb954496a59c769e6c467927e2d25c86a004d396f6ccfd522a247971b01",
       "owner": "claude"
     },
     {
       "path": ".claude/skills/auto-eng-review/references/engineering-sections.md",
-      "hash": "c8be8f3e1b15209c1d7b5a8b77ff1e89731bb77a193969ae58a7ff13bfaafcec",
+      "hash": "ab3b27f29e455071277c36473e9724bcd7fe1fda76c14ff62ab7692faf16a48b",
       "owner": "claude"
     },
     {
       "path": ".claude/skills/auto-eng-review/references/implementation-alternatives.md",
-      "hash": "61a06fc27d6eaf8f6f4ac9f77af9583056643a1972c138d6d9a21e9f3914de0c",
+      "hash": "e49f2d0123fd84f807a0861718204ed07871051b93f11f13adcb4dbbe8a6ab45",
       "owner": "claude"
     },
     {
@@ -39,7 +39,7 @@
     },
     {
       "path": ".claude/skills/auto-eng-review/references/prime-directives.md",
-      "hash": "6ee2e7483a02ffb2b67a9eed96e09086223b7b7d14092cf2aa5b492d12e7bdbb",
+      "hash": "8a9e084139e380eac52796626c962396afbcdb823c09ac0f00a88dafa2cd3e65",
       "owner": "claude"
     },
     {
@@ -54,7 +54,7 @@
     },
     {
       "path": ".claude/skills/auto-execute/SKILL.md",
-      "hash": "7105cbb5cc8c0736c0b8680869f055f3634089f63e34b694464cc2a147b41002",
+      "hash": "6687b3e64c43eb6222a2aa35326aa8d87650bad2b955656d8f373e317aa725a6",
       "owner": "claude"
     },
     {
@@ -99,47 +99,32 @@
     },
     {
       "path": ".claude/skills/auto-frame/SKILL.md",
-      "hash": "8542cabbc8bff32826f360332c05c3676bc26f6f10bb762194669f02a2eeddad",
+      "hash": "1c5309b11101f0797b10942062979e46bba5e512e391a54b606f1a796ab9477f",
       "owner": "claude"
     },
     {
       "path": ".claude/skills/auto-frame/references/alternatives-format.md",
-      "hash": "4b7277d027f66d417712cf496e4910d9a6a7b1eaf4ac2b3495310ca3381b8883",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/builder-diagnostic.md",
-      "hash": "117f9c03cbd18a4d2e4dcfda1bcd6dddfb4c04a4c792f623473ab4a6ffa113e8",
+      "hash": "6bbded4ea53217e6aa3a4cff213834aab7d934e9ae888f8d8c254e4d0dffea87",
       "owner": "claude"
     },
     {
       "path": ".claude/skills/auto-frame/references/content-framing.md",
-      "hash": "85f24c91f4f25ce58ec7d2254765fe04fb21b25f5b8af370c0de7719046b7477",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/content-intake.md",
-      "hash": "acc062dbbb31c8a931b1bfa011a05c42ac1b85c7049426721e90ba3cb579a7a7",
+      "hash": "33114658c2959e8075c9f90c784c9c3ddd3b6cefeef3946c592ac90276e4a7da",
       "owner": "claude"
     },
     {
       "path": ".claude/skills/auto-frame/references/diagnostic-calibration.md",
-      "hash": "b95b87c92705cda123e4f4771b4287267d7e348ae3fb883fc549c8abd264a337",
+      "hash": "76e320d9851d45f8c408fa4d342788888dc37285cc7d21ef7d273d049c877544",
       "owner": "claude"
     },
     {
       "path": ".claude/skills/auto-frame/references/diagnostic.md",
-      "hash": "cf3cea819c6b3fe1a569f993e213dfdfd6a5ba92903e9013f696df0f3690df28",
+      "hash": "7df9d7cae2efd93ff43950682ab9caae427b18b0ed8eda1392e61608cca19f52",
       "owner": "claude"
     },
     {
       "path": ".claude/skills/auto-frame/references/landscape-awareness.md",
-      "hash": "1206af22cc423f0d806a24816d8b7029bde6a64b77c731ce0e8bb7e0afd90137",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/operating-principles.md",
-      "hash": "9876b363260a6f6567ab06fd031efccbcb0c6b3fec25f9251cdda8ce50a057de",
+      "hash": "e1b7b91e430edf2bfc1ddd420ae9768a605398a0c0ce0a16ded91333ce049283",
       "owner": "claude"
     },
     {
@@ -155,11 +140,6 @@
     {
       "path": ".claude/skills/auto-frame/references/spec-shape.md",
       "hash": "d6102ed4acbd3ca712152878952d4486240386003ad83944c01e10a75d780fb9",
-      "owner": "claude"
-    },
-    {
-      "path": ".claude/skills/auto-frame/references/startup-diagnostic.md",
-      "hash": "ca2b81b07a781b9997de4a182c3ad307e980bf02affbf7c974cb9e0b8e3898a0",
       "owner": "claude"
     },
     {
@@ -179,7 +159,7 @@
     },
     {
       "path": ".claude/skills/auto-plan/references/slice-examples.md",
-      "hash": "41ee3a2d46ab64617d36d919a2b3c3c40ba986f994bff3e713da25b42a01c168",
+      "hash": "23cfcac0b3be5e6e43d9c4ad8f1094e24ed276534233fce6a9e410e347544f38",
       "owner": "claude"
     },
     {
@@ -189,7 +169,7 @@
     },
     {
       "path": ".claude/skills/auto-resume/references/artifact-order.md",
-      "hash": "a2f7ba5e7dd861bf8b3e5a53512f162ee8df6eb67b88412864f5f09e3505ad54",
+      "hash": "60f5959cdbdf9e1b972992d427ce8e42727b9f834bf91b378d9c5c4f704a968a",
       "owner": "claude"
     },
     {
@@ -264,17 +244,17 @@
     },
     {
       "path": ".codex/skills/auto-eng-review/SKILL.md",
-      "hash": "f4328ab5c82ef04054ad93f2510e90fe90846e844e4787c2405901ae6810fe6c",
+      "hash": "366c3bb954496a59c769e6c467927e2d25c86a004d396f6ccfd522a247971b01",
       "owner": "codex"
     },
     {
       "path": ".codex/skills/auto-eng-review/references/engineering-sections.md",
-      "hash": "c8be8f3e1b15209c1d7b5a8b77ff1e89731bb77a193969ae58a7ff13bfaafcec",
+      "hash": "ab3b27f29e455071277c36473e9724bcd7fe1fda76c14ff62ab7692faf16a48b",
       "owner": "codex"
     },
     {
       "path": ".codex/skills/auto-eng-review/references/implementation-alternatives.md",
-      "hash": "61a06fc27d6eaf8f6f4ac9f77af9583056643a1972c138d6d9a21e9f3914de0c",
+      "hash": "e49f2d0123fd84f807a0861718204ed07871051b93f11f13adcb4dbbe8a6ab45",
       "owner": "codex"
     },
     {
@@ -284,7 +264,7 @@
     },
     {
       "path": ".codex/skills/auto-eng-review/references/prime-directives.md",
-      "hash": "6ee2e7483a02ffb2b67a9eed96e09086223b7b7d14092cf2aa5b492d12e7bdbb",
+      "hash": "8a9e084139e380eac52796626c962396afbcdb823c09ac0f00a88dafa2cd3e65",
       "owner": "codex"
     },
     {
@@ -299,7 +279,7 @@
     },
     {
       "path": ".codex/skills/auto-execute/SKILL.md",
-      "hash": "7105cbb5cc8c0736c0b8680869f055f3634089f63e34b694464cc2a147b41002",
+      "hash": "6687b3e64c43eb6222a2aa35326aa8d87650bad2b955656d8f373e317aa725a6",
       "owner": "codex"
     },
     {
@@ -344,47 +324,32 @@
     },
     {
       "path": ".codex/skills/auto-frame/SKILL.md",
-      "hash": "8542cabbc8bff32826f360332c05c3676bc26f6f10bb762194669f02a2eeddad",
+      "hash": "1c5309b11101f0797b10942062979e46bba5e512e391a54b606f1a796ab9477f",
       "owner": "codex"
     },
     {
       "path": ".codex/skills/auto-frame/references/alternatives-format.md",
-      "hash": "4b7277d027f66d417712cf496e4910d9a6a7b1eaf4ac2b3495310ca3381b8883",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/builder-diagnostic.md",
-      "hash": "117f9c03cbd18a4d2e4dcfda1bcd6dddfb4c04a4c792f623473ab4a6ffa113e8",
+      "hash": "6bbded4ea53217e6aa3a4cff213834aab7d934e9ae888f8d8c254e4d0dffea87",
       "owner": "codex"
     },
     {
       "path": ".codex/skills/auto-frame/references/content-framing.md",
-      "hash": "85f24c91f4f25ce58ec7d2254765fe04fb21b25f5b8af370c0de7719046b7477",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/content-intake.md",
-      "hash": "acc062dbbb31c8a931b1bfa011a05c42ac1b85c7049426721e90ba3cb579a7a7",
+      "hash": "33114658c2959e8075c9f90c784c9c3ddd3b6cefeef3946c592ac90276e4a7da",
       "owner": "codex"
     },
     {
       "path": ".codex/skills/auto-frame/references/diagnostic-calibration.md",
-      "hash": "b95b87c92705cda123e4f4771b4287267d7e348ae3fb883fc549c8abd264a337",
+      "hash": "76e320d9851d45f8c408fa4d342788888dc37285cc7d21ef7d273d049c877544",
       "owner": "codex"
     },
     {
       "path": ".codex/skills/auto-frame/references/diagnostic.md",
-      "hash": "cf3cea819c6b3fe1a569f993e213dfdfd6a5ba92903e9013f696df0f3690df28",
+      "hash": "7df9d7cae2efd93ff43950682ab9caae427b18b0ed8eda1392e61608cca19f52",
       "owner": "codex"
     },
     {
       "path": ".codex/skills/auto-frame/references/landscape-awareness.md",
-      "hash": "1206af22cc423f0d806a24816d8b7029bde6a64b77c731ce0e8bb7e0afd90137",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/operating-principles.md",
-      "hash": "9876b363260a6f6567ab06fd031efccbcb0c6b3fec25f9251cdda8ce50a057de",
+      "hash": "e1b7b91e430edf2bfc1ddd420ae9768a605398a0c0ce0a16ded91333ce049283",
       "owner": "codex"
     },
     {
@@ -400,11 +365,6 @@
     {
       "path": ".codex/skills/auto-frame/references/spec-shape.md",
       "hash": "d6102ed4acbd3ca712152878952d4486240386003ad83944c01e10a75d780fb9",
-      "owner": "codex"
-    },
-    {
-      "path": ".codex/skills/auto-frame/references/startup-diagnostic.md",
-      "hash": "ca2b81b07a781b9997de4a182c3ad307e980bf02affbf7c974cb9e0b8e3898a0",
       "owner": "codex"
     },
     {
@@ -424,7 +384,7 @@
     },
     {
       "path": ".codex/skills/auto-plan/references/slice-examples.md",
-      "hash": "41ee3a2d46ab64617d36d919a2b3c3c40ba986f994bff3e713da25b42a01c168",
+      "hash": "23cfcac0b3be5e6e43d9c4ad8f1094e24ed276534233fce6a9e410e347544f38",
       "owner": "codex"
     },
     {
@@ -434,7 +394,7 @@
     },
     {
       "path": ".codex/skills/auto-resume/references/artifact-order.md",
-      "hash": "a2f7ba5e7dd861bf8b3e5a53512f162ee8df6eb67b88412864f5f09e3505ad54",
+      "hash": "60f5959cdbdf9e1b972992d427ce8e42727b9f834bf91b378d9c5c4f704a968a",
       "owner": "codex"
     },
     {

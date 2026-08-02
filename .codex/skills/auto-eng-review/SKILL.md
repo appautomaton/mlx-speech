@@ -51,16 +51,9 @@ Use this matrix as an internal checklist. Apply standards from `references/prime
 
 ### Risk Matrix
 
-| Dimension | Rating (0–10) | What a 10 looks like |
-|-----------|---------------|----------------------|
-| Architecture fit | | Clean integration, no hacks, follows existing patterns |
-| Data flow clarity | | Every input, transform, and output is traceable |
-| Edge case coverage | | Failure modes are enumerated and handled |
-| Test strategy | | Tests are specified before code, not after |
-| Rollback safety | | Can revert without data loss or downtime |
-| Dependency risk | | No new critical dependencies; existing ones are stable |
+Architecture fit, data flow clarity, edge case coverage, test strategy, rollback safety, dependency risk.
 
-A score of 3 or lower in any dimension is a blocking concern: a score that low means you can already name the failure mode, and naming it is the review's job. Surface it explicitly. Blocking concerns return `needs_correction`; scores above the threshold with named, slice-scoped risks return `approved_with_risks`. Read `references/engineering-sections.md` only when the plan carries non-trivial engineering risk.
+A dimension where you can already name the concrete failure mode is a blocking concern, and naming it is the review's job. Surface it explicitly. Blocking concerns return `needs_correction`. Dimensions that clear the bar but carry named, slice-scoped risks return `approved_with_risks`. Read `references/engineering-sections.md` only when the plan carries non-trivial engineering risk.
 
 ### Render Verdict
 

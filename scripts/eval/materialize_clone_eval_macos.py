@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import platform
 import shutil
 import subprocess
 import tempfile
+import wave
 from pathlib import Path
 
 
@@ -34,6 +37,53 @@ def parse_args() -> argparse.Namespace:
 def load_manifest(path: str | Path) -> dict:
     with Path(path).open("r", encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def validate_manifest(manifest: dict) -> None:
+    if manifest.get("schema_version", 1) != 1:
+        raise ValueError("unsupported clone eval manifest schema")
+    references = manifest.get("references")
+    if not isinstance(references, list) or not references:
+        raise ValueError("clone eval manifest must contain references")
+    identifiers = [item.get("id") for item in references]
+    if any(not isinstance(value, str) or not value for value in identifiers):
+        raise ValueError("clone eval reference ids must be non-empty strings")
+    if len(set(identifiers)) != len(identifiers):
+        raise ValueError("clone eval reference ids must be unique")
+    for item in references:
+        for field in ("voice", "reference_text"):
+            if not isinstance(item.get(field), str) or not item[field].strip():
+                raise ValueError(f"clone eval reference {item['id']} needs {field}")
+
+
+def audio_record(path: Path) -> dict[str, int | float | str]:
+    with wave.open(str(path), "rb") as handle:
+        channels = handle.getnchannels()
+        sample_rate = handle.getframerate()
+        sample_width = handle.getsampwidth()
+        frames = handle.getnframes()
+    if channels != 1 or sample_rate != 24_000 or sample_width != 2:
+        raise ValueError(
+            "materialized clone reference must be mono 24 kHz PCM16: "
+            f"channels={channels}, sample_rate={sample_rate}, "
+            f"sample_width={sample_width}"
+        )
+    return {
+        "path": str(path),
+        "sha256": _sha256(path),
+        "sample_rate": sample_rate,
+        "channels": channels,
+        "frames": frames,
+        "duration_seconds": frames / sample_rate,
+    }
 
 
 def require_tool(name: str) -> None:
@@ -71,17 +121,23 @@ def main() -> None:
     require_tool("afconvert")
 
     manifest = load_manifest(args.manifest)
+    validate_manifest(manifest)
+    manifest_path = Path(args.manifest)
     output_dir = Path(args.output_dir)
     reference_dir = output_dir / "references"
     reference_dir.mkdir(parents=True, exist_ok=True)
 
     resolved = {
-        "name": manifest["name"],
-        "language": manifest["language"],
-        "description": manifest.get("description"),
+        **manifest,
+        "source_manifest": {
+            "path": str(manifest_path),
+            "sha256": _sha256(manifest_path),
+        },
+        "materializer": {
+            "tool": "macos_say_afconvert",
+            "macos_version": platform.mac_ver()[0],
+        },
         "references": [],
-        "prompts": manifest["prompts"],
-        "recommended_presets": manifest.get("recommended_presets", []),
     }
 
     for item in manifest["references"]:
@@ -95,8 +151,7 @@ def main() -> None:
                 output_path=output_path,
             )
 
-        resolved_item = dict(item)
-        resolved_item["path"] = str(output_path)
+        resolved_item = {**item, **audio_record(output_path)}
         resolved["references"].append(resolved_item)
 
     resolved_manifest_path = output_dir / "manifest.lock.json"

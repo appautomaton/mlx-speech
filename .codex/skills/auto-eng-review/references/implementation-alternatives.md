@@ -18,9 +18,9 @@ APPROACH A: [Name]
 
 Rules:
 - At least 2 approaches when alternatives are needed. 3 only when the decision is genuinely high-leverage.
-- One approach must be the "minimal viable" (fewest files, smallest diff).
-- One approach must be the "ideal architecture" (best long-term trajectory).
-- These two approaches have equal weight. Do not default to minimal just because it is smaller.
+- One approach must be the **direct path**: the fewest new abstractions and dependencies needed to execute the plan safely.
+- One approach must be the **ideal architecture**: the structure that ages best.
+- The two carry equal weight. They differ in structural commitment, never in the quality of what gets built. A diff is smaller because the design needed less, never because the work was done to a lower standard.
 - If only one approach exists, explain concretely why alternatives were eliminated.
 - Do not write alternatives into PLAN.md unless the verdict is `needs_correction` and the alternatives are the correction path.
 

@@ -6,6 +6,8 @@ Current source:
 
 - `macos_builtin_en.json` — deterministic English eval set generated from
   macOS built-in voices via `say`
+- `dots_tts_macos_multilingual_v1.json` — fixed English and Mandarin
+  continuation/speaker-only corpus for the dots.tts quantization gate
 
 The committed files here are metadata only. Reference audio is generated
 locally, not committed.
@@ -32,3 +34,11 @@ The v1 quality scope for this set is:
 - single clean reference
 - same-language clone
 - English only
+
+Materialize the dots.tts multilingual corpus:
+
+```bash
+uv run python scripts/eval/materialize_clone_eval_macos.py \
+  --manifest examples/clone_eval/dots_tts_macos_multilingual_v1.json \
+  --output-dir outputs/dots_tts/eval_corpus
+```

@@ -4,20 +4,9 @@ If you cannot write the verification command before starting the slice, the slic
 
 ## Route Assignment
 
-```markdown
-### Slice 4: Migrate session auth to JWT across API routes
+Breadth across subsystems is the signal, not slice size. A long slice inside one file stays direct.
 
-**Objective:** Replace session-based auth with JWT validation on all protected endpoints.
-**Acceptance criteria:**
-- All protected routes validate JWT Bearer tokens
-- Session cookie auth is removed, not left as fallback
-- Existing auth tests pass with JWT tokens
-**Verification:** `npm test -- auth` passes; `curl -H "Authorization: Bearer <valid>" /api/protected` returns 200; `curl --cookie "session=old" /api/protected` returns 401.
-**Execution:** subagent recommended
-**Touches:** `src/middleware/auth.js`, `src/routes/api/users.js`, `src/routes/api/settings.js`, `src/utils/jwt.js`, `tests/auth.test.js`
-```
-
-Why subagent recommended: crosses middleware, routing, and shared-utility boundaries with an interface change. Breadth across subsystems is the signal, not slice size. A long slice inside one file stays direct.
+The threshold, made concrete: "migrate session auth to JWT across API routes" earns `subagent recommended` because it touches middleware, two route modules, a shared utility, and their tests, changing an interface all of them depend on. Rewriting one of those files, however long the rewrite, does not.
 
 ## Topology Section
 

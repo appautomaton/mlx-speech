@@ -1,0 +1,1138 @@
+{
+  "fixtures": {
+    "mf": {
+      "audio_vae.npz": {
+        "arrays": {
+          "decode_latent": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              128,
+              8
+            ]
+          },
+          "decoded_waveform": {
+            "bytes": 61440,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1,
+              15360
+            ]
+          },
+          "encoded_distribution": {
+            "bytes": 8192,
+            "dtype": "float32",
+            "shape": [
+              1,
+              256,
+              8
+            ]
+          },
+          "encoded_log_std": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              128,
+              8
+            ]
+          },
+          "encoded_mean": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              128,
+              8
+            ]
+          },
+          "normalized_mean": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8,
+              128
+            ]
+          }
+        },
+        "bytes": 87492,
+        "sha256": "252e54653aaa286fe3483ff19477ebe35795cb1768c6b187167b34db94bde788",
+        "tolerance": {
+          "atol": 0.02,
+          "rtol": 0.02
+        }
+      },
+      "dit.npz": {
+        "arrays": {
+          "duration": {
+            "bytes": 4,
+            "dtype": "float32",
+            "shape": [
+              1
+            ]
+          },
+          "g_cond": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1024
+            ]
+          },
+          "mask": {
+            "bytes": 64,
+            "dtype": "bool",
+            "shape": [
+              1,
+              8,
+              8
+            ]
+          },
+          "output": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8,
+              128
+            ]
+          },
+          "positions": {
+            "bytes": 32,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8
+            ]
+          },
+          "sequence": {
+            "bytes": 32768,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8,
+              1024
+            ]
+          },
+          "timestep": {
+            "bytes": 4,
+            "dtype": "float32",
+            "shape": [
+              1
+            ]
+          }
+        },
+        "bytes": 42668,
+        "sha256": "fb348fe17660a5baa1726cb5be87020e6cf319594c213e0f100e36ce4f1c23ec",
+        "tolerance": {
+          "atol": 0.02,
+          "rtol": 0.02
+        }
+      },
+      "latent_io.npz": {
+        "arrays": {
+          "latent": {
+            "bytes": 2048,
+            "dtype": "float32",
+            "shape": [
+              1,
+              4,
+              128
+            ]
+          },
+          "mean": {
+            "bytes": 512,
+            "dtype": "float32",
+            "shape": [
+              128
+            ]
+          },
+          "normalized": {
+            "bytes": 2048,
+            "dtype": "float32",
+            "shape": [
+              1,
+              4,
+              128
+            ]
+          },
+          "restored": {
+            "bytes": 2048,
+            "dtype": "float32",
+            "shape": [
+              1,
+              4,
+              128
+            ]
+          },
+          "variance": {
+            "bytes": 512,
+            "dtype": "float32",
+            "shape": [
+              128
+            ]
+          }
+        },
+        "bytes": 8322,
+        "sha256": "102ca114b542c78e605f219dbe162b21da60c373dc63c743f92e1c51324578f7",
+        "tolerance": {
+          "atol": 1e-05,
+          "rtol": 1e-05
+        }
+      },
+      "qwen.npz": {
+        "arrays": {
+          "cache_key_decode": {
+            "bytes": 7168,
+            "dtype": "float32",
+            "shape": [
+              1,
+              2,
+              7,
+              128
+            ]
+          },
+          "cache_key_prefill": {
+            "bytes": 6144,
+            "dtype": "float32",
+            "shape": [
+              1,
+              2,
+              6,
+              128
+            ]
+          },
+          "cache_value_decode": {
+            "bytes": 7168,
+            "dtype": "float32",
+            "shape": [
+              1,
+              2,
+              7,
+              128
+            ]
+          },
+          "cache_value_prefill": {
+            "bytes": 6144,
+            "dtype": "float32",
+            "shape": [
+              1,
+              2,
+              6,
+              128
+            ]
+          },
+          "embeddings": {
+            "bytes": 36864,
+            "dtype": "float32",
+            "shape": [
+              1,
+              6,
+              1536
+            ]
+          },
+          "eos_logits": {
+            "bytes": 48,
+            "dtype": "float32",
+            "shape": [
+              1,
+              6,
+              2
+            ]
+          },
+          "hidden_decode": {
+            "bytes": 6144,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1,
+              1536
+            ]
+          },
+          "hidden_prefill": {
+            "bytes": 36864,
+            "dtype": "float32",
+            "shape": [
+              1,
+              6,
+              1536
+            ]
+          },
+          "ids": {
+            "bytes": 48,
+            "dtype": "int64",
+            "shape": [
+              1,
+              6
+            ]
+          },
+          "next_embedding": {
+            "bytes": 6144,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1,
+              1536
+            ]
+          }
+        },
+        "bytes": 115146,
+        "sha256": "9ab3a4c4ecc079865c414fd6c32e8520bf70cedef378e43ae3996642d7cbcdfc",
+        "tolerance": {
+          "atol": 0.01,
+          "rtol": 0.01
+        }
+      },
+      "semantic.npz": {
+        "arrays": {
+          "combined": {
+            "bytes": 12288,
+            "dtype": "float32",
+            "shape": [
+              1,
+              2,
+              1536
+            ]
+          },
+          "decoded": {
+            "bytes": 6144,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1,
+              1536
+            ]
+          },
+          "final_sequence_length": {
+            "bytes": 8,
+            "dtype": "int64",
+            "shape": [
+              1
+            ]
+          },
+          "full": {
+            "bytes": 12288,
+            "dtype": "float32",
+            "shape": [
+              1,
+              2,
+              1536
+            ]
+          },
+          "latent": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8,
+              128
+            ]
+          },
+          "prefill": {
+            "bytes": 6144,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1,
+              1536
+            ]
+          }
+        },
+        "bytes": 42368,
+        "sha256": "997304d45e23bbf114d3780d8d45fe809241a6f7124f17c83f807ef62dd7ca63",
+        "tolerance": {
+          "atol": 0.02,
+          "rtol": 0.02
+        }
+      },
+      "solver.npz": {
+        "arrays": {
+          "cfg_sequence": {
+            "bytes": 32768,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8,
+              1024
+            ]
+          },
+          "g_cond": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1024
+            ]
+          },
+          "guidance_scale": {
+            "bytes": 4,
+            "dtype": "float32",
+            "shape": [
+              1
+            ]
+          },
+          "mask": {
+            "bytes": 64,
+            "dtype": "bool",
+            "shape": [
+              1,
+              8,
+              8
+            ]
+          },
+          "noise": {
+            "bytes": 2048,
+            "dtype": "float32",
+            "shape": [
+              1,
+              4,
+              128
+            ]
+          },
+          "positions": {
+            "bytes": 32,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8
+            ]
+          },
+          "result": {
+            "bytes": 2048,
+            "dtype": "float32",
+            "shape": [
+              1,
+              4,
+              128
+            ]
+          },
+          "sequence": {
+            "bytes": 32768,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8,
+              1024
+            ]
+          },
+          "steps": {
+            "bytes": 8,
+            "dtype": "int64",
+            "shape": [
+              1
+            ]
+          }
+        },
+        "bytes": 75904,
+        "sha256": "69be191c7b57efe0aa39f9b5cbc3dab85cba94d7c62df3ab65326fd8b04ca7b9",
+        "tolerance": {
+          "atol": 0.03,
+          "rtol": 0.03
+        }
+      },
+      "speaker.npz": {
+        "arrays": {
+          "embedding": {
+            "bytes": 2048,
+            "dtype": "float32",
+            "shape": [
+              1,
+              512
+            ]
+          },
+          "fbank": {
+            "bytes": 19840,
+            "dtype": "float32",
+            "shape": [
+              1,
+              62,
+              80
+            ]
+          },
+          "fbank_length": {
+            "bytes": 8,
+            "dtype": "int64",
+            "shape": [
+              1
+            ]
+          },
+          "projected": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1024
+            ]
+          }
+        },
+        "bytes": 26932,
+        "sha256": "35a1c6f68dfce2a624cacd41ef5993999fd14143e2bafc0a2d0cc541ed289c5a",
+        "tolerance": {
+          "atol": 0.01,
+          "rtol": 0.01
+        }
+      },
+      "text_schedule.npz": {
+        "arrays": {
+          "audio_budgets": {
+            "bytes": 16,
+            "dtype": "int64",
+            "shape": [
+              2
+            ]
+          },
+          "encoded_text": {
+            "bytes": 56,
+            "dtype": "int64",
+            "shape": [
+              7
+            ]
+          },
+          "interleave_schedule": {
+            "bytes": 304,
+            "dtype": "int64",
+            "shape": [
+              38
+            ]
+          },
+          "special_token_ids": {
+            "bytes": 40,
+            "dtype": "int64",
+            "shape": [
+              5
+            ]
+          },
+          "tts_schedule": {
+            "bytes": 192,
+            "dtype": "int64",
+            "shape": [
+              24
+            ]
+          }
+        },
+        "bytes": 1836,
+        "sha256": "acc222209759e0b86a6468eefb5a450a37bbd6581a816d3f9b2625351d43b192",
+        "tolerance": {
+          "atol": 0.0,
+          "rtol": 0.0
+        }
+      }
+    },
+    "soar": {
+      "audio_vae.npz": {
+        "arrays": {
+          "decode_latent": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              128,
+              8
+            ]
+          },
+          "decoded_waveform": {
+            "bytes": 61440,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1,
+              15360
+            ]
+          },
+          "encoded_distribution": {
+            "bytes": 8192,
+            "dtype": "float32",
+            "shape": [
+              1,
+              256,
+              8
+            ]
+          },
+          "encoded_log_std": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              128,
+              8
+            ]
+          },
+          "encoded_mean": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              128,
+              8
+            ]
+          },
+          "normalized_mean": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8,
+              128
+            ]
+          }
+        },
+        "bytes": 87492,
+        "sha256": "252e54653aaa286fe3483ff19477ebe35795cb1768c6b187167b34db94bde788",
+        "tolerance": {
+          "atol": 0.02,
+          "rtol": 0.02
+        }
+      },
+      "dit.npz": {
+        "arrays": {
+          "duration": {
+            "bytes": 4,
+            "dtype": "float32",
+            "shape": [
+              1
+            ]
+          },
+          "g_cond": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1024
+            ]
+          },
+          "mask": {
+            "bytes": 64,
+            "dtype": "bool",
+            "shape": [
+              1,
+              8,
+              8
+            ]
+          },
+          "output": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8,
+              128
+            ]
+          },
+          "positions": {
+            "bytes": 32,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8
+            ]
+          },
+          "sequence": {
+            "bytes": 32768,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8,
+              1024
+            ]
+          },
+          "timestep": {
+            "bytes": 4,
+            "dtype": "float32",
+            "shape": [
+              1
+            ]
+          }
+        },
+        "bytes": 42668,
+        "sha256": "c7987bd72dabbaee0ad76acdae76c4e837f41bc14c437eece63836c973da4923",
+        "tolerance": {
+          "atol": 0.02,
+          "rtol": 0.02
+        }
+      },
+      "latent_io.npz": {
+        "arrays": {
+          "latent": {
+            "bytes": 2048,
+            "dtype": "float32",
+            "shape": [
+              1,
+              4,
+              128
+            ]
+          },
+          "mean": {
+            "bytes": 512,
+            "dtype": "float32",
+            "shape": [
+              128
+            ]
+          },
+          "normalized": {
+            "bytes": 2048,
+            "dtype": "float32",
+            "shape": [
+              1,
+              4,
+              128
+            ]
+          },
+          "restored": {
+            "bytes": 2048,
+            "dtype": "float32",
+            "shape": [
+              1,
+              4,
+              128
+            ]
+          },
+          "variance": {
+            "bytes": 512,
+            "dtype": "float32",
+            "shape": [
+              128
+            ]
+          }
+        },
+        "bytes": 8322,
+        "sha256": "102ca114b542c78e605f219dbe162b21da60c373dc63c743f92e1c51324578f7",
+        "tolerance": {
+          "atol": 1e-05,
+          "rtol": 1e-05
+        }
+      },
+      "qwen.npz": {
+        "arrays": {
+          "cache_key_decode": {
+            "bytes": 7168,
+            "dtype": "float32",
+            "shape": [
+              1,
+              2,
+              7,
+              128
+            ]
+          },
+          "cache_key_prefill": {
+            "bytes": 6144,
+            "dtype": "float32",
+            "shape": [
+              1,
+              2,
+              6,
+              128
+            ]
+          },
+          "cache_value_decode": {
+            "bytes": 7168,
+            "dtype": "float32",
+            "shape": [
+              1,
+              2,
+              7,
+              128
+            ]
+          },
+          "cache_value_prefill": {
+            "bytes": 6144,
+            "dtype": "float32",
+            "shape": [
+              1,
+              2,
+              6,
+              128
+            ]
+          },
+          "embeddings": {
+            "bytes": 36864,
+            "dtype": "float32",
+            "shape": [
+              1,
+              6,
+              1536
+            ]
+          },
+          "eos_logits": {
+            "bytes": 48,
+            "dtype": "float32",
+            "shape": [
+              1,
+              6,
+              2
+            ]
+          },
+          "hidden_decode": {
+            "bytes": 6144,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1,
+              1536
+            ]
+          },
+          "hidden_prefill": {
+            "bytes": 36864,
+            "dtype": "float32",
+            "shape": [
+              1,
+              6,
+              1536
+            ]
+          },
+          "ids": {
+            "bytes": 48,
+            "dtype": "int64",
+            "shape": [
+              1,
+              6
+            ]
+          },
+          "next_embedding": {
+            "bytes": 6144,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1,
+              1536
+            ]
+          }
+        },
+        "bytes": 115146,
+        "sha256": "9ab3a4c4ecc079865c414fd6c32e8520bf70cedef378e43ae3996642d7cbcdfc",
+        "tolerance": {
+          "atol": 0.01,
+          "rtol": 0.01
+        }
+      },
+      "semantic.npz": {
+        "arrays": {
+          "combined": {
+            "bytes": 12288,
+            "dtype": "float32",
+            "shape": [
+              1,
+              2,
+              1536
+            ]
+          },
+          "decoded": {
+            "bytes": 6144,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1,
+              1536
+            ]
+          },
+          "final_sequence_length": {
+            "bytes": 8,
+            "dtype": "int64",
+            "shape": [
+              1
+            ]
+          },
+          "full": {
+            "bytes": 12288,
+            "dtype": "float32",
+            "shape": [
+              1,
+              2,
+              1536
+            ]
+          },
+          "latent": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8,
+              128
+            ]
+          },
+          "prefill": {
+            "bytes": 6144,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1,
+              1536
+            ]
+          }
+        },
+        "bytes": 42368,
+        "sha256": "997304d45e23bbf114d3780d8d45fe809241a6f7124f17c83f807ef62dd7ca63",
+        "tolerance": {
+          "atol": 0.02,
+          "rtol": 0.02
+        }
+      },
+      "solver.npz": {
+        "arrays": {
+          "cfg_sequence": {
+            "bytes": 32768,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8,
+              1024
+            ]
+          },
+          "g_cond": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1024
+            ]
+          },
+          "guidance_scale": {
+            "bytes": 4,
+            "dtype": "float32",
+            "shape": [
+              1
+            ]
+          },
+          "mask": {
+            "bytes": 64,
+            "dtype": "bool",
+            "shape": [
+              1,
+              8,
+              8
+            ]
+          },
+          "noise": {
+            "bytes": 2048,
+            "dtype": "float32",
+            "shape": [
+              1,
+              4,
+              128
+            ]
+          },
+          "positions": {
+            "bytes": 32,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8
+            ]
+          },
+          "result": {
+            "bytes": 2048,
+            "dtype": "float32",
+            "shape": [
+              1,
+              4,
+              128
+            ]
+          },
+          "sequence": {
+            "bytes": 32768,
+            "dtype": "float32",
+            "shape": [
+              1,
+              8,
+              1024
+            ]
+          },
+          "steps": {
+            "bytes": 8,
+            "dtype": "int64",
+            "shape": [
+              1
+            ]
+          }
+        },
+        "bytes": 75904,
+        "sha256": "bcafb0dc2e7948bf810619b775d092c020d983a62c16fa3a138799b12832383d",
+        "tolerance": {
+          "atol": 0.03,
+          "rtol": 0.03
+        }
+      },
+      "speaker.npz": {
+        "arrays": {
+          "embedding": {
+            "bytes": 2048,
+            "dtype": "float32",
+            "shape": [
+              1,
+              512
+            ]
+          },
+          "fbank": {
+            "bytes": 19840,
+            "dtype": "float32",
+            "shape": [
+              1,
+              62,
+              80
+            ]
+          },
+          "fbank_length": {
+            "bytes": 8,
+            "dtype": "int64",
+            "shape": [
+              1
+            ]
+          },
+          "projected": {
+            "bytes": 4096,
+            "dtype": "float32",
+            "shape": [
+              1,
+              1024
+            ]
+          }
+        },
+        "bytes": 26932,
+        "sha256": "35a1c6f68dfce2a624cacd41ef5993999fd14143e2bafc0a2d0cc541ed289c5a",
+        "tolerance": {
+          "atol": 0.01,
+          "rtol": 0.01
+        }
+      },
+      "text_schedule.npz": {
+        "arrays": {
+          "audio_budgets": {
+            "bytes": 16,
+            "dtype": "int64",
+            "shape": [
+              2
+            ]
+          },
+          "encoded_text": {
+            "bytes": 56,
+            "dtype": "int64",
+            "shape": [
+              7
+            ]
+          },
+          "interleave_schedule": {
+            "bytes": 304,
+            "dtype": "int64",
+            "shape": [
+              38
+            ]
+          },
+          "special_token_ids": {
+            "bytes": 40,
+            "dtype": "int64",
+            "shape": [
+              5
+            ]
+          },
+          "tts_schedule": {
+            "bytes": 192,
+            "dtype": "int64",
+            "shape": [
+              24
+            ]
+          }
+        },
+        "bytes": 1836,
+        "sha256": "acc222209759e0b86a6468eefb5a450a37bbd6581a816d3f9b2625351d43b192",
+        "tolerance": {
+          "atol": 0.0,
+          "rtol": 0.0
+        }
+      }
+    }
+  },
+  "input_construction": {
+    "audio": "48 kHz 0.64 s deterministic 220/440 Hz sine mixture with linear envelope",
+    "audio_vae": "first eight hop frames for encode; seed+3 standard-normal [1,128,8] decode latent",
+    "dit": "seed+4 standard-normal [1,8,1024], causal mask, positions 0..7, t=duration=0.25",
+    "latent": "linspace(-2, 2, 4*128), shape [1,4,128]",
+    "qwen": "first six schedule IDs, then one seed+1 standard-normal embedding",
+    "semantic": "seed+2 standard-normal latent, shape [1,8,128], split 4+4",
+    "solver": "seed+5 noise [1,4,128]; SOAR 2-step Euler CFG=1.2; MeanFlow NFE=4",
+    "text": "UTF-8 '[EN]Oracle fixture sentence.' with official tts and interleave templates"
+  },
+  "oracle": {
+    "capture_command": "uv run python scripts/audit/dots_tts_oracle.py capture --variant all --output tests/fixtures/dots_tts",
+    "dependencies": {
+      "einops": "0.8.1",
+      "librosa": "0.11.0",
+      "loguru": "0.7.3",
+      "numpy": "2.2.6",
+      "pydantic": "2.12.5",
+      "python": "3.12.13",
+      "safetensors": "0.8.0rc0",
+      "soundfile": "0.13.1",
+      "torch": "2.8.0",
+      "torchaudio": "2.8.0",
+      "torchdiffeq": "0.2.5",
+      "transformers": "4.57.0"
+    },
+    "environment": "uv --isolated --no-project, Python 3.12, CPU",
+    "regeneration_command": "uv run python scripts/audit/dots_tts_oracle.py regenerate --variant all --compare tests/fixtures/dots_tts"
+  },
+  "oracle_requirements_sha256": "216b668db22fe57c987090c0e4146aa1a2e77e7926b3dee7bc13bea649749f29",
+  "references": {
+    "community_mlx": {
+      "commit": "f64479f51a2a9d7093533732cae86e765d8fb96e",
+      "path": ".references/dots-tts-mlx"
+    },
+    "official": {
+      "commit": "5ed719e3d36f5a3f6d8037ca9a7009d4fd0520ba",
+      "path": ".references/dots.tts"
+    }
+  },
+  "schema_version": 1,
+  "seed": 1729,
+  "source_manifest": {
+    "path": "models/dots_tts/source_manifest.json",
+    "sha256": "c5b8638c5083a06b052a2472685ae5933a8f6b2bcbe96cc00cd11624bc12a6af",
+    "variants": {
+      "mf": {
+        "file_sha256": {
+          ".gitattributes": "34448b82c17d60fec9b65b1f093c115ddbaadc04beb1b0140b6bfed2e012a930",
+          "README.md": "628ab9d9769c84195b27e000af2cfaea97aa2bb7492f08ad5bc6bcfca4b5b110",
+          "added_tokens.json": "1268ec3933b675b8ff4ddf688f2a6088795a122da8693645bf00a1232c4c8422",
+          "chat_template.jinja": "44d5f08f3f72b837eaad09f13a54c1f9f4eb58d75240334548b7fd52a5437fa5",
+          "config.json": "1d6f164cfec8676528776016de4457e0186eceb759a34e9192ee84098a028082",
+          "latent_stats.pt": "313b13af56d659ecf869d5f854508fcf823c8f957aefc6bc05244991abd6ffe1",
+          "llm_config.json": "ce378446b2a6353547ecb44652701ec8ef42610cdcd33f728719033a9d7bb8a1",
+          "merges.txt": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+          "model.safetensors": "a16d5798da197bf647fc01915236873e4672e975b0341360703ec49d002c4696",
+          "speaker_encoder.safetensors": "1cf3861c9dee79e4db34bd0b8a4155e68bed27a7c6274e168bb6ee4fed191c85",
+          "special_tokens_map.json": "52aa5522bb1bce46f653935a856be7d0e006d1acbc881d608d57a8cb687339d7",
+          "tokenizer.json": "c16521f66774c7a4774e5303b7c8ec5c99830c0be5aef6c6edde3ca2a5e05dd0",
+          "tokenizer_config.json": "5fec72f1ad92d8493770ebe6fbd8bf62645f0587bfa2b6e3e12d58c766b92096",
+          "vocab.json": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+          "vocoder.safetensors": "c0e45c08f480df67ac4c354b465355fcc7e2f6c8765263b6dfeddd1f4671c93d"
+        },
+        "requested_repo_id": "rednote-hilab/dots.tts-mf",
+        "resolved_repo_id": "dots-studio/dots.tts-mf",
+        "revision": "25c53fb462e57087e52237daa5ea30df1c5cc328"
+      },
+      "soar": {
+        "file_sha256": {
+          ".gitattributes": "34448b82c17d60fec9b65b1f093c115ddbaadc04beb1b0140b6bfed2e012a930",
+          "README.md": "3f908474184378d8350d5fbfb8e0669f2019c610b71c4ba6891caf3d079a1701",
+          "added_tokens.json": "1268ec3933b675b8ff4ddf688f2a6088795a122da8693645bf00a1232c4c8422",
+          "chat_template.jinja": "44d5f08f3f72b837eaad09f13a54c1f9f4eb58d75240334548b7fd52a5437fa5",
+          "config.json": "d38bd9cff56c9744e33dc0ba62ca39b1ae6ab64561628f8de8132e5b565e9fa5",
+          "latent_stats.pt": "313b13af56d659ecf869d5f854508fcf823c8f957aefc6bc05244991abd6ffe1",
+          "llm_config.json": "ce378446b2a6353547ecb44652701ec8ef42610cdcd33f728719033a9d7bb8a1",
+          "merges.txt": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+          "model.safetensors": "2787e6d4fe0b27ac33d28072abcadef53802c841bff037f3ee1f6bb5e1d3a2ce",
+          "speaker_encoder.safetensors": "1cf3861c9dee79e4db34bd0b8a4155e68bed27a7c6274e168bb6ee4fed191c85",
+          "special_tokens_map.json": "52aa5522bb1bce46f653935a856be7d0e006d1acbc881d608d57a8cb687339d7",
+          "tokenizer.json": "c16521f66774c7a4774e5303b7c8ec5c99830c0be5aef6c6edde3ca2a5e05dd0",
+          "tokenizer_config.json": "5fec72f1ad92d8493770ebe6fbd8bf62645f0587bfa2b6e3e12d58c766b92096",
+          "vocab.json": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+          "vocoder.safetensors": "c0e45c08f480df67ac4c354b465355fcc7e2f6c8765263b6dfeddd1f4671c93d"
+        },
+        "requested_repo_id": "rednote-hilab/dots.tts-soar",
+        "resolved_repo_id": "dots-studio/dots.tts-soar",
+        "revision": "e3520f75254d0020a0406db31c51a79d00d22d55"
+      }
+    }
+  }
+}

@@ -33,7 +33,7 @@ Cross-role invariants:
 - Enter this protocol from `auto-execute`. Do not make framing, resume, or reviews multi-agent by default.
 - Dispatch only by named host-native agent (`automaton-implementer`, `automaton-spec-reviewer`, `automaton-quality-reviewer`). Do not paste a role body into a generic worker, explorer, or other host agent at runtime. The named agent's installed definition already carries the role body.
 - The coordinator provides full task text for the current slice and relevant constraints. Do not make subagents rediscover the whole plan.
-- Dispatch implementers sequentially by default. Cross-slice parallel dispatch is allowed only when `PLAN.md` explicitly marks slices parallel-safe, dependencies are independent, and write sets are disjoint; in a git repo it also requires worktree isolation (see Parallel Isolation).
+- Dispatch implementers sequentially by default. `auto-execute` owns the condition that permits cross-slice parallel dispatch, and this protocol adds only what happens once it is permitted: in a git repo, the group runs under worktree isolation (see Parallel Isolation).
 - Review order is mandatory: spec compliance first, code quality second.
 - The coordinator does not implement directly while host-native subagent execution is viable.
 - If the host mapping is unclear, follow `HOST-TOOLS.md`. Do not invent a universal SDK or CLI.

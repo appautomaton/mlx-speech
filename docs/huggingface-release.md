@@ -20,6 +20,7 @@ Each model family gets its own Hugging Face repo.
 | `models/vibevoice/` | `appautomaton/vibevoice-mlx` | `mlx-int8` |
 | `models/cohere/cohere_transcribe/` | `appautomaton/cohere-asr-mlx` | `mlx-int8` |
 | `models/Qwen3-ASR-1.7B-MLX-BF16/` | `appautomaton/qwen3-asr-1.7b-bf16-mlx` | bf16, repo root |
+| `models/dots_tts/` | `appautomaton/dots-tts-mlx` | SOAR/MF × `mlx-base`/`mlx-int8` |
 
 Quantization variants live as subfolders inside the model repo rather than as
 separate repos. Unquantized single-variant repos (Qwen3-ASR BF16) publish the
@@ -72,6 +73,32 @@ appautomaton/qwen3-asr-1.7b-bf16-mlx/
   merges.txt
 ```
 
+dots.tts uses one family repository with four self-contained artifacts:
+
+```text
+appautomaton/dots-tts-mlx/
+  README.md
+  soar/
+    mlx-base/
+    mlx-int8/
+  mf/
+    mlx-base/
+    mlx-int8/
+```
+
+The dots.tts upload target constructs only these four explicit include
+patterns. It cannot select local `original/` checkpoints or obsolete
+`mlx-bf16/` directories. Before publishing, validate hashes, required runtime
+files, the model card, and the checked benchmark verdict without network access:
+
+```bash
+uv run python scripts/hugging_face/upload.py dots-tts --dry-run
+```
+
+The dry-run manifest must list exactly `soar/mlx-base`, `soar/mlx-int8`,
+`mf/mlx-base`, and `mf/mlx-int8` under `appautomaton/dots-tts-mlx`. It fails if
+an artifact digest no longer matches the passed quantization report.
+
 When the local converted directory contains an upstream model card, exclude it
 from the upload and publish this repo's own card instead.
 
@@ -99,6 +126,8 @@ Before uploading:
 2. Run one short end-to-end inference or decode pass on that path.
 3. Confirm the folder contains only the files intended for publication.
 4. Confirm the Hugging Face repo card is present and accurate.
+5. For dots.tts, run the required `--dry-run` gate and inspect all four remote
+   paths before starting the resumable upload.
 
 During upload:
 
@@ -124,3 +153,45 @@ After upload:
   reference material, stage only the publishable subfolder.
 - Record meaningful artifact changes in the repo card or release notes when
   contents change.
+
+## dots.tts Release Record — 2026-07-30
+
+Published the four artifacts to `appautomaton/dots-tts-mlx` at revision
+`0af7ad2f837278b364902500d086553f1586ce9a`. A README-only link correction
+advanced the repository to revision
+`5dde9ded6c577a84a71b5ee9dafebfa53188d6d6`; all 16 safetensors LFS SHA-256
+values are unchanged between those revisions.
+
+The authenticated remote inventory contained the Hub-generated
+`.gitattributes`, the authoritative root `README.md`, and 56 runtime files under
+exactly these prefixes:
+
+- `soar/mlx-base/`
+- `soar/mlx-int8/`
+- `mf/mlx-base/`
+- `mf/mlx-int8/`
+
+No `original/`, `mlx-bf16/`, or sibling artifact path was present. The large
+folder upload reported `56/56` files committed, 16.7 GB processed, and zero
+ignored candidates.
+
+Remote verification ran:
+
+```bash
+RUN_LOCAL_INTEGRATION=1 MLX_SPEECH_REQUIRE_CHECKPOINTS=1 \
+  .venv/bin/python -m pytest -s tests/integration/test_dots_tts_hf.py
+```
+
+The runner additionally set a 16 GiB MLX memory limit. All four cases passed in
+`988.95 s`: `dots-tts-soar-base`, `dots-tts-soar`, `dots-tts-mf-base`, and
+`dots-tts-mf`. Each case used a new Hugging Face cache, materialized only its
+selected artifact subtree and root README, strict-loaded the checkpoint, and
+produced finite, non-silent mono 48 kHz continuation-clone waveform output.
+Peak MLX allocation was `6,521,655,508` bytes; macOS process peak RSS was
+`5,784,944,640` bytes. Generated/reference audio and downloaded caches remain
+outside Git.
+
+After the README-only correction, the same four isolated-cache cases passed
+against revision `5dde9ded6c577a84a71b5ee9dafebfa53188d6d6` in `262.11 s`.
+Peak MLX allocation was `6,521,655,508` bytes and macOS process peak RSS was
+`6,423,871,488` bytes.

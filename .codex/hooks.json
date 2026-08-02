@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "exec node \"$(git rev-parse --show-toplevel)/.codex/hooks/session-start.mjs\""
+            "command": "command -v node >/dev/null 2>&1 && exec node '/Users/ac/dev/ai/genai/mlx-speech/.codex/hooks/session-start.mjs'; exec '/Users/ac/.nvm/versions/node/v24.14.0/bin/node' '/Users/ac/dev/ai/genai/mlx-speech/.codex/hooks/session-start.mjs'"
           }
         ]
       }

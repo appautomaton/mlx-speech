@@ -2,84 +2,128 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 
-# alias -> (hf_repo_id, description, family_hint)
-_TTS_MODELS: dict[str, tuple[str, str, str]] = {
-    "fish-s2-pro": (
+@dataclass(frozen=True)
+class _ModelAlias:
+    repo_id: str
+    description: str
+    family_hint: str
+    artifact_subdir: str | None = None
+
+
+_TTS_MODELS: dict[str, _ModelAlias] = {
+    "fish-s2-pro": _ModelAlias(
         "appautomaton/fishaudio-s2-pro-8bit-mlx",
         "Fish S2 Pro — dual-AR TTS, voice cloning, emotion tags",
         "fish_s2_pro",
     ),
-    "vibevoice": (
+    "vibevoice": _ModelAlias(
         "appautomaton/vibevoice-mlx",
         "VibeVoice Large — hybrid LLM+diffusion TTS, voice cloning",
         "vibevoice",
     ),
-    "longcat": (
+    "longcat": _ModelAlias(
         "appautomaton/longcat-audiodit-3.5b-8bit-mlx",
         "LongCat AudioDiT — flow-matching diffusion TTS",
         "longcat",
     ),
-    "moss-local": (
+    "moss-local": _ModelAlias(
         "appautomaton/openmoss-tts-local-mlx",
         "OpenMOSS TTS Local — local-attention multi-VQ TTS",
         "moss_local",
     ),
-    "moss-ttsd": (
+    "moss-ttsd": _ModelAlias(
         "appautomaton/openmoss-ttsd-mlx",
         "OpenMOSS TTS Delay — delay-pattern dialogue TTS",
         "moss_delay",
     ),
-    "moss-sound-effect": (
+    "moss-sound-effect": _ModelAlias(
         "appautomaton/openmoss-sound-effect-mlx",
         "OpenMOSS Sound Effect — text-to-sound-effect generation",
         "moss_sound_effect",
     ),
-    "step-audio": (
+    "step-audio": _ModelAlias(
         "appautomaton/step-audio-editx-8bit-mlx",
         "Step-Audio-EditX — voice cloning + audio editing (emotion, style, speed)",
         "step_audio",
     ),
-    "dramabox": (
+    "dramabox": _ModelAlias(
         "appautomaton/dramabox-tts-3.3b-bf16-mlx",
         "DramaBox: Resemble flow-matching diffusion TTS, 48 kHz stereo",
         "dramabox",
     ),
+    "dots-tts-soar": _ModelAlias(
+        "appautomaton/dots-tts-mlx",
+        "dots.tts SOAR (mlx-int8) — selective-int8 TTS and voice cloning",
+        "dots_tts",
+        "soar/mlx-int8",
+    ),
+    "dots-tts-soar-base": _ModelAlias(
+        "appautomaton/dots-tts-mlx",
+        "dots.tts SOAR base — source-faithful mixed-precision TTS",
+        "dots_tts",
+        "soar/mlx-base",
+    ),
+    "dots-tts-soar-int8": _ModelAlias(
+        "appautomaton/dots-tts-mlx",
+        "dots.tts SOAR int8 — Qwen-selective affine int8 TTS",
+        "dots_tts",
+        "soar/mlx-int8",
+    ),
+    "dots-tts-mf": _ModelAlias(
+        "appautomaton/dots-tts-mlx",
+        "dots.tts MeanFlow (mlx-int8) — selective-int8 TTS and voice cloning",
+        "dots_tts",
+        "mf/mlx-int8",
+    ),
+    "dots-tts-mf-base": _ModelAlias(
+        "appautomaton/dots-tts-mlx",
+        "dots.tts MeanFlow base — source-faithful mixed-precision TTS",
+        "dots_tts",
+        "mf/mlx-base",
+    ),
+    "dots-tts-mf-int8": _ModelAlias(
+        "appautomaton/dots-tts-mlx",
+        "dots.tts MeanFlow int8 — Qwen-selective affine int8 TTS",
+        "dots_tts",
+        "mf/mlx-int8",
+    ),
 }
 
-_ASR_MODELS: dict[str, tuple[str, str, str]] = {
-    "cohere-asr": (
+_ASR_MODELS: dict[str, _ModelAlias] = {
+    "cohere-asr": _ModelAlias(
         "appautomaton/cohere-asr-mlx",
         "Cohere Transcribe — multilingual ASR",
         "cohere",
     ),
     # Default points at the published int8 build; bf16 stays available via the
     # explicit ``qwen3-asr-1.7b-bf16`` alias.
-    "qwen3-asr-1.7b": (
+    "qwen3-asr-1.7b": _ModelAlias(
         "appautomaton/qwen3-asr-1.7b-int8-mlx",
         "Qwen3-ASR-1.7B (int8) — English, Chinese, and mixed Chinese/English ASR",
         "qwen3",
     ),
-    "qwen3-asr-1.7b-bf16": (
+    "qwen3-asr-1.7b-bf16": _ModelAlias(
         "appautomaton/qwen3-asr-1.7b-bf16-mlx",
         "Qwen3-ASR-1.7B (bf16) — English, Chinese, and mixed Chinese/English ASR",
         "qwen3",
     ),
-    "qwen3-asr-1.7b-int8": (
+    "qwen3-asr-1.7b-int8": _ModelAlias(
         "appautomaton/qwen3-asr-1.7b-int8-mlx",
         "Qwen3-ASR-1.7B (int8, affine) — English, Chinese, and mixed Chinese/English ASR",
         "qwen3",
     ),
     # Int8 is the only published Nemotron build. A temporary long-form English
     # and Mandarin comparison found negligible accuracy differences from bf16.
-    "nemotron-asr-streaming": (
+    "nemotron-asr-streaming": _ModelAlias(
         "appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx",
         "Nemotron 3.5 ASR Streaming (int8) — cache-aware multilingual ASR",
         "nemotron",
     ),
-    "nemotron-asr-streaming-int8": (
+    "nemotron-asr-streaming-int8": _ModelAlias(
         "appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx",
         "Nemotron 3.5 ASR Streaming (int8, affine) — cache-aware multilingual ASR",
         "nemotron",
@@ -90,10 +134,11 @@ _ASR_MODELS: dict[str, tuple[str, str, str]] = {
     # mlx-mxfp8 subdir below lets the path resolver auto-descend into it.
 }
 
-_ALIASES: dict[str, str] = {
-    alias: entry[0] for alias, entry in {**_TTS_MODELS, **_ASR_MODELS}.items()
+_ALIASES: dict[str, _ModelAlias] = {
+    **_TTS_MODELS,
+    **_ASR_MODELS,
 }
-_ALIASES["moss-tts-local"] = _TTS_MODELS["moss-local"][0]
+_ALIASES["moss-tts-local"] = _TTS_MODELS["moss-local"]
 
 
 def list_models(category: str | None = None) -> dict[str, tuple[str, str]]:
@@ -106,8 +151,11 @@ def list_models(category: str | None = None) -> dict[str, tuple[str, str]]:
         Dict mapping alias → (hf_repo_id, description).
     """
 
-    def _strip(models: dict[str, tuple[str, str, str]]) -> dict[str, tuple[str, str]]:
-        return {alias: (repo, desc) for alias, (repo, desc, _) in models.items()}
+    def _strip(models: dict[str, _ModelAlias]) -> dict[str, tuple[str, str]]:
+        return {
+            alias: (entry.repo_id, entry.description)
+            for alias, entry in models.items()
+        }
 
     if category == "tts":
         return _strip(_TTS_MODELS)
@@ -177,7 +225,8 @@ def get_model_path(
       4. Otherwise → snapshot_download from HuggingFace Hub, then descend
          into a quantization subdir if needed
     """
-    resolved = _ALIASES.get(path_or_hf_repo, path_or_hf_repo)
+    alias = _ALIASES.get(path_or_hf_repo)
+    resolved = alias.repo_id if alias is not None else path_or_hf_repo
 
     local = Path(resolved).expanduser()
     if local.exists():
@@ -190,14 +239,19 @@ def get_model_path(
 
     from huggingface_hub import snapshot_download
 
+    selected_patterns = allow_patterns or _DEFAULT_ALLOW_PATTERNS
+    if alias is not None and alias.artifact_subdir is not None:
+        selected_patterns = [f"{alias.artifact_subdir}/**", "README.md"]
     snapshot = Path(
         snapshot_download(
             resolved,
             revision=revision,
-            allow_patterns=allow_patterns or _DEFAULT_ALLOW_PATTERNS,
+            allow_patterns=selected_patterns,
             force_download=force_download,
         )
     )
+    if alias is not None and alias.artifact_subdir is not None:
+        return snapshot / alias.artifact_subdir
     return _resolve_snapshot_dir(snapshot)
 
 
