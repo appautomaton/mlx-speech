@@ -95,6 +95,12 @@ git diff --check
 
 **Produces:** one bounded compiled bridge with no runtime selector
 
+**Plan correction:** Both approved boundaries were implemented and tested on the real fused BF16 path. The cross-layer bridge was 9.15% slower over 36 patches and not exact; the standalone pre-attention island was 1.65% slower and not exact. Both changed BF16 fusion/rounding at the QK/RoPE boundary, so retaining either would violate the spec. Slice 3 therefore produces a verified rejection rather than a compiled runtime change; Slice 4 still owns safe host-dispatch reduction around the unchanged eager pre-attention math.
+
+**Status:** complete
+**Evidence:** One same-loaded production MF 36-patch pair per approved candidate included first-request compile cost. Cross-layer measured 0.922 s baseline versus 1.006 s candidate; standalone pre-attention measured 0.905 s versus 0.920 s. Both reported non-exact output. All candidate code, tests, caches, and selectors were removed, leaving the verified Slice 2 runtime unchanged.
+**Risks / next:** MLX compilation across the BF16 QK/RoPE boundary is excluded unless MLX itself gains exact semantics; do not retry it in Slice 4.
+
 ### Slice 4: Remove repeated Python attention dispatch work
 
 **Objective:** Resolve stable runner state once and use a prepared private attention path inside the layer/NFE hot loop.
