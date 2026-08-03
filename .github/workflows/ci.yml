@@ -15,10 +15,10 @@ jobs:
     # Apple Silicon runner. MLX has no CPU fallback on x86.
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v9.0.0
 
       - name: Install dependencies
         run: uv sync --all-extras
