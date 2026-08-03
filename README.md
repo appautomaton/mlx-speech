@@ -7,9 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/appautomaton/mlx-speech/blob/main/LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Apple%20Silicon-black?logo=apple)](https://developer.apple.com/documentation/apple-silicon)
 [![Project page](https://img.shields.io/badge/project-page-2f7ad9)](https://appautomaton.github.io/mlx-speech/)
-
-> [!NOTE]
-> This project wouldn't exist without the inspiration and generous support of the incredible community at [linux.do](https://linux.do).
+[![CI](https://github.com/appautomaton/mlx-speech/actions/workflows/ci.yml/badge.svg)](https://github.com/appautomaton/mlx-speech/actions/workflows/ci.yml)
 
 Local speech synthesis, editing, and transcription on Apple Silicon, running
 pure MLX. No cloud, no PyTorch at runtime.
@@ -27,11 +25,11 @@ when loaded by alias. Flat model repositories load by alias or full repo id —
 `tts.load("fish-s2-pro")` and
 `tts.load("appautomaton/fishaudio-s2-pro-8bit-mlx")` are equivalent. Shared
 multi-artifact repositories use an alias or an explicit `artifact_subdir` so the
-runtime never guesses a variant. The catalog also identifies local-only
-adapters explicitly; they are supported runtimes, not published aliases. Each
-model name links to a guide covering behavior, flags, and known limitations.
+runtime never guesses a variant. Original checkpoint directories can also be
+loaded by path when the model-family guide documents their layout. Each model
+name links to a guide covering behavior, flags, and known limitations.
 
-**Text-to-speech**
+### Text-to-speech
 
 | Selector | Model | Weights |
 | --- | --- | --- |
@@ -46,7 +44,7 @@ model name links to a guide covering behavior, flags, and known limitations.
 | `dots-tts-soar` | [dots.tts SOAR](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) — continuous autoregressive flow-matching TTS and voice cloning | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
 | `dots-tts-mf` | [dots.tts MeanFlow](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) — distilled continuous autoregressive TTS and voice cloning | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
 
-**Speech-to-text**
+### Speech-to-text
 
 | Selector | Model | Weights |
 | --- | --- | --- |
@@ -77,12 +75,12 @@ pip install mlx-speech
 
 ```python
 import mlx_speech
-from mlx_speech.audio import load_audio
+from mlx_speech.audio import load_audio, write_wav
 
 # Text-to-speech
 model = mlx_speech.tts.load("fish-s2-pro")
 result = model.generate("Hello from mlx-speech!")
-# result.waveform: mx.array, result.sample_rate: int
+write_wav("output.wav", result.waveform, sample_rate=result.sample_rate)
 
 # Voice cloning with emotion tags
 result = model.generate(
@@ -160,11 +158,12 @@ mlx-speech asr --list-models
 mlx-speech --help
 ```
 
-> **Note:** The `mlx-speech` CLI covers the common path — basic generation,
-> voice cloning, and editing. For advanced controls (sampling temperature,
-> top-p/k, diffusion steps, batch JSONL, duration tuning, etc.) use the
-> family-specific scripts in `scripts/` where provided. Each model guide in
-> `docs/` names its canonical advanced entry point and supported controls.
+> **Note:** The `mlx-speech` CLI covers the common generation, voice cloning,
+> editing, waveform streaming, and transcription paths. For advanced controls
+> (sampling temperature, top-p/k, diffusion steps, batch JSONL, duration tuning,
+> etc.) use the family-specific scripts in `scripts/` where provided. Each model
+> guide in `docs/` names its canonical advanced entry point and supported
+> controls.
 
 ## Conversion
 
@@ -214,3 +213,8 @@ mlx-speech/
 MIT — see [LICENSE](https://github.com/appautomaton/mlx-speech/blob/main/LICENSE)
 
 Built and maintained by [App Automaton](https://appautomaton.github.io).
+
+## Acknowledgements
+
+This project wouldn't exist without the inspiration and generous support of the
+incredible community at [linux.do](https://linux.do).

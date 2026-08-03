@@ -35,6 +35,9 @@ def test_readme_and_site_publish_granite_int8_consistently() -> None:
 
     assert "appautomaton/granite-4.0-1b-speech-int8-mlx" in readme
     assert "`granite-speech-4.0-1b`" in readme
+    assert "actions/workflows/ci.yml/badge.svg" in readme
+    assert 'write_wav("output.wav", result.waveform' in readme
+    assert "local-only adapters" not in readme
     assert "['granite-speech-4.0-1b','selective int8']" in page
     assert (
         "['IBM Granite Speech 4.0 1B','int8 · BF16',"
