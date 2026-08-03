@@ -12,7 +12,7 @@
 > This project wouldn't exist without the inspiration and generous support of the incredible community at [linux.do](https://linux.do).
 
 Local speech synthesis, editing, and transcription on Apple Silicon, running
-pure MLX. No cloud, no PyTorch.
+pure MLX. No cloud, no PyTorch at runtime.
 
 mlx-speech is an [App Automaton](https://appautomaton.github.io) project.
 Project page: **[appautomaton.github.io/mlx-speech](https://appautomaton.github.io/mlx-speech/)**.
@@ -21,18 +21,19 @@ and the converted [weights on Hugging Face](https://huggingface.co/appautomaton)
 
 ## Models
 
-Pre-converted MLX weights are published under the App Automaton Hugging Face
-org, [appautomaton](https://huggingface.co/appautomaton), and download
-automatically on first use. Flat model repositories load by alias or full repo
-id — `tts.load("fish-s2-pro")` and
+Published MLX weights live under the App Automaton Hugging Face org,
+[appautomaton](https://huggingface.co/appautomaton), and download automatically
+when loaded by alias. Flat model repositories load by alias or full repo id —
+`tts.load("fish-s2-pro")` and
 `tts.load("appautomaton/fishaudio-s2-pro-8bit-mlx")` are equivalent. Shared
 multi-artifact repositories use an alias or an explicit `artifact_subdir` so the
-runtime never guesses a variant. Each model name links to a guide covering
-behavior, flags, and known limitations.
+runtime never guesses a variant. The catalog also identifies local-only
+adapters explicitly; they are supported runtimes, not published aliases. Each
+model name links to a guide covering behavior, flags, and known limitations.
 
 **Text-to-speech**
 
-| Alias | Model | Weights |
+| Selector | Model | Weights |
 | --- | --- | --- |
 | `fish-s2-pro` | [Fish S2 Pro](https://github.com/appautomaton/mlx-speech/blob/main/docs/fish-s2-pro.md) — dual-AR TTS, voice cloning, emotion tags | [int8](https://huggingface.co/appautomaton/fishaudio-s2-pro-8bit-mlx) |
 | `vibevoice` | [VibeVoice Large](https://github.com/appautomaton/mlx-speech/blob/main/docs/vibevoice.md) — hybrid LLM+diffusion TTS, voice cloning | [int8](https://huggingface.co/appautomaton/vibevoice-mlx) |
@@ -47,12 +48,17 @@ behavior, flags, and known limitations.
 
 **Speech-to-text**
 
-| Alias | Model | Weights |
+| Selector | Model | Weights |
 | --- | --- | --- |
 | `cohere-asr` | [Cohere Transcribe](https://github.com/appautomaton/mlx-speech/blob/main/docs/cohere-asr.md) — multilingual ASR | [int8](https://huggingface.co/appautomaton/cohere-asr-mlx) |
 | `qwen3-asr-1.7b` | [Qwen3-ASR-1.7B](https://github.com/appautomaton/mlx-speech/blob/main/docs/qwen3-asr.md) — English, Chinese, and mixed Chinese/English ASR | [int8](https://huggingface.co/appautomaton/qwen3-asr-1.7b-int8-mlx) · [bf16](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx) |
 | `nemotron-asr-streaming` | [NVIDIA Nemotron 3.5 ASR Streaming](https://github.com/appautomaton/mlx-speech/blob/main/docs/nemotron-asr.md) — cache-aware multilingual streaming across three stated quality tiers | [int8](https://huggingface.co/appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx) |
-| — | [IBM Granite Speech 4.0 1B](https://github.com/appautomaton/mlx-speech/blob/main/docs/granite-speech-asr.md) — runs the original sharded checkpoint from a local path | local checkpoint |
+| local path | [IBM Granite Speech 4.0 1B](https://github.com/appautomaton/mlx-speech/blob/main/docs/granite-speech-asr.md) — pure-MLX adapter for the original sharded BF16 checkpoint | not published |
+
+Granite is implemented and verified for local inference, but it is not a
+published or quantized `mlx-speech` artifact yet. It therefore has no short
+alias and is not returned by `asr.list_models()`; load its original checkpoint
+directory by path.
 
 ¹ `tts.load("dramabox")` also pulls the [Gemma 3 12B backbone](https://huggingface.co/appautomaton/gemma-3-12b-it-backbone-4bit-mlx)
 text encoder automatically. Output is 48 kHz stereo. For advanced controls (cfg,
@@ -76,6 +82,7 @@ pip install mlx-speech
 
 ```python
 import mlx_speech
+from mlx_speech.audio import load_audio
 
 # Text-to-speech
 model = mlx_speech.tts.load("fish-s2-pro")
@@ -93,18 +100,23 @@ result = model.generate(
 asr = mlx_speech.asr.load("qwen3-asr-1.7b")
 print(asr.generate("audio.wav").text)
 
-# True cache-aware waveform streaming is available on Nemotron
+# Cache-aware incremental ASR is available on Nemotron
 nemotron = mlx_speech.asr.load("nemotron-asr-streaming")
 session = nemotron.stream_session(language="en-US", att_context_size=(56, 3))
+waveform, _ = load_audio("audio.wav", sample_rate=16_000, mono=True)
+for start in range(0, int(waveform.size), 1_600):
+    session.feed(waveform[start : start + 1_600])
+session.finalize()
+print(session.result().text)
 
-# Local checkpoint paths work anywhere an alias does
+# Granite currently loads from its local original BF16 checkpoint
 granite = mlx_speech.asr.load("models/ibm/granite_4_0_1b_speech/original")
 print(granite.generate("audio.wav").text)
 
 # Discover models
 mlx_speech.tts.list_models()
 mlx_speech.tts.list_models(detailed=True)  # includes shared-repo artifact paths
-mlx_speech.asr.list_models()
+mlx_speech.asr.list_models()  # published aliases; Granite remains local-only
 ```
 
 **CLI:**
@@ -139,6 +151,7 @@ mlx-speech tts --model moss-sound-effect \
 # Transcribe audio
 mlx-speech asr --model cohere-asr --audio speech.wav
 mlx-speech asr --model qwen3-asr-1.7b --audio speech.wav --language Chinese
+# File transcription with the streaming-capable Nemotron model
 mlx-speech asr --model nemotron-asr-streaming --audio speech.wav --language en-US
 
 # Local checkpoint paths work anywhere an alias does
@@ -154,12 +167,12 @@ mlx-speech --help
 > **Note:** The `mlx-speech` CLI covers the common path — basic generation,
 > voice cloning, and editing. For advanced controls (sampling temperature,
 > top-p/k, diffusion steps, batch JSONL, duration tuning, etc.) use the
-> scripts in `scripts/` directly. Each model family has a corresponding
-> script with the full inference surface documented in `docs/`.
+> family-specific scripts in `scripts/` where provided. Each model guide in
+> `docs/` names its canonical advanced entry point and supported controls.
 
 ## Conversion
 
-To convert upstream source weights yourself:
+Available model-family conversion entry points include:
 
 ```bash
 python scripts/convert/fish_s2_pro.py
@@ -171,7 +184,14 @@ python scripts/convert/moss_sound_effect.py
 python scripts/convert/step_audio_editx.py
 python scripts/convert/cohere_asr.py
 python scripts/convert/qwen3_asr.py
+python scripts/convert/dots_tts.py --variant all --precision int8
+uv run --with torch python scripts/convert/nemotron_asr.py --quant int8
 ```
+
+Conversion is an offline workflow and may require source-format-specific tools;
+those tools are not runtime dependencies. Granite currently consumes its
+original sharded BF16 safetensors directly and has no conversion or quantization
+entry point.
 
 ## Development
 

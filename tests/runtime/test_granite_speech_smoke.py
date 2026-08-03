@@ -18,11 +18,11 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.mark.runtime
 def test_granite_speech_smoke_transcribes_multilingual_sample():
-    from mlx_speech.generation.granite_speech_asr import GraniteSpeechAsrModel
+    from mlx_speech import asr
 
-    runtime = GraniteSpeechAsrModel.from_dir(GRANITE_DIR)
-    result = runtime.transcribe(SAMPLE, max_new_tokens=32)
+    model = asr.load(str(GRANITE_DIR))
+    result = model.generate(SAMPLE, max_new_tokens=32)
 
     assert result.text.strip()
     assert "timothy was a spoiled cat" in result.text.lower()
-    assert result.tokens
+    assert result.language == "en"
