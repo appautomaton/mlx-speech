@@ -235,3 +235,37 @@ source at SHA-256
 `bcdec6f61dc843bd1b5a95be181dbe26f8a3ee76f4beb40df4059bd11c7add31`
 and documents `mlx-speech>=0.5.0`, speaker-only cloning, and bounded waveform
 streaming.
+
+## mlx-speech 0.5.1 and Granite Speech int8 — 2026-08-03
+
+Pull request [#26](https://github.com/appautomaton/mlx-speech/pull/26) merged as
+`b3202b7d5c61140d1125912170d86786c8a3d672`. Tag `v0.5.1` points to that
+merge. GitHub Actions run
+[`30848296791`](https://github.com/appautomaton/mlx-speech/actions/runs/30848296791)
+passed version consistency, 914 macOS unit tests, wheel-content inspection,
+build artifact upload, and trusted publishing to PyPI.
+
+PyPI published these immutable 0.5.1 files:
+
+- `mlx_speech-0.5.1-py3-none-any.whl` at
+  `2026-08-03T20:04:18.727509Z`, SHA-256
+  `c8d6f22207c9a237d6875d2586e40ac42fa82f24020b5a136c28a70b34e45a4f`
+- `mlx_speech-0.5.1.tar.gz` at `2026-08-03T20:04:20.037794Z`, SHA-256
+  `9f0eb36bc8bb0f14716e2521a5667917dc9a6f8ca11f1cdd4b61a17ad7641e6d`
+
+The public `appautomaton/granite-4.0-1b-speech-int8-mlx` repository was
+published at revision `797e3587f7353bb32bbe3e1ef75ee438672a51af`. Its
+inventory contains the 12 staged artifact files, the authoritative root
+`README.md`, and the Hub-generated `.gitattributes`. The remote
+`model.safetensors` is 2,904,308,838 bytes with SHA-256
+`cf355a69e931ccac95d5cf942c3d540ba2456f06ad89c379c8132875b9098e6c`.
+The remote README and config Git blob IDs exactly match the release sources:
+`d018fedf3356f7b593e656b7aeb878bdcb64a33a` and
+`eaae63fb5f435c4938d9ec3a7c1bef692a180087`, respectively.
+
+Remote verification installed `mlx-speech==0.5.1` from PyPI into an isolated
+package directory and used a new unauthenticated Hugging Face cache. Loading
+`granite-speech-4.0-1b` fetched the 11 allowed runtime files from the public
+repository, reconstructed the saved `QuantizedLinear` module tree, and
+transcribed the bundled sample with the required
+`but timothy was a spoiled cat` prefix.
