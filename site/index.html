@@ -304,7 +304,7 @@ document.documentElement.setAttribute('data-theme',t);})();
     <div class="shead reveal">
       <span class="eyebrow"><b>02</b> The catalog</span>
       <h2>Fourteen models. One loader.</h2>
-      <p>Synthesis, cloning, dialogue, editing, sound effects, and recognition. Published modules link to converted weights; local-only adapters are labeled explicitly.</p>
+      <p>Synthesis, cloning, dialogue, editing, sound effects, and recognition. Every catalog entry links to its converted weights and model-family guide.</p>
     </div>
 
     <div class="rack-label reveal"><span class="n">Text-to-speech</span><span class="ln"></span><span class="c">10 modules</span></div>
@@ -313,7 +313,7 @@ document.documentElement.setAttribute('data-theme',t);})();
     <div class="rack-label reveal"><span class="n">Speech-to-text</span><span class="ln"></span><span class="c">04 modules</span></div>
     <div class="rack asr-rack" id="asr"></div>
 
-    <p class="mfoot reveal">Published weights live under <a href="https://huggingface.co/appautomaton">appautomaton</a> on Hugging Face and load by alias or full repo id. Local-only adapters such as Granite load from a checkpoint path.</p>
+    <p class="mfoot reveal">Published weights live under <a href="https://huggingface.co/appautomaton">appautomaton</a> on Hugging Face and load by alias or full repo id. Original checkpoints can also be loaded from local paths when a family guide documents that path.</p>
   </div>
 </section>
 
@@ -444,7 +444,7 @@ document.documentElement.setAttribute('data-theme',t);})();
     for(var i=0;i<H.length;i++){var s=document.createElement('span');s.style.setProperty('--h',H[i]);s.style.setProperty('--d',(-(i%9)*0.13)+'s');eq.appendChild(s)}}
 
   // ticker
-  var T=[['dots.tts','SOAR · MeanFlow'],['fish-s2-pro','dual-AR · cloning'],['vibevoice','LLM + diffusion'],['longcat','flow-matching DiT'],['moss-local','multi-VQ'],['moss-ttsd','dialogue'],['moss-sound-effect','text → SFX'],['step-audio','clone + edit'],['dramabox','48kHz stereo'],['cohere-asr','multilingual'],['qwen3-asr-1.7b','EN · ZH'],['nemotron-asr-streaming','cache-aware'],['granite-speech','local checkpoint']];
+  var T=[['dots.tts','SOAR · MeanFlow'],['fish-s2-pro','dual-AR · cloning'],['vibevoice','LLM + diffusion'],['longcat','flow-matching DiT'],['moss-local','multi-VQ'],['moss-ttsd','dialogue'],['moss-sound-effect','text → SFX'],['step-audio','clone + edit'],['dramabox','48kHz stereo'],['cohere-asr','multilingual'],['qwen3-asr-1.7b','EN · ZH'],['nemotron-asr-streaming','cache-aware'],['granite-speech-4.0-1b','selective int8']];
   var tk=document.getElementById('ticker'),html='';
   function row(){var r='';T.forEach(function(m){r+='<span class="ticker-item">'+m[0]+' <span class="k">'+m[1]+'</span><span class="s">/</span></span>'});return r}
   tk.innerHTML=row()+row();
@@ -466,7 +466,7 @@ document.documentElement.setAttribute('data-theme',t);})();
     ['Cohere Transcribe','int8','cohere-asr','cohere-asr.md','cohere-asr-mlx','Multilingual ASR with strong long-audio behavior.'],
     ['Qwen3-ASR-1.7B','int8 · bf16','qwen3-asr-1.7b','qwen3-asr.md','qwen3-asr-1.7b-int8-mlx','English, Chinese, and mixed Chinese/English recognition.'],
     ['Nemotron 3.5 ASR Streaming','int8','nemotron-asr-streaming','nemotron-asr.md','nemotron-3.5-asr-streaming-0.6b-int8-mlx','Cache-aware multilingual streaming ASR with bounded encoder and decoder state.'],
-    ['IBM Granite Speech 4.0 1B','local BF16','local path','granite-speech-asr.md','','Runs the original sharded BF16 checkpoint locally; no published alias yet.']
+    ['IBM Granite Speech 4.0 1B','int8 · BF16','granite-speech-4.0-1b','granite-speech-asr.md','granite-4.0-1b-speech-int8-mlx','Selective-int8 Granite LM with the acoustic encoder and QFormer retained in BF16.']
   ];
   var GH='https://github.com/appautomaton/mlx-speech/blob/main/docs/',HF='https://huggingface.co/appautomaton/';
   function mod(m,i,asr){

@@ -10,6 +10,7 @@ import mlx_speech.asr as asr
 import mlx_speech.asr._adapters.granite_speech as adapter_module
 from mlx_speech.asr._adapter import ASROutput
 from mlx_speech.asr._adapters.granite_speech import GraniteSpeechASRAdapter
+from scripts.hugging_face.upload import MODELS as HF_UPLOAD_MODELS
 
 
 class _FakeRuntime:
@@ -69,3 +70,31 @@ def test_asr_load_returns_granite_adapter(monkeypatch, tmp_path):
 
     assert isinstance(loaded, GraniteSpeechASRAdapter)
     assert loaded._runtime.model_dir == tmp_path
+
+
+def test_granite_release_aliases_and_upload_target_are_consistent():
+    models = asr.list_models()
+    repo_id = "appautomaton/granite-4.0-1b-speech-int8-mlx"
+
+    assert models["granite-speech-4.0-1b"][0] == repo_id
+    assert models["granite-speech-4.0-1b-int8"][0] == repo_id
+    assert HF_UPLOAD_MODELS["granite-speech-4.0-1b-int8"] == (
+        repo_id,
+        "models/ibm/granite_4_0_1b_speech/mlx-int8",
+        True,
+    )
+
+
+def test_granite_model_card_matches_release_contract():
+    card = (
+        Path(__file__).parents[2]
+        / "scripts/hugging_face/model_cards/appautomaton/"
+        "granite-4.0-1b-speech-int8-mlx.md"
+    ).read_text(encoding="utf-8")
+
+    assert "base_model: ibm-granite/granite-4.0-1b-speech" in card
+    assert "base_model_relation: quantized" in card
+    assert "group size 64" in card
+    assert 'pip install "mlx-speech>=0.5.1"' in card
+    assert 'mlx_speech.asr.load("granite-speech-4.0-1b")' in card
+    assert "Mandarin speech transcription is not an upstream capability" in card

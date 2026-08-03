@@ -10,8 +10,10 @@ import mlx.nn as nn
 
 from .checkpoint import (
     AlignmentReport,
+    get_quantization_config,
     load_checkpoint_into_model,
     load_granite_speech_checkpoint,
+    quantize_granite_speech_model,
 )
 from .config import GraniteSpeechConfig
 from .encoder import GraniteSpeechEncoder
@@ -104,6 +106,13 @@ def load_granite_speech_model(
     model_dir = Path(model_dir)
     checkpoint = load_granite_speech_checkpoint(model_dir)
     model = GraniteSpeechModel(checkpoint.config)
+    quantization = get_quantization_config(checkpoint.config)
+    if quantization is not None:
+        quantize_granite_speech_model(
+            model,
+            quantization,
+            state_dict=checkpoint.state_dict,
+        )
     alignment = load_checkpoint_into_model(model, checkpoint, strict=strict)
     model.set_dtype(dtype)
     model.eval()

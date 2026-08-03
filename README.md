@@ -53,12 +53,7 @@ model name links to a guide covering behavior, flags, and known limitations.
 | `cohere-asr` | [Cohere Transcribe](https://github.com/appautomaton/mlx-speech/blob/main/docs/cohere-asr.md) — multilingual ASR | [int8](https://huggingface.co/appautomaton/cohere-asr-mlx) |
 | `qwen3-asr-1.7b` | [Qwen3-ASR-1.7B](https://github.com/appautomaton/mlx-speech/blob/main/docs/qwen3-asr.md) — English, Chinese, and mixed Chinese/English ASR | [int8](https://huggingface.co/appautomaton/qwen3-asr-1.7b-int8-mlx) · [bf16](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx) |
 | `nemotron-asr-streaming` | [NVIDIA Nemotron 3.5 ASR Streaming](https://github.com/appautomaton/mlx-speech/blob/main/docs/nemotron-asr.md) — cache-aware multilingual streaming across three stated quality tiers | [int8](https://huggingface.co/appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx) |
-| local path | [IBM Granite Speech 4.0 1B](https://github.com/appautomaton/mlx-speech/blob/main/docs/granite-speech-asr.md) — pure-MLX adapter for the original sharded BF16 checkpoint | not published |
-
-Granite is implemented and verified for local inference, but it is not a
-published or quantized `mlx-speech` artifact yet. It therefore has no short
-alias and is not returned by `asr.list_models()`; load its original checkpoint
-directory by path.
+| `granite-speech-4.0-1b` | [IBM Granite Speech 4.0 1B](https://github.com/appautomaton/mlx-speech/blob/main/docs/granite-speech-asr.md) — selective-int8 Granite LM with BF16 acoustic encoder and QFormer | [int8](https://huggingface.co/appautomaton/granite-4.0-1b-speech-int8-mlx) |
 
 ¹ `tts.load("dramabox")` also pulls the [Gemma 3 12B backbone](https://huggingface.co/appautomaton/gemma-3-12b-it-backbone-4bit-mlx)
 text encoder automatically. Output is 48 kHz stereo. For advanced controls (cfg,
@@ -109,14 +104,14 @@ for start in range(0, int(waveform.size), 1_600):
 session.finalize()
 print(session.result().text)
 
-# Granite currently loads from its local original BF16 checkpoint
-granite = mlx_speech.asr.load("models/ibm/granite_4_0_1b_speech/original")
+# Granite defaults to the published selective-int8 artifact
+granite = mlx_speech.asr.load("granite-speech-4.0-1b")
 print(granite.generate("audio.wav").text)
 
 # Discover models
 mlx_speech.tts.list_models()
 mlx_speech.tts.list_models(detailed=True)  # includes shared-repo artifact paths
-mlx_speech.asr.list_models()  # published aliases; Granite remains local-only
+mlx_speech.asr.list_models()
 ```
 
 **CLI:**
@@ -153,10 +148,11 @@ mlx-speech asr --model cohere-asr --audio speech.wav
 mlx-speech asr --model qwen3-asr-1.7b --audio speech.wav --language Chinese
 # File transcription with the streaming-capable Nemotron model
 mlx-speech asr --model nemotron-asr-streaming --audio speech.wav --language en-US
+mlx-speech asr --model granite-speech-4.0-1b --audio speech.wav
 
 # Local checkpoint paths work anywhere an alias does
 mlx-speech tts --model models/fish_s2_pro/mlx-int8 --text "Hello!" -o output.wav
-mlx-speech asr --model models/ibm/granite_4_0_1b_speech/original --audio speech.wav
+mlx-speech asr --model models/ibm/granite_4_0_1b_speech/mlx-int8 --audio speech.wav
 
 # Discover models
 mlx-speech tts --list-models
@@ -184,14 +180,15 @@ python scripts/convert/moss_sound_effect.py
 python scripts/convert/step_audio_editx.py
 python scripts/convert/cohere_asr.py
 python scripts/convert/qwen3_asr.py
+python scripts/convert/granite_speech_asr.py
 python scripts/convert/dots_tts.py --variant all --precision int8
 uv run --with torch python scripts/convert/nemotron_asr.py --quant int8
 ```
 
 Conversion is an offline workflow and may require source-format-specific tools;
-those tools are not runtime dependencies. Granite currently consumes its
-original sharded BF16 safetensors directly and has no conversion or quantization
-entry point.
+those tools are not runtime dependencies. Granite conversion reads the original
+sharded BF16 safetensors directly and writes a self-contained selective-int8 MLX
+artifact without PyTorch or `mlx-audio`.
 
 ## Development
 
