@@ -41,9 +41,12 @@ class DramaBoxAdapter:
         text: str | None = None,
         *,
         reference_audio: str | Path | mx.array | None = None,
+        reference_text: str | None = None,
         duration_seconds: float | None = None,
         **kwargs,
     ) -> TTSOutput:
+        if reference_text is not None and reference_audio is None:
+            raise ValueError("DramaBox reference_text requires reference_audio")
         if not text:
             raise ValueError("DramaBox requires a non-empty text prompt.")
 

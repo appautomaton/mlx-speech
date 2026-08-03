@@ -298,6 +298,33 @@ def _dots_tts_release_manifest(root: Path) -> dict[str, Any]:
     }
 
 
+def _dots_tts_card_manifest(root: Path) -> dict[str, Any]:
+    card = (
+        root
+        / "scripts"
+        / "hugging_face"
+        / "model_cards"
+        / "appautomaton"
+        / "dots-tts-mlx.md"
+    )
+    if not card.is_file():
+        raise FileNotFoundError(f"Missing dots.tts model card: {card}")
+    content = card.read_text(encoding="utf-8")
+    required = ("mlx-speech>=0.5.0", "generate_stream", "waveform streaming")
+    missing = [text for text in required if text not in content]
+    if missing:
+        raise ValueError(f"dots.tts model card is missing release content: {missing}")
+    if "runtime is inference-only and non-streaming" in content:
+        raise ValueError("dots.tts model card still claims the runtime is non-streaming")
+    return {
+        "card": {
+            "local_path": str(card.relative_to(root)),
+            "remote_path": "README.md",
+        },
+        "repo_id": DOTS_TTS_REPO_ID,
+    }
+
+
 def _dots_tts_upload_commands(
     manifest: dict[str, Any], *, root: Path, hf: str
 ) -> tuple[list[str], list[str]]:
@@ -325,6 +352,20 @@ def _dots_tts_upload_commands(
         "README.md",
     ]
     return artifact_command, card_command
+
+
+def _dots_tts_card_upload_command(
+    manifest: dict[str, Any], *, root: Path, hf: str
+) -> list[str]:
+    return [
+        hf,
+        "upload",
+        "--repo-type",
+        "model",
+        str(manifest["repo_id"]),
+        str(root / str(manifest["card"]["local_path"])),
+        str(manifest["card"]["remote_path"]),
+    ]
 
 
 def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
@@ -391,8 +432,18 @@ def upload(alias: str, *, root: Path, hf: str) -> None:
     print(f"Done. https://huggingface.co/{repo_id}\n")
 
 
-def upload_dots_tts(*, root: Path, hf: str | None, dry_run: bool) -> None:
-    manifest = _dots_tts_release_manifest(root)
+def upload_dots_tts(
+    *,
+    root: Path,
+    hf: str | None,
+    dry_run: bool,
+    card_only: bool = False,
+) -> None:
+    manifest = (
+        _dots_tts_card_manifest(root)
+        if card_only
+        else _dots_tts_release_manifest(root)
+    )
     if dry_run:
         print(json.dumps(manifest, indent=2, sort_keys=True))
         return
@@ -401,8 +452,11 @@ def upload_dots_tts(*, root: Path, hf: str | None, dry_run: bool) -> None:
 
     env = os.environ.copy()
     env["HF_HUB_DISABLE_XET"] = "1"
-    for command in _dots_tts_upload_commands(manifest, root=root, hf=hf):
-        _run(command, env=env)
+    if card_only:
+        _run(_dots_tts_card_upload_command(manifest, root=root, hf=hf), env=env)
+    else:
+        for command in _dots_tts_upload_commands(manifest, root=root, hf=hf):
+            _run(command, env=env)
     print(f"Done. https://huggingface.co/{DOTS_TTS_REPO_ID}\n")
 
 
@@ -429,6 +483,11 @@ def main() -> None:
         action="store_true",
         help="Validate and print a release manifest without uploading.",
     )
+    parser.add_argument(
+        "--card-only",
+        action="store_true",
+        help="For dots-tts, publish only the root README without scanning weights.",
+    )
     args = parser.parse_args()
 
     if args.list:
@@ -452,6 +511,8 @@ def main() -> None:
         sys.exit(1)
     if args.dry_run and any(target != "dots-tts" for target in targets):
         parser.error("--dry-run is currently supported only for dots-tts")
+    if args.card_only and (args.all or targets != ["dots-tts"]):
+        parser.error("--card-only requires the single target dots-tts")
 
     root = Path(__file__).resolve().parents[2]
     hf = None if args.dry_run else _resolve_hf()
@@ -459,7 +520,12 @@ def main() -> None:
     for alias in targets:
         print(f"--- {alias} ---")
         if alias == "dots-tts":
-            upload_dots_tts(root=root, hf=hf, dry_run=args.dry_run)
+            upload_dots_tts(
+                root=root,
+                hf=hf,
+                dry_run=args.dry_run,
+                card_only=args.card_only,
+            )
         else:
             if hf is None:
                 raise AssertionError("hf command was not resolved")

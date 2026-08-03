@@ -10,6 +10,8 @@ from scripts.hugging_face.upload import (
     DOTS_TTS_REQUIRED_FILES,
     DOTS_TTS_SOURCE_REVISIONS,
     DOTS_TTS_TOKENIZER_FILES,
+    _dots_tts_card_manifest,
+    _dots_tts_card_upload_command,
     _dots_tts_artifact_digest,
     _dots_tts_release_manifest,
     _dots_tts_upload_commands,
@@ -47,6 +49,16 @@ def _write_release_fixture(root: Path) -> None:
     report = root / "docs/benchmarks/dots-tts-quant-gate-2026-07-30.md"
     report.parent.mkdir(parents=True)
     report.write_text("\n".join(evidence) + "\n", encoding="utf-8")
+
+
+def _write_card_fixture(root: Path) -> Path:
+    card = root / "scripts/hugging_face/model_cards/appautomaton/dots-tts-mlx.md"
+    card.parent.mkdir(parents=True, exist_ok=True)
+    card.write_text(
+        "mlx-speech>=0.5.0\ngenerate_stream\nwaveform streaming\n",
+        encoding="utf-8",
+    )
+    return card
 
 
 def test_release_manifest_contains_exact_four_artifact_paths(tmp_path: Path) -> None:
@@ -89,6 +101,41 @@ def test_upload_command_can_only_select_approved_paths(tmp_path: Path) -> None:
     assert card_command[-1] == "README.md"
     assert all("original" not in value for value in artifact_command)
     assert all("mlx-bf16" not in value for value in artifact_command)
+
+
+def test_card_only_manifest_and_command_never_select_weights(tmp_path: Path) -> None:
+    card = _write_card_fixture(tmp_path)
+    manifest = _dots_tts_card_manifest(tmp_path)
+    command = _dots_tts_card_upload_command(manifest, root=tmp_path, hf="hf")
+
+    assert manifest == {
+        "card": {
+            "local_path": "scripts/hugging_face/model_cards/appautomaton/dots-tts-mlx.md",
+            "remote_path": "README.md",
+        },
+        "repo_id": "appautomaton/dots-tts-mlx",
+    }
+    assert command == [
+        "hf",
+        "upload",
+        "--repo-type",
+        "model",
+        "appautomaton/dots-tts-mlx",
+        str(card),
+        "README.md",
+    ]
+    assert all("safetensors" not in item for item in command)
+
+
+def test_card_only_manifest_rejects_stale_non_streaming_claim(tmp_path: Path) -> None:
+    card = _write_card_fixture(tmp_path)
+    card.write_text(
+        card.read_text(encoding="utf-8")
+        + "The runtime is inference-only and non-streaming.\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="still claims"):
+        _dots_tts_card_manifest(tmp_path)
 
 
 def test_release_manifest_requires_benchmark_evidence(tmp_path: Path) -> None:

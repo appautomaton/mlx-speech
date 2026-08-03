@@ -8,6 +8,7 @@ from .io import (
     resample_audio,
     trim_leading_silence,
     write_wav,
+    write_wav_chunks,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "resample_audio",
     "trim_leading_silence",
     "write_wav",
+    "write_wav_chunks",
 ]

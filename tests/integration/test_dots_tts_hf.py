@@ -14,17 +14,18 @@ from mlx_speech import tts
 ROOT = Path(__file__).parents[2]
 REMOTE_REVISION = "5dde9ded6c577a84a71b5ee9dafebfa53188d6d6"
 REMOTE_CASES = (
-    ("dots-tts-soar-base", "soar/mlx-base"),
-    ("dots-tts-soar", "soar/mlx-int8"),
-    ("dots-tts-mf-base", "mf/mlx-base"),
-    ("dots-tts-mf", "mf/mlx-int8"),
+    ("dots-tts-soar-base", "soar/mlx-base", "batch"),
+    ("dots-tts-soar", "soar/mlx-int8", "stream"),
+    ("dots-tts-mf-base", "mf/mlx-base", "batch"),
+    ("dots-tts-mf", "mf/mlx-int8", "stream"),
 )
 
 
-@pytest.mark.parametrize(("alias", "artifact_path"), REMOTE_CASES)
-def test_remote_alias_isolated_cache_and_continuation_waveform(
+@pytest.mark.parametrize(("alias", "artifact_path", "sink"), REMOTE_CASES)
+def test_remote_alias_isolated_cache_and_public_waveform_sink(
     alias: str,
     artifact_path: str,
+    sink: str,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -56,22 +57,31 @@ def test_remote_alias_isolated_cache_and_continuation_waveform(
     }
 
     reference = json.loads(corpus_lock.read_text(encoding="utf-8"))["references"][0]
-    result = model.generate(
-        reference["target_text"],
-        reference_audio=ROOT / reference["path"],
-        reference_text=reference["reference_text"],
-        language=reference["language"],
-        max_audio_patches=128,
-        solver_steps=1,
-        seed=37,
-        eos_threshold=0.0,
-    )
-    assert result.sample_rate == 48_000
-    assert result.waveform.ndim == 1
-    assert int(result.waveform.size) > 0
-    assert bool(mx.all(mx.isfinite(result.waveform)).item())
-    assert bool(mx.any(mx.abs(result.waveform) > 0).item())
+    kwargs = {
+        "reference_audio": ROOT / reference["path"],
+        "reference_text": reference["reference_text"],
+        "language": reference["language"],
+        "max_audio_patches": 128,
+        "solver_steps": 1,
+        "seed": 37,
+        "eos_threshold": 0.0,
+    }
+    if sink == "batch":
+        result = model.generate(reference["target_text"], **kwargs)
+        waveform = result.waveform
+        sample_rate = result.sample_rate
+    else:
+        chunks = list(model.generate_stream(reference["target_text"], **kwargs))
+        assert chunks
+        assert all(chunk.sample_rate == 48_000 for chunk in chunks)
+        waveform = mx.concatenate([chunk.waveform for chunk in chunks])
+        sample_rate = chunks[0].sample_rate
+    assert sample_rate == 48_000
+    assert waveform.ndim == 1
+    assert int(waveform.size) > 0
+    assert bool(mx.all(mx.isfinite(waveform)).item())
+    assert bool(mx.any(mx.abs(waveform) > 0).item())
 
-    del model, result
+    del model, waveform
     gc.collect()
     mx.clear_cache()

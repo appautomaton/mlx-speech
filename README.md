@@ -23,9 +23,12 @@ and the converted [weights on Hugging Face](https://huggingface.co/appautomaton)
 
 Pre-converted MLX weights are published under the App Automaton Hugging Face
 org, [appautomaton](https://huggingface.co/appautomaton), and download
-automatically on first use. Load by alias or by full repo id — `tts.load("fish-s2-pro")` and
-`tts.load("appautomaton/fishaudio-s2-pro-8bit-mlx")` are equivalent. Each
-model name links to a guide covering behavior, flags, and known limitations.
+automatically on first use. Flat model repositories load by alias or full repo
+id — `tts.load("fish-s2-pro")` and
+`tts.load("appautomaton/fishaudio-s2-pro-8bit-mlx")` are equivalent. Shared
+multi-artifact repositories use an alias or an explicit `artifact_subdir` so the
+runtime never guesses a variant. Each model name links to a guide covering
+behavior, flags, and known limitations.
 
 **Text-to-speech**
 
@@ -100,6 +103,7 @@ print(granite.generate("audio.wav").text)
 
 # Discover models
 mlx_speech.tts.list_models()
+mlx_speech.tts.list_models(detailed=True)  # includes shared-repo artifact paths
 mlx_speech.asr.list_models()
 ```
 
@@ -108,6 +112,9 @@ mlx_speech.asr.list_models()
 ```bash
 # Generate speech
 mlx-speech tts --model fish-s2-pro --text "Hello!" -o output.wav
+
+# Bounded waveform streaming with dots.tts
+mlx-speech tts --model dots-tts-soar --text "Hello!" --stream -o streamed.wav
 
 # Voice cloning with emotion tags
 mlx-speech tts --model fish-s2-pro \

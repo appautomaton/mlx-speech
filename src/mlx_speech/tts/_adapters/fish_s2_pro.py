@@ -49,6 +49,15 @@ class FishS2ProAdapter:
         max_new_tokens: int | None = None,
         **kwargs,
     ) -> TTSOutput:
+        if isinstance(reference_audio, PreparedReference):
+            if reference_text is not None:
+                raise ValueError(
+                    "Fish S2 Pro PreparedReference already carries its transcript"
+                )
+        elif (reference_audio is None) != (reference_text is None):
+            raise ValueError(
+                "Fish S2 Pro requires reference_audio and reference_text together"
+            )
         ref_audio = reference_audio
         if ref_audio is not None and not isinstance(ref_audio, PreparedReference):
             if isinstance(ref_audio, mx.array):

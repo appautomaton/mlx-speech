@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 import wave
+from collections.abc import Iterable
 from pathlib import Path
 
 import numpy as np
@@ -194,4 +197,53 @@ def write_wav(path: str | Path, samples: mx.array, *, sample_rate: int) -> Path:
         wav_file.setframerate(sample_rate)
         wav_file.writeframes(pcm16.tobytes())
 
+    return output_path
+
+
+def write_wav_chunks(
+    path: str | Path,
+    chunks: Iterable[mx.array],
+    *,
+    sample_rate: int,
+) -> Path:
+    """Write mono waveform chunks incrementally to one transactional PCM WAV."""
+
+    if sample_rate <= 0:
+        raise ValueError("sample_rate must be positive")
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = tempfile.NamedTemporaryFile(
+        prefix=f".{output_path.name}.",
+        suffix=".tmp",
+        dir=output_path.parent,
+        delete=False,
+    )
+    temporary_path = Path(temporary.name)
+    temporary.close()
+    sample_count = 0
+    try:
+        with wave.open(str(temporary_path), "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            for chunk in chunks:
+                waveform = np.asarray(chunk, dtype=np.float32)
+                if waveform.ndim != 1:
+                    raise ValueError(
+                        f"Expected mono waveform chunk [samples], got {waveform.shape}."
+                    )
+                if waveform.size == 0:
+                    continue
+                if not np.all(np.isfinite(waveform)):
+                    raise ValueError("Waveform chunk contains non-finite samples")
+                clipped = np.clip(waveform, -1.0, 1.0)
+                pcm16 = (clipped * 32767.0).astype(np.int16)
+                wav_file.writeframesraw(pcm16.tobytes())
+                sample_count += int(waveform.size)
+        if sample_count == 0:
+            raise ValueError("Cannot write an empty waveform stream")
+        os.replace(temporary_path, output_path)
+    except BaseException:
+        temporary_path.unlink(missing_ok=True)
+        raise
     return output_path

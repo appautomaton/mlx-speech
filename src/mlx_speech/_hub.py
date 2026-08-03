@@ -14,6 +14,15 @@ class _ModelAlias:
     artifact_subdir: str | None = None
 
 
+@dataclass(frozen=True)
+class ModelInfo:
+    """Public model-catalog entry for one loadable alias."""
+
+    repo_id: str
+    description: str
+    artifact_subdir: str | None = None
+
+
 _TTS_MODELS: dict[str, _ModelAlias] = {
     "fish-s2-pro": _ModelAlias(
         "appautomaton/fishaudio-s2-pro-8bit-mlx",
@@ -141,14 +150,20 @@ _ALIASES: dict[str, _ModelAlias] = {
 _ALIASES["moss-tts-local"] = _TTS_MODELS["moss-local"]
 
 
-def list_models(category: str | None = None) -> dict[str, tuple[str, str]]:
+def list_models(
+    category: str | None = None,
+    *,
+    detailed: bool = False,
+) -> dict[str, tuple[str, str]] | dict[str, ModelInfo]:
     """List available model aliases.
 
     Args:
         category: ``"tts"``, ``"asr"``, or ``None`` for all.
 
     Returns:
-        Dict mapping alias → (hf_repo_id, description).
+        Dict mapping alias → ``(hf_repo_id, description)``. With
+        ``detailed=True``, values are :class:`ModelInfo` objects that preserve
+        a shared repository's artifact subdirectory.
     """
 
     def _strip(models: dict[str, _ModelAlias]) -> dict[str, tuple[str, str]]:
@@ -157,11 +172,23 @@ def list_models(category: str | None = None) -> dict[str, tuple[str, str]]:
             for alias, entry in models.items()
         }
 
+    def _details(models: dict[str, _ModelAlias]) -> dict[str, ModelInfo]:
+        return {
+            alias: ModelInfo(
+                repo_id=entry.repo_id,
+                description=entry.description,
+                artifact_subdir=entry.artifact_subdir,
+            )
+            for alias, entry in models.items()
+        }
+
+    render = _details if detailed else _strip
+
     if category == "tts":
-        return _strip(_TTS_MODELS)
+        return render(_TTS_MODELS)
     if category == "asr":
-        return _strip(_ASR_MODELS)
-    return {**_strip(_TTS_MODELS), **_strip(_ASR_MODELS)}
+        return render(_ASR_MODELS)
+    return {**render(_TTS_MODELS), **render(_ASR_MODELS)}
 
 MOSS_CODEC_REPO = "appautomaton/openmoss-audio-tokenizer-mlx"
 DRAMABOX_GEMMA_REPO = "appautomaton/gemma-3-12b-it-backbone-4bit-mlx"
@@ -208,9 +235,33 @@ def _resolve_snapshot_dir(root: Path) -> Path:
     return root
 
 
+def _normalize_artifact_subdir(artifact_subdir: str) -> str:
+    """Validate and normalize a repository-relative artifact selector."""
+
+    if not artifact_subdir or artifact_subdir != artifact_subdir.strip():
+        raise ValueError("artifact_subdir must be a non-empty relative POSIX path")
+    if "\\" in artifact_subdir or artifact_subdir.startswith("/"):
+        raise ValueError("artifact_subdir must be a relative POSIX path")
+    parts = artifact_subdir.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        raise ValueError(
+            "artifact_subdir must not contain empty, '.' or '..' path segments"
+        )
+    return "/".join(parts)
+
+
+def _shared_artifact_aliases(repo_id: str) -> dict[str, str]:
+    return {
+        alias: entry.artifact_subdir
+        for alias, entry in _ALIASES.items()
+        if entry.repo_id == repo_id and entry.artifact_subdir is not None
+    }
+
+
 def get_model_path(
     path_or_hf_repo: str,
     *,
+    artifact_subdir: str | None = None,
     revision: str | None = None,
     force_download: bool = False,
     allow_patterns: list[str] | None = None,
@@ -219,17 +270,41 @@ def get_model_path(
 
     Resolution order:
       1. Check alias dict for short names (e.g. "fish-s2-pro")
-      2. If local path exists → return it (descending into a quantization
+      2. Apply an alias-owned or explicit artifact subdirectory selector
+      3. If local path exists → return it (descending into a quantization
          subdir when config.json is not directly inside)
-      3. If it looks like a local path but doesn't exist → FileNotFoundError
-      4. Otherwise → snapshot_download from HuggingFace Hub, then descend
+      4. If it looks like a local path but doesn't exist → FileNotFoundError
+      5. Otherwise → snapshot_download from HuggingFace Hub, then descend
          into a quantization subdir if needed
     """
     alias = _ALIASES.get(path_or_hf_repo)
     resolved = alias.repo_id if alias is not None else path_or_hf_repo
+    explicit_subdir = (
+        _normalize_artifact_subdir(artifact_subdir)
+        if artifact_subdir is not None
+        else None
+    )
+    alias_subdir = alias.artifact_subdir if alias is not None else None
+    if (
+        explicit_subdir is not None
+        and alias_subdir is not None
+        and explicit_subdir != alias_subdir
+    ):
+        raise ValueError(
+            f"Alias {path_or_hf_repo!r} selects {alias_subdir!r}, which conflicts "
+            f"with artifact_subdir={explicit_subdir!r}"
+        )
+    selected_subdir = explicit_subdir or alias_subdir
 
     local = Path(resolved).expanduser()
     if local.exists():
+        if selected_subdir is not None:
+            selected = local.joinpath(*selected_subdir.split("/"))
+            if not selected.is_dir():
+                raise FileNotFoundError(
+                    f"Artifact subdirectory not found: {selected_subdir!r} under {local}"
+                )
+            return _resolve_snapshot_dir(selected)
         return _resolve_snapshot_dir(local)
 
     if _is_local_path(resolved):
@@ -237,11 +312,22 @@ def get_model_path(
             f"Local model path not found: {resolved}"
         )
 
+    if selected_subdir is None:
+        shared_aliases = _shared_artifact_aliases(resolved)
+        if len(set(shared_aliases.values())) > 1:
+            choices = ", ".join(
+                f"{name} ({subdir})" for name, subdir in sorted(shared_aliases.items())
+            )
+            raise ValueError(
+                f"Hugging Face repo {resolved!r} contains multiple runtime artifacts. "
+                f"Load an alias or pass artifact_subdir. Available: {choices}"
+            )
+
     from huggingface_hub import snapshot_download
 
     selected_patterns = allow_patterns or _DEFAULT_ALLOW_PATTERNS
-    if alias is not None and alias.artifact_subdir is not None:
-        selected_patterns = [f"{alias.artifact_subdir}/**", "README.md"]
+    if selected_subdir is not None:
+        selected_patterns = [f"{selected_subdir}/**", "README.md"]
     snapshot = Path(
         snapshot_download(
             resolved,
@@ -250,8 +336,8 @@ def get_model_path(
             force_download=force_download,
         )
     )
-    if alias is not None and alias.artifact_subdir is not None:
-        return snapshot / alias.artifact_subdir
+    if selected_subdir is not None:
+        return snapshot.joinpath(*selected_subdir.split("/"))
     return _resolve_snapshot_dir(snapshot)
 
 

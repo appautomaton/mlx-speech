@@ -39,6 +39,10 @@ class LongCatAdapter:
         guidance_strength: float = 4.0,
         **kwargs,
     ) -> TTSOutput:
+        if (reference_audio is None) != (reference_text is None):
+            raise ValueError(
+                "LongCat requires reference_audio and reference_text together"
+            )
         prompt_audio = None
         if reference_audio is not None:
             if isinstance(reference_audio, (str, Path)):

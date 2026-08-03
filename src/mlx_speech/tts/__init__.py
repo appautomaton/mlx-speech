@@ -9,7 +9,7 @@ Usage::
     # result.waveform: mx.array, result.sample_rate: int
 """
 
-from .._hub import _TTS_MODELS
+from .._hub import ModelInfo, _TTS_MODELS
 from .._hub import get_model_path as _get_model_path
 from .._hub import list_models as _list_all
 from .._hub import resolve_codec_path as _resolve_codec_path
@@ -17,21 +17,33 @@ from .._hub import resolve_gemma_backbone_path as _resolve_gemma_backbone_path
 from ._adapter import StreamingTTSModel, TTSModel, TTSOutput
 from ._registry import _resolve_tts_family
 
-__all__ = ["load", "list_models", "StreamingTTSModel", "TTSModel", "TTSOutput"]
+__all__ = [
+    "load",
+    "list_models",
+    "ModelInfo",
+    "StreamingTTSModel",
+    "TTSModel",
+    "TTSOutput",
+]
 
 
-def list_models() -> dict[str, tuple[str, str]]:
+def list_models(
+    *,
+    detailed: bool = False,
+) -> dict[str, tuple[str, str]] | dict[str, ModelInfo]:
     """List available TTS models.
 
     Returns:
-        Dict mapping alias → (hf_repo_id, description).
+        Dict mapping alias → ``(hf_repo_id, description)``. Pass
+        ``detailed=True`` to preserve shared-repository artifact subdirectories.
     """
-    return _list_all("tts")
+    return _list_all("tts", detailed=detailed)
 
 
 def load(
     path_or_hf_repo: str,
     *,
+    artifact_subdir: str | None = None,
     codec_path_or_repo: str | None = None,
     gemma_path_or_repo: str | None = None,
     revision: str | None = None,
@@ -41,6 +53,8 @@ def load(
     Args:
         path_or_hf_repo: Local directory, alias (e.g. ``"fish-s2-pro"``),
             or HF repo ID (e.g. ``"appautomaton/vibevoice-mlx"``).
+        artifact_subdir: Explicit runtime artifact inside a shared local or
+            Hugging Face repository. Known aliases select this automatically.
         codec_path_or_repo: For MOSS models that need a separate codec.
             Defaults to ``appautomaton/openmoss-audio-tokenizer-mlx``.
         gemma_path_or_repo: For DramaBox, the Gemma 3 12B text-encoder backbone.
@@ -57,7 +71,11 @@ def load(
     if path_or_hf_repo in _TTS_MODELS:
         hint_family = _TTS_MODELS[path_or_hf_repo].family_hint
 
-    model_dir = _get_model_path(path_or_hf_repo, revision=revision)
+    model_dir = _get_model_path(
+        path_or_hf_repo,
+        artifact_subdir=artifact_subdir,
+        revision=revision,
+    )
     family = hint_family or _resolve_tts_family(model_dir)
 
     if family == "fish_s2_pro":
