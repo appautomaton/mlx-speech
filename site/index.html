@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>mlx-speech · pure-MLX speech for Apple Silicon</title>
 <meta name="description" content="Local text-to-speech, voice cloning, dialogue, sound effects, and ASR on Apple Silicon, running pure MLX. No cloud, no PyTorch." />
-<meta name="keywords" content="mlx, mlx-speech, apple silicon, text to speech, TTS, ASR, voice cloning, on-device, pure mlx, no pytorch, fish audio, vibevoice, openmoss, step-audio, dramabox, qwen3 asr" />
+<meta name="keywords" content="mlx, mlx-speech, apple silicon, text to speech, TTS, ASR, voice cloning, on-device, pure mlx, no pytorch, dots.tts, fish audio, vibevoice, openmoss, step-audio, dramabox, qwen3 asr" />
 <meta name="author" content="App Automaton" />
 <link rel="canonical" href="https://appautomaton.github.io/mlx-speech/" />
 <meta name="theme-color" content="#0d0d0f" media="(prefers-color-scheme: dark)" />
@@ -272,7 +272,7 @@ document.documentElement.setAttribute('data-theme',t);})();
     </div>
     <div class="eq" id="eq" aria-hidden="true"></div>
     <div class="specs">
-      <div class="spec"><div class="v">11</div><div class="l">Speech models</div></div>
+      <div class="spec"><div class="v">13</div><div class="l">Speech models</div></div>
       <div class="spec"><div class="v">2</div><div class="l">Tasks · TTS &amp; ASR</div></div>
       <div class="spec"><div class="v">48<span class="u">kHz</span></div><div class="l">Stereo output</div></div>
       <div class="spec"><div class="v">0</div><div class="l">PyTorch at runtime</div></div>
@@ -303,11 +303,11 @@ document.documentElement.setAttribute('data-theme',t);})();
   <div class="wrap">
     <div class="shead reveal">
       <span class="eyebrow"><b>02</b> The catalog</span>
-      <h2>Eleven models. One loader.</h2>
+      <h2>Thirteen models. One loader.</h2>
       <p>Synthesis, cloning, dialogue, editing, sound effects, and recognition. Each module links to its behavior guide and its converted weights on Hugging Face.</p>
     </div>
 
-    <div class="rack-label reveal"><span class="n">Text-to-speech</span><span class="ln"></span><span class="c">08 modules</span></div>
+    <div class="rack-label reveal"><span class="n">Text-to-speech</span><span class="ln"></span><span class="c">10 modules</span></div>
     <div class="rack" id="tts"></div>
 
     <div class="rack-label reveal"><span class="n">Speech-to-text</span><span class="ln"></span><span class="c">03 modules</span></div>
@@ -444,13 +444,15 @@ document.documentElement.setAttribute('data-theme',t);})();
     for(var i=0;i<H.length;i++){var s=document.createElement('span');s.style.setProperty('--h',H[i]);s.style.setProperty('--d',(-(i%9)*0.13)+'s');eq.appendChild(s)}}
 
   // ticker
-  var T=[['fish-s2-pro','dual-AR · cloning'],['vibevoice','LLM + diffusion'],['longcat','flow-matching DiT'],['moss-local','multi-VQ'],['moss-ttsd','dialogue'],['moss-sound-effect','text → SFX'],['step-audio','clone + edit'],['dramabox','48kHz stereo'],['cohere-asr','multilingual'],['qwen3-asr-1.7b','EN · ZH'],['granite-speech','local checkpoint']];
+  var T=[['dots.tts','SOAR · MeanFlow'],['fish-s2-pro','dual-AR · cloning'],['vibevoice','LLM + diffusion'],['longcat','flow-matching DiT'],['moss-local','multi-VQ'],['moss-ttsd','dialogue'],['moss-sound-effect','text → SFX'],['step-audio','clone + edit'],['dramabox','48kHz stereo'],['cohere-asr','multilingual'],['qwen3-asr-1.7b','EN · ZH'],['granite-speech','local checkpoint']];
   var tk=document.getElementById('ticker'),html='';
   function row(){var r='';T.forEach(function(m){r+='<span class="ticker-item">'+m[0]+' <span class="k">'+m[1]+'</span><span class="s">/</span></span>'});return r}
   tk.innerHTML=row()+row();
 
   // models
   var TTS=[
+    ['dots.tts SOAR','int8 · base','dots-tts-soar','dots-tts.md','dots-tts-mlx','Continuous autoregressive TTS with a 10-step flow-matching solver and classifier-free guidance.'],
+    ['dots.tts MeanFlow','int8 · base','dots-tts-mf','dots-tts.md','dots-tts-mlx','Continuous autoregressive TTS with a four-step distilled acoustic solver.'],
     ['Fish S2 Pro','int8','fish-s2-pro','fish-s2-pro.md','fishaudio-s2-pro-8bit-mlx','Dual-AR TTS with voice cloning and inline emotion tags like <code>[excited]</code>.'],
     ['VibeVoice Large','int8','vibevoice','vibevoice.md','vibevoice-mlx','Hybrid LLM-plus-diffusion TTS with voice cloning and long-form delivery.'],
     ['LongCat AudioDiT','int8','longcat','longcat-audiodit.md','longcat-audiodit-3.5b-8bit-mlx','Flow-matching diffusion TTS built on a 3.5B audio diffusion transformer.'],

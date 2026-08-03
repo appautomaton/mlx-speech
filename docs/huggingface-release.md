@@ -203,3 +203,34 @@ After the README-only correction, the same four isolated-cache cases passed
 against revision `5dde9ded6c577a84a71b5ee9dafebfa53188d6d6` in `262.11 s`.
 Peak MLX allocation was `6,521,655,508` bytes and macOS process peak RSS was
 `6,423,871,488` bytes.
+
+## mlx-speech 0.5.0 and dots.tts Card Refresh — 2026-08-03
+
+Tag `v0.5.0` points to merge commit
+`e80689094721d0c8d995139b7ac2f1defd5e2a16`. GitHub Actions run
+[`30828268581`](https://github.com/appautomaton/mlx-speech/actions/runs/30828268581)
+passed version consistency, the macOS unit suite, wheel-content inspection,
+and trusted publishing to PyPI. No manual package upload was used.
+
+PyPI published these immutable 0.5.0 files:
+
+- `mlx_speech-0.5.0-py3-none-any.whl` at
+  `2026-08-03T15:38:40.392338Z`, SHA-256
+  `e8b6df537177c0e7d917f0adbd8b9338b949a9b9b365fdebcefa77e118ffe22a`
+- `mlx_speech-0.5.0.tar.gz` at `2026-08-03T15:38:41.783955Z`, SHA-256
+  `635dc243e4db52d50ba97b6b83ef9709e0f9e4f35a1202cb3d2eeda5c39ad4b3`
+
+The public wheel was downloaded, matched its PyPI digest, passed the repository
+wheel-content verifier, and installed into a clean virtual environment. That
+installed package loaded the default `dots-tts-soar` alias from
+`soar/mlx-int8` and streamed two finite, non-silent waveform chunks totaling
+7,680 mono samples at 48 kHz.
+
+After PyPI was live, the `--card-only` release path uploaded only the
+authoritative root `README.md`. It advanced the Hugging Face repository to
+revision `ca6740366ab7316c26ddbb640e756c4ec414778f`; no model artifact was
+selected or re-uploaded. The published README exactly matched the repository
+source at SHA-256
+`bcdec6f61dc843bd1b5a95be181dbe26f8a3ee76f4beb40df4059bd11c7add31`
+and documents `mlx-speech>=0.5.0`, speaker-only cloning, and bounded waveform
+streaming.
