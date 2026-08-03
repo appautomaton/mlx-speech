@@ -99,6 +99,14 @@ The dry-run manifest must list exactly `soar/mlx-base`, `soar/mlx-int8`,
 `mf/mlx-base`, and `mf/mlx-int8` under `appautomaton/dots-tts-mlx`. It fails if
 an artifact digest no longer matches the passed quantization report.
 
+When only the authoritative model card changes, validate and publish it without
+scanning or re-uploading the runtime artifacts:
+
+```bash
+uv run python scripts/hugging_face/upload.py dots-tts --card-only --dry-run
+uv run python scripts/hugging_face/upload.py dots-tts --card-only
+```
+
 When the local converted directory contains an upstream model card, exclude it
 from the upload and publish this repo's own card instead.
 

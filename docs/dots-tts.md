@@ -21,6 +21,20 @@ The short aliases select int8 because both int8 artifacts passed the fixed
 English/Mandarin cloning gate. Use an explicit `-base` alias when debugging
 conversion or comparing against the source-faithful mixed-precision artifact.
 
+Aliases are the shortest unambiguous selectors. A full shared repository ID
+must include the artifact explicitly:
+
+```python
+model = tts.load(
+    "appautomaton/dots-tts-mlx",
+    artifact_subdir="soar/mlx-int8",
+)
+```
+
+Calling `tts.load("appautomaton/dots-tts-mlx")` without a selector fails before
+download rather than guessing SOAR versus MeanFlow. Use
+`tts.list_models(detailed=True)` to inspect every alias and artifact path.
+
 SOAR uses a 10-step flow-matching solver by default and exposes classifier-free
 guidance. MeanFlow is a four-step distilled solver without a separate runtime
 guidance branch. The reproduced gate did not establish a universal quality or
@@ -67,8 +81,15 @@ mlx-speech tts \
 
 Speaker-only cloning uses a reference waveform without a transcript. It uses
 the CAM++ speaker embedding but does not prefill the reference speech latents.
-The current general CLI requires audio and transcript together, so use the
-Python API for speaker-only cloning:
+Both the unified CLI and Python API support this mode:
+
+```bash
+mlx-speech tts \
+  --model dots-tts-mf \
+  --text "今天的天气晴朗而平静。" \
+  --reference-audio reference.wav \
+  --output speaker-only.wav
+```
 
 ```python
 model = tts.load("dots-tts-mf")
@@ -123,6 +144,31 @@ for chunk in model.generate_stream(
 ):
     play(chunk.waveform, sample_rate=chunk.sample_rate)
 ```
+
+For capability-based application code, use the exported optional protocol:
+
+```python
+from mlx_speech.tts import StreamingTTSModel
+
+if isinstance(model, StreamingTTSModel):
+    for chunk in model.generate_stream("Hello from MLX."):
+        consume(chunk.waveform, chunk.sample_rate)
+```
+
+The installed CLI writes chunks incrementally into one transactional WAV:
+
+```bash
+mlx-speech tts \
+  --model dots-tts-soar \
+  --text "Today the weather is bright and peaceful." \
+  --stream \
+  --stream-chunk-patches 4 \
+  --output streamed.wav
+```
+
+Repository users can access the complete dots.tts control surface through
+`python scripts/generate/dots_tts.py --help`. Its `--stream` mode uses the same
+bounded-memory WAV sink. Neither CLI performs live playback.
 
 The default streaming cadence decodes the first patch, the second patch, then
 four-patch groups; a residual group and decoder lookahead are flushed at the

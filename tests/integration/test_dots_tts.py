@@ -8,7 +8,7 @@ from pathlib import Path
 import mlx.core as mx
 import pytest
 
-from mlx_speech.generation.dots_tts import DotsTTSGenerator
+from mlx_speech import tts
 
 
 ROOT = Path(__file__).parents[2]
@@ -32,25 +32,34 @@ def test_dots_tts_four_artifacts_cover_both_clone_modes(
         pytest.skip("materialize the dots.tts multilingual eval corpus")
     reference = json.loads(corpus_lock.read_text(encoding="utf-8"))["references"][0]
 
-    generator = DotsTTSGenerator.from_dir(model_dir)
-    result = generator.synthesize(
-        reference["target_text"],
-        reference_audio=ROOT / reference["path"],
-        reference_text=(
-            reference["reference_text"] if mode == "continuation" else None
-        ),
-        language=reference["language"],
-        max_audio_patches=128 if mode == "continuation" else 1,
-        solver_steps=1,
-        seed=37,
-        eos_threshold=0.0,
-    )
-    assert result.sample_rate == 48_000
-    assert result.num_patches == 1
-    assert result.waveform.ndim == 1
-    assert int(result.waveform.size) > 0
-    assert bool(mx.all(mx.isfinite(result.waveform)).item())
-    assert bool(mx.any(mx.abs(result.waveform) > 0).item())
-    del generator, result
+    model = tts.load(str(model_dir))
+    kwargs = {
+        "reference_audio": ROOT / reference["path"],
+        "language": reference["language"],
+        "max_audio_patches": 128 if mode == "continuation" else 1,
+        "solver_steps": 1,
+        "seed": 37,
+        "eos_threshold": 0.0,
+    }
+    if mode == "continuation":
+        result = model.generate(
+            reference["target_text"],
+            reference_text=reference["reference_text"],
+            **kwargs,
+        )
+        waveform = result.waveform
+        sample_rate = result.sample_rate
+    else:
+        chunks = list(model.generate_stream(reference["target_text"], **kwargs))
+        assert chunks
+        assert all(chunk.sample_rate == 48_000 for chunk in chunks)
+        waveform = mx.concatenate([chunk.waveform for chunk in chunks])
+        sample_rate = chunks[0].sample_rate
+    assert sample_rate == 48_000
+    assert waveform.ndim == 1
+    assert int(waveform.size) > 0
+    assert bool(mx.all(mx.isfinite(waveform)).item())
+    assert bool(mx.any(mx.abs(waveform) > 0).item())
+    del model, waveform
     gc.collect()
     mx.clear_cache()

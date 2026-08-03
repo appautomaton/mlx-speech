@@ -1,4 +1,4 @@
-"""dots.tts adapter for the unified non-streaming TTS API."""
+"""dots.tts adapter for the unified batch and streaming TTS APIs."""
 
 from __future__ import annotations
 

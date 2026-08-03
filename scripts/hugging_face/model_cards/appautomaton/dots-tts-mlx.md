@@ -18,6 +18,7 @@ tags:
 - meanflow
 - quantized
 - 8bit
+- streaming
 ---
 
 # dots.tts SOAR and MeanFlow — MLX
@@ -68,7 +69,11 @@ whole-model 8-bit conversions.
 
 ## Usage
 
-Install `mlx-speech` on an Apple Silicon Mac, then load an alias:
+Install `mlx-speech>=0.5.0` on an Apple Silicon Mac, then load an alias:
+
+```bash
+pip install "mlx-speech>=0.5.0"
+```
 
 ```python
 from mlx_speech import tts
@@ -85,6 +90,36 @@ result = model.generate(
 )
 write_wav("output.wav", result.waveform, sample_rate=result.sample_rate)
 ```
+
+### Waveform streaming
+
+`generate_stream()` performs bounded-memory waveform streaming and yields
+mono 48 kHz chunks while the request is running:
+
+```python
+for chunk in model.generate_stream(
+    "Today the weather is bright and peaceful.",
+    reference_audio="reference.wav",
+    language="en",
+    stream_chunk_patches=4,
+):
+    consume(chunk.waveform, sample_rate=chunk.sample_rate)
+```
+
+The installed CLI can write the chunks incrementally to one WAV without
+retaining the complete waveform:
+
+```bash
+mlx-speech tts \
+  --model dots-tts-soar \
+  --text "Today the weather is bright and peaceful." \
+  --stream \
+  --output streamed.wav
+```
+
+The default decoder cadence is one patch, one patch, then four-patch groups.
+This streams waveform decoding; it does not accept text incrementally or claim
+universal real-time generation.
 
 Passing reference audio and its matching transcript enables continuation
 cloning. To use only the CAM++ speaker embedding, omit `reference_text`:
@@ -152,7 +187,8 @@ checkpoints are not included in this MLX repository.
 
 ## Limitations
 
-- The `mlx-speech` dots.tts runtime is inference-only and non-streaming.
+- The `mlx-speech` dots.tts runtime is inference-only; it supports batch output
+  and bounded waveform streaming but does not provide a training path.
 - Continuous autoregressive history grows with the reference and generated
   sequence. Peak memory can exceed the measurements above for longer inputs or
   larger patch budgets.
@@ -164,8 +200,8 @@ checkpoints are not included in this MLX repository.
   accuracy, text, seed, and generation settings.
 - Quantization passed the fixed release corpus but is not claimed to be
   lossless or numerically identical to `mlx-base`.
-- Upstream CUDA streaming and real-time measurements do not apply to this
-  non-streaming MLX implementation. No real-time performance claim is made.
+- Upstream CUDA real-time measurements do not apply to this MLX implementation.
+  No universal real-time performance claim is made.
 
 ## Responsible use
 

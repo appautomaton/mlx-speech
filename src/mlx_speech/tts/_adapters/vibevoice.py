@@ -35,6 +35,8 @@ class VibeVoiceAdapter:
         diffusion_steps: int = 20,
         **kwargs,
     ) -> TTSOutput:
+        if reference_text is not None and reference_audio is None:
+            raise ValueError("VibeVoice reference_text requires reference_audio")
         ref_mx = None
         if reference_audio is not None:
             if isinstance(reference_audio, (str, Path)):

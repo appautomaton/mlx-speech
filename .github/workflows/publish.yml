@@ -5,9 +5,25 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version to publish (for example 0.5.0)"
+        required: true
+        type: string
 
 jobs:
+  verify-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify release ref and package versions
+        env:
+          RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        run: python3 scripts/release/verify_version.py "$RELEASE_REF"
+
   test:
+    needs: verify-version
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +36,8 @@ jobs:
 
       - name: Run unit tests
         run: uv run pytest tests/unit/ -v
+        env:
+          MLX_SPEECH_DISABLE_CUSTOM_METAL: "1"
 
   build:
     needs: test
@@ -32,6 +50,11 @@ jobs:
 
       - name: Build
         run: uv build --no-sources
+
+      - name: Verify wheel metadata and dots.tts runtime
+        env:
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        run: python3 scripts/release/verify_wheel.py dist/*.whl --version "${RELEASE_VERSION#v}"
 
       - name: Upload dist
         uses: actions/upload-artifact@v4
