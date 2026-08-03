@@ -137,6 +137,18 @@ _ASR_MODELS: dict[str, _ModelAlias] = {
         "Nemotron 3.5 ASR Streaming (int8, affine) — cache-aware multilingual ASR",
         "nemotron",
     ),
+    # Granite publishes one selective-int8 build. The acoustic encoder and
+    # QFormer stay BF16; only the Granite causal LM uses affine int8 weights.
+    "granite-speech-4.0-1b": _ModelAlias(
+        "appautomaton/granite-4.0-1b-speech-int8-mlx",
+        "Granite Speech 4.0 1B (int8) — six-language offline ASR",
+        "granite",
+    ),
+    "granite-speech-4.0-1b-int8": _ModelAlias(
+        "appautomaton/granite-4.0-1b-speech-int8-mlx",
+        "Granite Speech 4.0 1B (selective affine int8) — six-language offline ASR",
+        "granite",
+    ),
     # mxfp8 is a supported conversion mode (scripts/convert/qwen3_asr.py --quant
     # mxfp8) but is not published as a downloadable repo — at 8-bit it offers no
     # advantage over int8. Load a locally-built mxfp8 package by path; the

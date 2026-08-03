@@ -50,6 +50,11 @@ MODELS: dict[str, tuple[str, str, bool]] = {
         "models/nvidia/nemotron_3_5_asr_streaming_0_6b/mlx-int8",
         True,
     ),
+    "granite-speech-4.0-1b-int8": (
+        "appautomaton/granite-4.0-1b-speech-int8-mlx",
+        "models/ibm/granite_4_0_1b_speech/mlx-int8",
+        True,
+    ),
     "openmoss-audio-tokenizer": (
         "appautomaton/openmoss-audio-tokenizer-mlx",
         "models/openmoss/moss_audio_tokenizer/mlx-int8",

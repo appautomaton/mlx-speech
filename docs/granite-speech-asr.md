@@ -1,23 +1,38 @@
 # Granite Speech ASR
 
-Granite Speech ASR is the local MLX runtime for IBM Granite 4.0 1B Speech.
-It supports local-path loading of the original sharded `.safetensors`
-checkpoint without routing inference through PyTorch, Transformers, `mlx_lm`,
-`mlx_audio`, vLLM, or ONNX.
+Granite Speech ASR is the pure-MLX runtime for IBM Granite 4.0 1B Speech. The
+default published artifact applies affine int8 weight quantization to the
+Granite causal LM while retaining the acoustic encoder, QFormer projector,
+normalization, convolution, biases, activations, and KV cache in BF16. Neither
+the original nor quantized path routes inference through PyTorch, Transformers,
+`mlx_lm`, `mlx_audio`, vLLM, or ONNX.
+
+## Checkpoint selection
+
+| Selector | Precision | Source |
+| --- | --- | --- |
+| `granite-speech-4.0-1b` | selective affine int8, group size 64 | `appautomaton/granite-4.0-1b-speech-int8-mlx` |
+| `granite-speech-4.0-1b-int8` | explicit alias for the same artifact | `appautomaton/granite-4.0-1b-speech-int8-mlx` |
+| local `original/` path | original sharded BF16 | `ibm-granite/granite-4.0-1b-speech` |
+
+The published repository is a single self-contained runtime artifact at its
+root. It does not contain the original BF16 shards or an `mlx-int8/` wrapper
+directory. Artifact size, memory, speed, and transcript differences are recorded
+in the [2026-08-03 int8 quantization gate](benchmarks/granite-speech-int8-quant-gate-2026-08-03.md).
 
 ## Quick Start
 
 ```python
 import mlx_speech
 
-asr = mlx_speech.asr.load("models/ibm/granite_4_0_1b_speech/original")
+asr = mlx_speech.asr.load("granite-speech-4.0-1b")
 result = asr.generate("speech.wav", max_new_tokens=200)
 print(result.text)
 ```
 
 ```bash
 mlx-speech asr \
-  --model models/ibm/granite_4_0_1b_speech/original \
+  --model granite-speech-4.0-1b \
   --audio speech.wav
 ```
 
@@ -25,7 +40,7 @@ For diagnostic batches:
 
 ```bash
 python scripts/generate/granite_speech_asr.py \
-  --model-dir models/ibm/granite_4_0_1b_speech/original \
+  --model-dir models/ibm/granite_4_0_1b_speech/mlx-int8 \
   --audio speech.wav \
   --memory-telemetry
 ```
@@ -68,11 +83,26 @@ the matching Project Gutenberg chapter text.
 - Context validation happens before STFT, encoder, and projector work when the
   sample count proves a request cannot fit.
 
+## Local conversion
+
+Build the published artifact layout from the original IBM checkpoint:
+
+```bash
+python scripts/convert/granite_speech_asr.py
+```
+
+The default conversion reads
+`models/ibm/granite_4_0_1b_speech/original` and writes
+`models/ibm/granite_4_0_1b_speech/mlx-int8`. Quantization metadata is stored in
+`config.json`; loading reconstructs the saved quantized module set from its
+`.scales` tensors before strict checkpoint alignment.
+
 ## Current Limits
 
 - The checked runtime supports greedy transcription only.
-- Published `appautomaton` alias weights are not defined yet; use a local model
-  directory containing `config.json`, tokenizer assets, and safetensors shards.
+- The checked runtime supports upstream speech inputs in English, French,
+  German, Spanish, Portuguese, and Japanese. Mandarin speech transcription is
+  not an upstream capability.
 - Ten-minute-plus audio exceeds the model context as a single prompt. Use
   context-safe chunking for long-form checks.
 - Runtime smoke asserts the bundled sample transcript contains the expected

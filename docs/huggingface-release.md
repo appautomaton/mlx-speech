@@ -20,11 +20,12 @@ Each model family gets its own Hugging Face repo.
 | `models/vibevoice/` | `appautomaton/vibevoice-mlx` | `mlx-int8` |
 | `models/cohere/cohere_transcribe/` | `appautomaton/cohere-asr-mlx` | `mlx-int8` |
 | `models/Qwen3-ASR-1.7B-MLX-BF16/` | `appautomaton/qwen3-asr-1.7b-bf16-mlx` | bf16, repo root |
+| `models/ibm/granite_4_0_1b_speech/mlx-int8/` | `appautomaton/granite-4.0-1b-speech-int8-mlx` | selective int8, repo root |
 | `models/dots_tts/` | `appautomaton/dots-tts-mlx` | SOAR/MF × `mlx-base`/`mlx-int8` |
 
-Quantization variants live as subfolders inside the model repo rather than as
-separate repos. Unquantized single-variant repos (Qwen3-ASR BF16) publish the
-runtime package flat at the repo root instead.
+Multi-variant family repositories keep variants in explicit subfolders.
+Single-variant ASR repositories such as Qwen3-ASR and Granite publish one
+self-contained runtime package flat at the repo root.
 
 ## Release Boundaries
 
@@ -57,18 +58,18 @@ appautomaton/openmoss-sound-effect-mlx/
     ...
 ```
 
-Qwen3-ASR is unquantized BF16 with a single variant, so the package lives at
-the repo root:
+Qwen3-ASR BF16 and Granite selective int8 each publish one package at the repo
+root. Granite uses this layout:
 
 ```text
-appautomaton/qwen3-asr-1.7b-bf16-mlx/
+appautomaton/granite-4.0-1b-speech-int8-mlx/
   README.md
   config.json
   model.safetensors
-  generation_config.json
   preprocessor_config.json
-  chat_template.json
+  processor_config.json
   tokenizer_config.json
+  tokenizer.json
   vocab.json
   merges.txt
 ```

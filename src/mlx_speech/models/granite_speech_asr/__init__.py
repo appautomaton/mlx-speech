@@ -3,10 +3,14 @@
 from .checkpoint import (
     AlignmentReport,
     GraniteSpeechCheckpoint,
+    QuantizationConfig,
     build_alignment_report,
+    get_quantization_config,
     load_checkpoint_into_model,
     load_granite_speech_checkpoint,
+    quantize_granite_speech_model,
     sanitize_state_dict,
+    save_granite_speech_model,
     validate_checkpoint_against_model,
 )
 from .config import (
@@ -49,6 +53,7 @@ __all__ = [
     "GraniteSpeechTextConfig",
     "GraniteSpeechAudioShape",
     "GraniteSpeechCheckpoint",
+    "QuantizationConfig",
     "GraniteSpeechFeatureExtractor",
     "GraniteCausalLM",
     "GraniteCausalLMOutput",
@@ -71,11 +76,14 @@ __all__ = [
     "AlignmentReport",
     "build_alignment_report",
     "greedy_next_token",
+    "get_quantization_config",
     "load_checkpoint_into_model",
     "load_granite_speech_checkpoint",
     "load_granite_speech_model",
     "mask_audio_token_ids",
     "replace_audio_embeddings",
+    "quantize_granite_speech_model",
     "sanitize_state_dict",
+    "save_granite_speech_model",
     "validate_checkpoint_against_model",
 ]

@@ -29,13 +29,20 @@ def test_site_catalog_includes_published_nemotron_asr() -> None:
     ) in page
 
 
-def test_readme_distinguishes_published_and_local_only_asr() -> None:
+def test_readme_and_site_publish_granite_int8_consistently() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    prose = " ".join(readme.split())
+    page = (ROOT / "site/index.html").read_text(encoding="utf-8")
 
-    assert "not a published or quantized `mlx-speech` artifact yet" in prose
-    assert "not returned by `asr.list_models()`" in prose
+    assert "appautomaton/granite-4.0-1b-speech-int8-mlx" in readme
+    assert "`granite-speech-4.0-1b`" in readme
+    assert "['granite-speech-4.0-1b','selective int8']" in page
+    assert (
+        "['IBM Granite Speech 4.0 1B','int8 · BF16',"
+        "'granite-speech-4.0-1b','granite-speech-asr.md',"
+        "'granite-4.0-1b-speech-int8-mlx'"
+    ) in page
     assert "session.feed(" in readme
     assert "session.finalize()" in readme
     assert "scripts/convert/dots_tts.py --variant all --precision int8" in readme
     assert "scripts/convert/nemotron_asr.py --quant int8" in readme
+    assert "scripts/convert/granite_speech_asr.py" in readme

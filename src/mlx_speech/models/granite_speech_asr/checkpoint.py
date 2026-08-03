@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -11,6 +14,30 @@ from mlx.utils import tree_flatten
 
 from ...checkpoints.sharded import load_state_dict
 from .config import GraniteSpeechConfig
+
+
+@dataclass(frozen=True)
+class QuantizationConfig:
+    """MLX weight-only quantization metadata stored with runtime artifacts."""
+
+    bits: int = 8
+    group_size: int = 64
+    mode: str = "affine"
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "QuantizationConfig":
+        return cls(
+            bits=int(payload["bits"]),
+            group_size=int(payload["group_size"]),
+            mode=str(payload.get("mode", "affine")),
+        )
+
+    def to_dict(self) -> dict[str, int | str]:
+        return {
+            "bits": self.bits,
+            "group_size": self.group_size,
+            "mode": self.mode,
+        }
 
 
 @dataclass(frozen=True)
@@ -152,3 +179,105 @@ def load_checkpoint_into_model(
         )
     model.load_weights(list(checkpoint.state_dict.items()), strict=strict)
     return report
+
+
+def get_quantization_config(
+    config: GraniteSpeechConfig,
+) -> QuantizationConfig | None:
+    """Read the canonical quantization block, accepting the MLX community alias."""
+    canonical = config.extra.get("quantization")
+    compatibility = config.extra.get("quantization_config")
+    if canonical is None and compatibility is None:
+        return None
+    if canonical is not None and compatibility is not None and canonical != compatibility:
+        raise ValueError(
+            "Granite Speech quantization and quantization_config blocks disagree"
+        )
+    payload = canonical if canonical is not None else compatibility
+    if not isinstance(payload, dict):
+        raise ValueError("Granite Speech quantization metadata must be an object")
+    return QuantizationConfig.from_dict(payload)
+
+
+def quantize_granite_speech_model(
+    model: nn.Module,
+    quantization: QuantizationConfig,
+    *,
+    state_dict: dict[str, mx.array] | None = None,
+) -> nn.Module:
+    """Quantize Granite LM Linear/Embedding weights or recreate a saved layout."""
+    checkpoint_keys = set(state_dict) if state_dict is not None else None
+
+    def should_quantize(path: str, module: Any) -> bool:
+        if not path.startswith("language_model."):
+            return False
+        if not isinstance(module, (nn.Linear, nn.Embedding)):
+            return False
+        if module.weight.shape[-1] % quantization.group_size != 0:
+            return False
+        if checkpoint_keys is None:
+            return True
+        return f"{path}.scales" in checkpoint_keys
+
+    nn.quantize(
+        model,
+        group_size=quantization.group_size,
+        bits=quantization.bits,
+        mode=quantization.mode,
+        class_predicate=should_quantize,
+    )
+    return model
+
+
+def save_granite_speech_model(
+    model: nn.Module,
+    output_dir: str | Path,
+    *,
+    config: GraniteSpeechConfig,
+    quantization: QuantizationConfig | None = None,
+    copy_supporting_files_from: str | Path | None = None,
+) -> Path:
+    """Write a self-contained MLX Granite Speech runtime artifact."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    weights = tree_flatten(model.parameters(), destination={})
+    mx.eval(list(weights.values()))
+    mx.save_safetensors(
+        str(output_dir / "model.safetensors"),
+        weights,
+        metadata={"format": "mlx"},
+    )
+
+    if copy_supporting_files_from is not None:
+        _copy_supporting_files(Path(copy_supporting_files_from), output_dir)
+
+    payload = config.to_dict()
+    payload.pop("quantization", None)
+    payload.pop("quantization_config", None)
+    if quantization is not None:
+        payload["quantization"] = quantization.to_dict()
+    with (output_dir / "config.json").open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+
+    return output_dir
+
+
+def _copy_supporting_files(input_dir: Path, output_dir: Path) -> tuple[Path, ...]:
+    copied: list[Path] = []
+    for source in sorted(input_dir.iterdir()):
+        if not source.is_file():
+            continue
+        if source.suffix == ".safetensors":
+            continue
+        if source.name in {
+            "model.safetensors.index.json",
+            "README.md",
+            ".gitattributes",
+        }:
+            continue
+        destination = output_dir / source.name
+        shutil.copy2(source, destination)
+        copied.append(destination)
+    return tuple(copied)
