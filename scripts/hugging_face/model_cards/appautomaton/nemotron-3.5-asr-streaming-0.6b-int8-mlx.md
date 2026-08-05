@@ -148,6 +148,11 @@ The 755,732,373-byte int8 weight file is 40.8% smaller than the local 1,276,192,
 - inference requires Apple Silicon and MLX
 - the pre-release comparison covers English and Mandarin only and is not a substitute for NVIDIA's broader upstream evaluation
 
+## Links
+
+- Source code: [`appautomaton/mlx-speech`](https://github.com/appautomaton/mlx-speech)
+- Project page: [appautomaton.renocrypt.com/mlx-speech](https://appautomaton.renocrypt.com/mlx-speech/)
+
 ## License and attribution
 
 The model weights are governed by **OpenMDW-1.1**. The complete license text is included in this repository as `LICENSE.OpenMDW-1.1`. This is a quantized derivative of [`nvidia/nemotron-3.5-asr-streaming-0.6b`](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b); NVIDIA developed and released the upstream model. The `mlx-speech` runtime code is separately licensed under MIT.
