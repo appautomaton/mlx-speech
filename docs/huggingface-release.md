@@ -125,7 +125,7 @@ Each Hugging Face repo card should state:
 - a minimal `mlx-speech` usage example
 - any material license or usage restrictions
 - a Links section pointing to the [source repo](https://github.com/appautomaton/mlx-speech)
-  and the [project page](https://appautomaton.github.io/mlx-speech/)
+  and the [project page](https://appautomaton.renocrypt.com/mlx-speech/)
 
 ## Release Checklist
 

@@ -22,7 +22,7 @@ tags:
 # Qwen3-ASR-1.7B — MLX (int8)
 
 [![GitHub](https://img.shields.io/badge/GitHub-mlx--speech-181717?logo=github&logoColor=white)](https://github.com/appautomaton/mlx-speech)
-[![App Automaton](https://img.shields.io/badge/App%20Automaton-project-1f6feb)](https://appautomaton.github.io)
+[![App Automaton](https://img.shields.io/badge/App%20Automaton-project-1f6feb)](https://appautomaton.renocrypt.com)
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97-appautomaton-yellow)](https://huggingface.co/appautomaton)
 [![bf16 build](https://img.shields.io/badge/variant-bf16-lightgrey)](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx)
 
@@ -32,7 +32,7 @@ MLX-native **int8** conversion of [Qwen3-ASR-1.7B](https://huggingface.co/Qwen/Q
 
 ## Model Details
 
-- Developed by: [App Automaton](https://appautomaton.github.io)
+- Developed by: [App Automaton](https://appautomaton.renocrypt.com)
 - Upstream model: [`Qwen/Qwen3-ASR-1.7B`](https://huggingface.co/Qwen/Qwen3-ASR-1.7B) (code: [`QwenLM/Qwen3-ASR`](https://github.com/QwenLM/Qwen3-ASR))
 - Task: automatic speech recognition — English, Chinese, and mixed Chinese/English (upstream supports more languages; the `mlx-speech` v0 path validates en/zh/mixed)
 - Precision: **int8 affine, group_size 64**, applied to the Linear and Embedding layers across the audio tower and text decoder; Conv2D layers are kept unquantized
@@ -86,9 +86,9 @@ asr = mlx_speech.asr.load("models/qwen3_asr_1_7b/mlx-int8")
 ## Links
 
 - Source code: [`appautomaton/mlx-speech`](https://github.com/appautomaton/mlx-speech)
-- Project page: [appautomaton.github.io/mlx-speech](https://appautomaton.github.io/mlx-speech/)
+- Project page: [appautomaton.renocrypt.com/mlx-speech](https://appautomaton.renocrypt.com/mlx-speech/)
 - Unquantized variant: [`appautomaton/qwen3-asr-1.7b-bf16-mlx`](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx)
-- More from App Automaton: [Project](https://appautomaton.github.io) · [GitHub](https://github.com/appautomaton) · [Hugging Face](https://huggingface.co/appautomaton)
+- More from App Automaton: [Project](https://appautomaton.renocrypt.com) · [GitHub](https://github.com/appautomaton) · [Hugging Face](https://huggingface.co/appautomaton)
 
 ## License
 

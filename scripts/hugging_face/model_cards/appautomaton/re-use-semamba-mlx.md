@@ -23,7 +23,7 @@ tags:
 # RE-USE SEMamba Speech Enhancement (MLX)
 
 [![GitHub](https://img.shields.io/badge/GitHub-mlx--speech-181717?logo=github&logoColor=white)](https://github.com/appautomaton/mlx-speech)
-[![App Automaton](https://img.shields.io/badge/App%20Automaton-project-1f6feb)](https://appautomaton.github.io)
+[![App Automaton](https://img.shields.io/badge/App%20Automaton-project-1f6feb)](https://appautomaton.renocrypt.com)
 [![DramaBox TTS](https://img.shields.io/badge/%F0%9F%A4%97%20model-DramaBox%20TTS-yellow)](https://huggingface.co/appautomaton/dramabox-tts-3.3b-bf16-mlx)
 
 Pure-MLX conversion of [NVIDIA RE-USE](https://huggingface.co/nvidia/RE-USE), a
@@ -37,7 +37,7 @@ runs with `denoise_ref=True`, giving the cloning model a clean speaker anchor.
 
 ## Model Details
 
-- Developed by: [App Automaton](https://appautomaton.github.io)
+- Developed by: [App Automaton](https://appautomaton.renocrypt.com)
 - Upstream model: [`nvidia/RE-USE`](https://huggingface.co/nvidia/RE-USE) (SEMamba, bidirectional Mamba over STFT magnitude + phase)
 - Role: input-side voice-reference denoiser for DramaBox `denoise_ref=True`. Optional, off by default.
 - Conversion: format-only port of the fp32 weights to MLX `.safetensors` (1416 keys, ~9.6M params). No quantization, no architecture change.
@@ -91,7 +91,7 @@ TTS model's paralinguistic events (breaths, laughs) are preserved.
 ## Links
 
 - Source code: [`appautomaton/mlx-speech`](https://github.com/appautomaton/mlx-speech)
-- Project page: [appautomaton.github.io/mlx-speech](https://appautomaton.github.io/mlx-speech/)
+- Project page: [appautomaton.renocrypt.com/mlx-speech](https://appautomaton.renocrypt.com/mlx-speech/)
 - Paired model: [`appautomaton/dramabox-tts-3.3b-bf16-mlx`](https://huggingface.co/appautomaton/dramabox-tts-3.3b-bf16-mlx)
 - More from App Automaton: [GitHub](https://github.com/appautomaton) · [Hugging Face](https://huggingface.co/appautomaton)
 

@@ -25,7 +25,7 @@ tags:
 # Granite Speech 4.0 1B — MLX (int8)
 
 [![GitHub](https://img.shields.io/badge/GitHub-mlx--speech-181717?logo=github&logoColor=white)](https://github.com/appautomaton/mlx-speech)
-[![App Automaton](https://img.shields.io/badge/App%20Automaton-project-1f6feb)](https://appautomaton.github.io)
+[![App Automaton](https://img.shields.io/badge/App%20Automaton-project-1f6feb)](https://appautomaton.renocrypt.com)
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97-appautomaton-yellow)](https://huggingface.co/appautomaton)
 
 Pure-MLX selective-int8 conversion of IBM's
@@ -116,7 +116,7 @@ local path.
 
 - Source code: [`appautomaton/mlx-speech`](https://github.com/appautomaton/mlx-speech)
 - Runtime guide: [`docs/granite-speech-asr.md`](https://github.com/appautomaton/mlx-speech/blob/main/docs/granite-speech-asr.md)
-- Project page: [appautomaton.github.io/mlx-speech](https://appautomaton.github.io/mlx-speech/)
+- Project page: [appautomaton.renocrypt.com/mlx-speech](https://appautomaton.renocrypt.com/mlx-speech/)
 - Upstream model: [`ibm-granite/granite-4.0-1b-speech`](https://huggingface.co/ibm-granite/granite-4.0-1b-speech)
 
 ## License

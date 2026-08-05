@@ -1,7 +1,7 @@
 # mlx-speech landing page
 
 Static GitHub Pages site for [mlx-speech](https://github.com/appautomaton/mlx-speech),
-published at <https://appautomaton.github.io/mlx-speech/>.
+published at <https://appautomaton.renocrypt.com/mlx-speech/>.
 
 ## Stack
 
