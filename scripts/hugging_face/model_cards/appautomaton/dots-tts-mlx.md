@@ -213,6 +213,11 @@ misinformation, harassment, deceptive attribution, or evasion of consent.
 Deployers are responsible for applicable law, abuse monitoring, and safeguards
 appropriate to their users and jurisdiction.
 
+## Links
+
+- Source code: [`appautomaton/mlx-speech`](https://github.com/appautomaton/mlx-speech)
+- Project page: [appautomaton.renocrypt.com/mlx-speech](https://appautomaton.renocrypt.com/mlx-speech/)
+
 ## License and attribution
 
 The official dots.tts code and released checkpoints are provided under the
