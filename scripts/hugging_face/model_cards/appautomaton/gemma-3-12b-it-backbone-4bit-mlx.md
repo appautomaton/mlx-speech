@@ -22,7 +22,7 @@ tags:
 # Gemma 3 12B IT Text-Encoder Backbone (MLX, 4-bit)
 
 [![GitHub](https://img.shields.io/badge/GitHub-mlx--speech-181717?logo=github&logoColor=white)](https://github.com/appautomaton/mlx-speech)
-[![App Automaton](https://img.shields.io/badge/App%20Automaton-project-1f6feb)](https://appautomaton.github.io)
+[![App Automaton](https://img.shields.io/badge/App%20Automaton-project-1f6feb)](https://appautomaton.renocrypt.com)
 [![DramaBox TTS](https://img.shields.io/badge/%F0%9F%A4%97%20model-DramaBox%20TTS-yellow)](https://huggingface.co/appautomaton/dramabox-tts-3.3b-bf16-mlx)
 
 MLX 4-bit conversion of the Gemma 3 12B IT text backbone. It serves as the text-conditioning encoder for [DramaBox TTS](https://huggingface.co/appautomaton/dramabox-tts-3.3b-bf16-mlx) in [mlx-speech](https://github.com/appautomaton/mlx-speech), exposing the per-layer hidden states the audio model conditions on. It is not a chat or text-generation model.
@@ -31,7 +31,7 @@ MLX 4-bit conversion of the Gemma 3 12B IT text backbone. It serves as the text-
 
 ## Model Details
 
-- Developed by: [App Automaton](https://appautomaton.github.io)
+- Developed by: [App Automaton](https://appautomaton.renocrypt.com)
 - Upstream model: [`google/gemma-3-12b-it`](https://huggingface.co/google/gemma-3-12b-it), converted from the `gemma-3-12b-it-qat-q4_0` release
 - Role: text-encoder backbone. Produces all 49 hidden states consumed by the DramaBox prompt pipeline.
 - Quantization: MLX 4-bit affine, `group_size=64`, with bf16 scales and norms
@@ -71,7 +71,7 @@ Text conditioning for LTX-2-derived audio diffusion models, specifically DramaBo
 ## Links
 
 - Source code: [`appautomaton/mlx-speech`](https://github.com/appautomaton/mlx-speech)
-- Project page: [appautomaton.github.io/mlx-speech](https://appautomaton.github.io/mlx-speech/)
+- Project page: [appautomaton.renocrypt.com/mlx-speech](https://appautomaton.renocrypt.com/mlx-speech/)
 - Paired model: [`appautomaton/dramabox-tts-3.3b-bf16-mlx`](https://huggingface.co/appautomaton/dramabox-tts-3.3b-bf16-mlx)
 - More from App Automaton: [GitHub](https://github.com/appautomaton) · [Hugging Face](https://huggingface.co/appautomaton)
 

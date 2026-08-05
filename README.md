@@ -6,14 +6,14 @@
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/appautomaton/mlx-speech/blob/main/LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Apple%20Silicon-black?logo=apple)](https://developer.apple.com/documentation/apple-silicon)
-[![Project page](https://img.shields.io/badge/project-page-2f7ad9)](https://appautomaton.github.io/mlx-speech/)
+[![Project page](https://img.shields.io/badge/project-page-2f7ad9)](https://appautomaton.renocrypt.com/mlx-speech/)
 [![CI](https://github.com/appautomaton/mlx-speech/actions/workflows/ci.yml/badge.svg)](https://github.com/appautomaton/mlx-speech/actions/workflows/ci.yml)
 
 Local speech synthesis, editing, and transcription on Apple Silicon, running
 pure MLX. No cloud, no PyTorch at runtime.
 
-mlx-speech is an [App Automaton](https://appautomaton.github.io) project.
-Project page: **[appautomaton.github.io/mlx-speech](https://appautomaton.github.io/mlx-speech/)**.
+mlx-speech is an [App Automaton](https://appautomaton.renocrypt.com) project.
+Project page: **[appautomaton.renocrypt.com/mlx-speech](https://appautomaton.renocrypt.com/mlx-speech/)**.
 The `appautomaton` org hosts the [code on GitHub](https://github.com/appautomaton/mlx-speech)
 and the converted [weights on Hugging Face](https://huggingface.co/appautomaton).
 
@@ -212,7 +212,7 @@ mlx-speech/
 
 MIT — see [LICENSE](https://github.com/appautomaton/mlx-speech/blob/main/LICENSE)
 
-Built and maintained by [App Automaton](https://appautomaton.github.io).
+Built and maintained by [App Automaton](https://appautomaton.renocrypt.com).
 
 ## Acknowledgements
 

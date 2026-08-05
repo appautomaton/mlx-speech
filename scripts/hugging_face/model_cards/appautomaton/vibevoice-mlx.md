@@ -73,7 +73,7 @@ See [mlx-speech](https://github.com/appautomaton/mlx-speech) for the full runtim
 ## Links
 
 - Source code: [mlx-speech](https://github.com/appautomaton/mlx-speech)
-- Project page: [appautomaton.github.io/mlx-speech](https://appautomaton.github.io/mlx-speech/)
+- Project page: [appautomaton.renocrypt.com/mlx-speech](https://appautomaton.renocrypt.com/mlx-speech/)
 
 ## License
 

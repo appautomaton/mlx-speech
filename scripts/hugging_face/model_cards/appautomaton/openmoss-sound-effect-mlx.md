@@ -47,7 +47,7 @@ Duration controls the expected token budget at 12.5 tokens/second.
 ## Links
 
 - Source code: [mlx-speech](https://github.com/appautomaton/mlx-speech)
-- Project page: [appautomaton.github.io/mlx-speech](https://appautomaton.github.io/mlx-speech/)
+- Project page: [appautomaton.renocrypt.com/mlx-speech](https://appautomaton.renocrypt.com/mlx-speech/)
 
 ## License
 
