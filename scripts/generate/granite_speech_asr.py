@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 
-DEFAULT_MODEL_DIR = Path("models/ibm/granite_4_0_1b_speech/original")
+DEFAULT_MODEL_DIR = Path("models/ibm/granite_4_0_1b_speech/mlx-int8")
 DEFAULT_OUTPUT_DIR = Path("outputs/granite_speech_asr")
 DEFAULT_SAMPLE_ROOTS = (
     Path("outputs/smoke/generated"),

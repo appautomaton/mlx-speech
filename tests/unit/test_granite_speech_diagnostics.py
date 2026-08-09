@@ -4,12 +4,17 @@ import json
 from pathlib import Path
 
 from scripts.generate.granite_speech_asr import (
+    DEFAULT_MODEL_DIR,
     TranscriptRecord,
     discover_default_audio_inputs,
     transcribe_paths,
     transcript_path_for,
     write_summary,
 )
+
+
+def test_granite_generation_defaults_to_published_int8_bundle():
+    assert DEFAULT_MODEL_DIR == Path("models/ibm/granite_4_0_1b_speech/mlx-int8")
 
 
 def test_granite_transcript_path_is_collision_safe_under_output_dir(tmp_path):

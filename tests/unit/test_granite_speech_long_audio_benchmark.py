@@ -4,6 +4,7 @@ from pathlib import Path
 
 from scripts.eval.granite_speech_long_audio import (
     AudioChunk,
+    DEFAULT_MODEL_DIR,
     SOURCES,
     build_summary,
     ensure_tmp_output_dir,
@@ -13,6 +14,10 @@ from scripts.eval.granite_speech_long_audio import (
     word_metrics,
 )
 from scripts.generate.granite_speech_asr import TranscriptRecord
+
+
+def test_granite_long_audio_defaults_to_published_int8_bundle():
+    assert DEFAULT_MODEL_DIR == Path("models/ibm/granite_4_0_1b_speech/mlx-int8")
 
 
 def test_granite_long_audio_plan_chunks_covers_tail():
