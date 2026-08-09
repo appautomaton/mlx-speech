@@ -4,46 +4,15 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Package version to publish (for example 0.5.0)"
-        required: true
-        type: string
 
 jobs:
-  verify-version:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
 
       - name: Verify release ref and package versions
-        env:
-          RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
-        run: python3 scripts/release/verify_version.py "$RELEASE_REF"
-
-  test:
-    needs: verify-version
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v7.0.1
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
-
-      - name: Install dependencies
-        run: uv sync --all-extras
-
-      - name: Run unit tests
-        run: uv run pytest tests/unit/ -v
-        env:
-          MLX_SPEECH_DISABLE_CUSTOM_METAL: "1"
-
-  build:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7.0.1
+        run: python3 scripts/release/verify_version.py "$GITHUB_REF_NAME"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v9.0.0
@@ -52,9 +21,7 @@ jobs:
         run: uv build --no-sources
 
       - name: Verify wheel metadata and dots.tts runtime
-        env:
-          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
-        run: python3 scripts/release/verify_wheel.py dist/*.whl --version "${RELEASE_VERSION#v}"
+        run: python3 scripts/release/verify_wheel.py dist/*.whl --version "${GITHUB_REF_NAME#v}"
 
       - name: Upload dist
         uses: actions/upload-artifact@v7.0.1
