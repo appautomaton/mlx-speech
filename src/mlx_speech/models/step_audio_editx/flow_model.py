@@ -948,12 +948,17 @@ def _load_flow_model_from_safetensors(
 
 def load_step_audio_flow_model(
     model_dir: str | Path,
+) -> LoadedStepAudioFlowModel:
+    return _load_flow_model_from_safetensors(Path(model_dir))
+
+
+def load_step_audio_flow_source_model(
+    model_dir: str | Path,
     *,
     strict: bool = True,
 ) -> LoadedStepAudioFlowModel:
-    resolved = Path(model_dir)
-    if (resolved / "flow-model.safetensors").exists():
-        return _load_flow_model_from_safetensors(resolved)
+    """Load original flow assets for checkpoint conversion only."""
+
     checkpoint = load_step_audio_flow_checkpoint(model_dir)
     config = checkpoint.config
     estimator = StepAudioDiT(
@@ -981,7 +986,9 @@ def load_step_audio_flow_model(
         linear_units=config.linear_units,
         key_bias=config.key_bias,
     )
-    conditioner = load_step_audio_flow_conditioner(model_dir)
+    from .flow import load_step_audio_flow_conditioner_source_model
+
+    conditioner = load_step_audio_flow_conditioner_source_model(model_dir)
     model = StepAudioCausalMaskedDiffWithXvec(
         input_size=config.input_size,
         output_size=config.output_size,
@@ -1019,6 +1026,7 @@ __all__ = [
     "StepAudioUpsampleConformerEncoderV2",
     "load_step_audio_flow_checkpoint",
     "load_step_audio_flow_model",
+    "load_step_audio_flow_source_model",
     "sanitize_step_audio_flow_state_dict",
     "validate_step_audio_flow_checkpoint_against_model",
 ]

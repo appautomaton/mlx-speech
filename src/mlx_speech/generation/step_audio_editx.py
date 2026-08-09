@@ -21,6 +21,8 @@ from ..models.step_audio_editx import (
     load_step_audio_flow_conditioner,
     load_step_audio_flow_model,
     load_step_audio_hift_model,
+    resolve_step_audio_editx_model_dir,
+    validate_step_audio_editx_runtime_bundle,
 )
 from ..models.step_audio_tokenizer import (
     LoadedStepAudioVQ02Model,
@@ -29,7 +31,6 @@ from ..models.step_audio_tokenizer import (
     load_step_audio_vq02_model,
     load_step_audio_vq06_model,
     pack_raw_codes_to_prompt_tokens,
-    resolve_step_audio_tokenizer_model_dir,
 )
 
 _DEFAULT_CLONE_SPEAKER = "debug"
@@ -141,7 +142,6 @@ class StepAudioEditXModel:
 
     step1: LoadedStepAudioEditXModel
     tokenizer: StepAudioEditXTokenizer
-    tokenizer_dir: Path
     vq02: LoadedStepAudioVQ02Model
     vq06: LoadedStepAudioVQ06Model
     frontend: StepAudioCosyVoiceFrontEnd
@@ -153,43 +153,18 @@ class StepAudioEditXModel:
     def from_dir(
         cls,
         model_dir: str | Path | None = None,
-        *,
-        tokenizer_dir: str | Path | None = None,
-        prefer_mlx_int8: bool = False,
-        strict: bool = True,
     ) -> "StepAudioEditXModel":
-        step1 = load_step_audio_editx_model(
-            model_dir,
-            prefer_mlx_int8=prefer_mlx_int8,
-            strict=strict,
+        model_path = validate_step_audio_editx_runtime_bundle(
+            resolve_step_audio_editx_model_dir(model_dir)
         )
-        model_path = step1.model_dir
+        step1 = load_step_audio_editx_model(model_path)
 
-        # Check if VQ safetensors are bundled in the model dir
-        has_bundled_vq = (model_path / "vq02.safetensors").exists()
-        if has_bundled_vq:
-            resolved_tokenizer_dir = resolve_step_audio_tokenizer_model_dir(
-                tokenizer_dir
-            )
-            vq02 = load_step_audio_vq02_model(
-                resolved_tokenizer_dir, strict=strict,
-                safetensors_dir=model_path,
-            )
-            vq06 = load_step_audio_vq06_model(
-                resolved_tokenizer_dir, strict=strict,
-                safetensors_dir=model_path,
-            )
-        else:
-            resolved_tokenizer_dir = resolve_step_audio_tokenizer_model_dir(
-                tokenizer_dir
-            )
-            vq02 = load_step_audio_vq02_model(resolved_tokenizer_dir, strict=strict)
-            vq06 = load_step_audio_vq06_model(resolved_tokenizer_dir, strict=strict)
+        vq02 = load_step_audio_vq02_model(model_path)
+        vq06 = load_step_audio_vq06_model(model_path)
 
         return cls(
             step1=step1,
             tokenizer=StepAudioEditXTokenizer.from_path(model_path),
-            tokenizer_dir=resolved_tokenizer_dir,
             vq02=vq02,
             vq06=vq06,
             frontend=StepAudioCosyVoiceFrontEnd.from_model_dir(model_path),
@@ -202,17 +177,8 @@ class StepAudioEditXModel:
     def from_path(
         cls,
         model_dir: str | Path | None = None,
-        *,
-        tokenizer_dir: str | Path | None = None,
-        prefer_mlx_int8: bool = False,
-        strict: bool = True,
     ) -> "StepAudioEditXModel":
-        return cls.from_dir(
-            model_dir,
-            tokenizer_dir=tokenizer_dir,
-            prefer_mlx_int8=prefer_mlx_int8,
-            strict=strict,
-        )
+        return cls.from_dir(model_dir)
 
     def clone(
         self,

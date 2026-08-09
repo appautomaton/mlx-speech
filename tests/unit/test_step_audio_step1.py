@@ -257,20 +257,16 @@ def test_grouped_gqa_matches_explicit_repeat_path() -> None:
     assert mx.allclose(grouped_hidden, repeated_hidden, atol=1e-6, rtol=1e-6)
 
 
-def test_default_model_dir_prefers_original_when_available(
+def test_default_model_dir_is_mlx_int8(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    original_dir = tmp_path / "stepfun" / "step_audio_editx" / "original"
     mlx_int8_dir = tmp_path / "stepfun" / "step_audio_editx" / "mlx-int8"
-    original_dir.mkdir(parents=True)
     mlx_int8_dir.mkdir(parents=True)
-    (original_dir / "model.safetensors").write_bytes(b"original")
     (mlx_int8_dir / "model.safetensors").write_bytes(b"mlx")
 
     import mlx_speech.models.step_audio_editx.checkpoint as checkpoint_module
 
     monkeypatch.setattr(checkpoint_module, "MODELS_ROOT", tmp_path)
 
-    assert resolve_step_audio_editx_model_dir(None, prefer_mlx_int8=False) == original_dir
-    assert resolve_step_audio_editx_model_dir(None, prefer_mlx_int8=True) == mlx_int8_dir
+    assert resolve_step_audio_editx_model_dir() == mlx_int8_dir

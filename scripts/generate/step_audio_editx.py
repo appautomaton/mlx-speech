@@ -30,12 +30,6 @@ from mlx_speech.generation.step_audio_editx import StepAudioEditXModel
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-dir", default=None, help="Step-Audio-EditX checkpoint directory")
-    parser.add_argument("--tokenizer-dir", default=None, help="Step-Audio tokenizer asset directory")
-    parser.add_argument(
-        "--prefer-mlx-int8",
-        action="store_true",
-        help="Prefer the mlx-int8 Step1 checkpoint instead of the original checkpoint.",
-    )
     parser.add_argument("--prompt-audio", required=True, help="Reference audio file")
     parser.add_argument("--prompt-text", required=True, help="Transcript for the reference audio")
     parser.add_argument("-o", "--output", required=True, help="Output waveform path")
@@ -71,8 +65,6 @@ def main() -> None:
     prompt_audio, prompt_sample_rate = load_audio(args.prompt_audio, mono=True)
     model = StepAudioEditXModel.from_dir(
         args.model_dir,
-        tokenizer_dir=args.tokenizer_dir,
-        prefer_mlx_int8=args.prefer_mlx_int8,
     )
 
     if args.mode == "clone":

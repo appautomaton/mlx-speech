@@ -328,12 +328,17 @@ def _load_flow_conditioner_from_safetensors(
 
 def load_step_audio_flow_conditioner(
     model_dir: str | Path,
+) -> LoadedStepAudioFlowConditioner:
+    return _load_flow_conditioner_from_safetensors(Path(model_dir))
+
+
+def load_step_audio_flow_conditioner_source_model(
+    model_dir: str | Path,
     *,
     strict: bool = True,
 ) -> LoadedStepAudioFlowConditioner:
-    resolved = Path(model_dir)
-    if (resolved / "flow-conditioner.safetensors").exists():
-        return _load_flow_conditioner_from_safetensors(resolved)
+    """Load original flow conditioner assets for checkpoint conversion only."""
+
     checkpoint = load_step_audio_flow_conditioning_checkpoint(model_dir)
     model = StepAudioFlowConditioner(checkpoint.config)
     report = validate_step_audio_flow_conditioning_checkpoint_against_model(
@@ -367,6 +372,7 @@ __all__ = [
     "StepAudioFlowConditioningConfig",
     "interpolate_prompt_features",
     "load_step_audio_flow_conditioner",
+    "load_step_audio_flow_conditioner_source_model",
     "load_step_audio_flow_conditioning_checkpoint",
     "reshape_mixed_audio_tokens",
     "sanitize_step_audio_flow_conditioning_state_dict",

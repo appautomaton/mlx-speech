@@ -9,14 +9,14 @@ from mlx_speech.models.step_audio_tokenizer import (
     load_step_audio_vq02_model,
     load_step_audio_vq06_model,
 )
-from tests.helpers.step_audio import TOKENIZER_DIR, skip_no_funasr, skip_no_vq06
+from tests.helpers.step_audio import EDITX_RUNTIME_DIR, skip_no_runtime_bundle
 
 pytestmark = pytest.mark.runtime
 
 
-@skip_no_funasr
+@skip_no_runtime_bundle
 def test_vq02_runtime_generates_token_ids_from_waveform() -> None:
-    loaded = load_step_audio_vq02_model(TOKENIZER_DIR)
+    loaded = load_step_audio_vq02_model(EDITX_RUNTIME_DIR)
     sample_count = 16000
     audio = 0.1 * np.sin(2.0 * np.pi * 220.0 * np.arange(sample_count, dtype=np.float32) / 16000.0)
 
@@ -30,9 +30,9 @@ def test_vq02_runtime_generates_token_ids_from_waveform() -> None:
     assert all(0 <= token < loaded.assets.config.vq02_codebook_size for token in tokens_first)
 
 
-@skip_no_funasr
+@skip_no_runtime_bundle
 def test_vq02_runtime_encoder_features_match_cluster_length() -> None:
-    loaded = load_step_audio_vq02_model(TOKENIZER_DIR)
+    loaded = load_step_audio_vq02_model(EDITX_RUNTIME_DIR)
     audio = 0.05 * np.sin(2.0 * np.pi * 330.0 * np.arange(12000, dtype=np.float32) / 16000.0)
     waveform = loaded.runtime.processor.preprocess_wav(
         audio,
@@ -50,9 +50,9 @@ def test_vq02_runtime_encoder_features_match_cluster_length() -> None:
     assert len(tokens) == features.shape[0]
 
 
-@skip_no_vq06
+@skip_no_runtime_bundle
 def test_vq06_runtime_generates_token_ids_from_waveform() -> None:
-    loaded = load_step_audio_vq06_model(TOKENIZER_DIR)
+    loaded = load_step_audio_vq06_model(EDITX_RUNTIME_DIR)
     sample_count = 16000
     audio = 0.1 * np.sin(2.0 * np.pi * 220.0 * np.arange(sample_count, dtype=np.float32) / 16000.0)
 
@@ -64,9 +64,9 @@ def test_vq06_runtime_generates_token_ids_from_waveform() -> None:
     assert all(0 <= token < loaded.config.codebook_size for token in tokens_first)
 
 
-@skip_no_vq06
+@skip_no_runtime_bundle
 def test_vq06_runtime_token_length_matches_chunk_expectation() -> None:
-    loaded = load_step_audio_vq06_model(TOKENIZER_DIR)
+    loaded = load_step_audio_vq06_model(EDITX_RUNTIME_DIR)
     audio = 0.05 * np.sin(2.0 * np.pi * 330.0 * np.arange(16000, dtype=np.float32) / 16000.0)
     waveform = loaded.runtime.processor.preprocess_wav(
         audio,
@@ -83,9 +83,9 @@ def test_vq06_runtime_token_length_matches_chunk_expectation() -> None:
     assert abs(len(token_ids) - chunks[0].expected_token_length) <= 2
 
 
-@skip_no_vq06
+@skip_no_runtime_bundle
 def test_vq06_runtime_concatenates_multiple_chunks() -> None:
-    loaded = load_step_audio_vq06_model(TOKENIZER_DIR)
+    loaded = load_step_audio_vq06_model(EDITX_RUNTIME_DIR)
     seconds = 31
     audio = 0.05 * np.sin(2.0 * np.pi * 180.0 * np.arange(seconds * 16000, dtype=np.float32) / 16000.0)
 

@@ -9,6 +9,7 @@ from .campplus import (
     StepAudioCampPlusRuntime,
     load_step_audio_campplus_checkpoint,
     load_step_audio_campplus_model,
+    load_step_audio_campplus_source_model,
     sanitize_step_audio_campplus_state_dict,
     validate_step_audio_campplus_checkpoint_against_model,
 )
@@ -38,6 +39,7 @@ from .flow import (
     StepAudioFlowConditioningConfig,
     interpolate_prompt_features,
     load_step_audio_flow_conditioner,
+    load_step_audio_flow_conditioner_source_model,
     load_step_audio_flow_conditioning_checkpoint,
     reshape_mixed_audio_tokens,
     sanitize_step_audio_flow_conditioning_state_dict,
@@ -53,6 +55,7 @@ from .flow_model import (
     StepAudioUpsampleConformerEncoderV2,
     load_step_audio_flow_checkpoint,
     load_step_audio_flow_model,
+    load_step_audio_flow_source_model,
     sanitize_step_audio_flow_state_dict,
     validate_step_audio_flow_checkpoint_against_model,
 )
@@ -71,6 +74,7 @@ from .hift import (
     StepAudioHiFTGenerator,
     load_step_audio_hift_checkpoint,
     load_step_audio_hift_model,
+    load_step_audio_hift_source_model,
     sanitize_step_audio_hift_state_dict,
     validate_step_audio_hift_checkpoint_against_model,
 )
@@ -87,6 +91,10 @@ from .model import (
     Step1RMSNorm,
     _repeat_kv_groups,
     build_sqrt_alibi_bias,
+)
+from .runtime_bundle import (
+    STEP_AUDIO_EDITX_RUNTIME_FILES,
+    validate_step_audio_editx_runtime_bundle,
 )
 from .tokenizer import (
     AUDIO_EDIT_CLONE_SYSTEM_PROMPT_TPL,
@@ -116,6 +124,7 @@ __all__ = [
     "Step1RMSNorm",
     "_repeat_kv_groups",
     "StepAudioEditXTokenizer",
+    "STEP_AUDIO_EDITX_RUNTIME_FILES",
     "StepAudioCosyVoiceFrontEnd",
     "StepAudioCosyVoiceMelConfig",
     "AUDIO_EDIT_CLONE_SYSTEM_PROMPT_TPL",
@@ -134,12 +143,16 @@ __all__ = [
     "load_checkpoint_into_model",
     "load_step_audio_campplus_checkpoint",
     "load_step_audio_campplus_model",
+    "load_step_audio_campplus_source_model",
     "load_step_audio_flow_conditioner",
+    "load_step_audio_flow_conditioner_source_model",
     "load_step_audio_flow_conditioning_checkpoint",
     "load_step_audio_flow_checkpoint",
     "load_step_audio_flow_model",
+    "load_step_audio_flow_source_model",
     "load_step_audio_hift_checkpoint",
     "load_step_audio_hift_model",
+    "load_step_audio_hift_source_model",
     "load_step_audio_editx_checkpoint",
     "load_step_audio_editx_model",
     "mel_spectrogram",
@@ -174,6 +187,7 @@ __all__ = [
     "StepAudioHiFTGenerator",
     "StepAudioUpsampleConformerEncoderV2",
     "validate_checkpoint_against_model",
+    "validate_step_audio_editx_runtime_bundle",
     "validate_step_audio_campplus_checkpoint_against_model",
     "validate_step_audio_flow_conditioning_checkpoint_against_model",
     "validate_step_audio_flow_checkpoint_against_model",

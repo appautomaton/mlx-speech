@@ -18,6 +18,7 @@ import sys
 import mlx.core as mx
 import mlx.nn as nn
 from mlx.utils import tree_flatten
+from safetensors.numpy import save_file
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -25,20 +26,27 @@ from mlx_speech.checkpoints import get_stepfun_v4_layouts
 from mlx_speech.models.step_audio_editx import (
     QuantizationConfig,
     Step1ForCausalLM,
+    StepAudioCosyVoiceMelConfig,
     load_checkpoint_into_model,
     load_step_audio_editx_checkpoint,
     quantize_step_audio_editx_model,
     save_step_audio_editx_model,
-    load_step_audio_flow_conditioner,
-    load_step_audio_flow_model,
-    load_step_audio_hift_model,
+    load_step_audio_flow_conditioner_source_model,
+    load_step_audio_flow_source_model,
+    load_step_audio_hift_source_model,
+    resolve_step_audio_cosyvoice_dir,
 )
 from mlx_speech.models.step_audio_editx.campplus import (
-    load_step_audio_campplus_model,
+    load_step_audio_campplus_source_model,
 )
 from mlx_speech.models.step_audio_tokenizer import (
-    load_step_audio_vq02_model,
-    load_step_audio_vq06_model,
+    RUNTIME_ASSETS_FILENAME,
+    RUNTIME_CONFIG_FILENAME,
+    StepAudioTokenizerConfig,
+    load_step_audio_cmvn,
+    load_step_audio_tokenizer_assets,
+    load_step_audio_vq02_source_model,
+    load_step_audio_vq06_source_model,
     resolve_step_audio_tokenizer_model_dir,
 )
 
@@ -115,10 +123,41 @@ def _save_component(
 
 
 def _copy_tokenizer_files(source_dir: Path, output_dir: Path) -> None:
-    for name in ("tokenizer.json", "tokenizer.model", "tokenizer_config.json"):
+    for name in ("tokenizer.json", "tokenizer_config.json"):
         src = source_dir / name
         if src.exists():
             shutil.copy2(src, output_dir / name)
+
+
+def _save_tokenizer_runtime_assets(source_dir: Path, output_dir: Path) -> None:
+    source_assets = load_step_audio_tokenizer_assets(source_dir)
+    runtime_config = StepAudioTokenizerConfig.from_loaded_assets(
+        vq02_codebook_size=int(source_assets.linguistic_codebook.shape[0]),
+    )
+    cmvn = load_step_audio_cmvn(source_assets.funasr_model_dir / "am.mvn")
+    save_file(
+        {
+            "cmvn": cmvn,
+            "linguistic_codebook": source_assets.linguistic_codebook.astype(
+                "float32", copy=False
+            ),
+        },
+        output_dir / RUNTIME_ASSETS_FILENAME,
+        metadata={"format": "mlx", "model_type": "step_audio_tokenizer"},
+    )
+    with (output_dir / RUNTIME_CONFIG_FILENAME).open("w", encoding="utf-8") as file:
+        json.dump(runtime_config.to_runtime_dict(), file, indent=2, ensure_ascii=False)
+        file.write("\n")
+
+
+def _save_frontend_config(source_dir: Path, output_dir: Path) -> None:
+    cosyvoice_dir = resolve_step_audio_cosyvoice_dir(source_dir)
+    config = StepAudioCosyVoiceMelConfig.from_yaml_path(
+        cosyvoice_dir / "cosyvoice.yaml"
+    )
+    with (output_dir / "frontend-config.json").open("w", encoding="utf-8") as file:
+        json.dump(config.to_dict(), file, indent=2, ensure_ascii=False)
+        file.write("\n")
 
 
 def main() -> None:
@@ -154,7 +193,7 @@ def main() -> None:
 
     # 2. Flow model (int8 — has nn.Linear in DiT + conformer)
     print("Converting flow model...")
-    loaded_flow = load_step_audio_flow_model(input_dir)
+    loaded_flow = load_step_audio_flow_source_model(input_dir)
     _save_component(
         loaded_flow.model, output_dir, "flow-model",
         asdict(loaded_flow.config),
@@ -164,7 +203,7 @@ def main() -> None:
 
     # 3. Flow conditioner (bf16 — too small for int8)
     print("Converting flow conditioner...")
-    loaded_cond = load_step_audio_flow_conditioner(input_dir)
+    loaded_cond = load_step_audio_flow_conditioner_source_model(input_dir)
     _save_component(
         loaded_cond.model, output_dir, "flow-conditioner",
         asdict(loaded_cond.config),
@@ -173,7 +212,7 @@ def main() -> None:
 
     # 4. HiFT vocoder (bf16 — all conv, no meaningful nn.Linear)
     print("Converting HiFT vocoder...")
-    loaded_hift = load_step_audio_hift_model(input_dir)
+    loaded_hift = load_step_audio_hift_source_model(input_dir)
     _save_component(
         loaded_hift.model, output_dir, "hift",
         asdict(loaded_hift.config),
@@ -182,7 +221,7 @@ def main() -> None:
 
     # 5. CampPlus speaker embedding (bf16 — custom conv, no nn.Linear)
     print("Converting CampPlus...")
-    loaded_camp = load_step_audio_campplus_model(input_dir)
+    loaded_camp = load_step_audio_campplus_source_model(input_dir)
     _save_component(
         loaded_camp.model, output_dir, "campplus",
         asdict(loaded_camp.config),
@@ -191,7 +230,7 @@ def main() -> None:
 
     # 6. VQ02 tokenizer (int8 — has nn.Linear in attention + FFN)
     print("Converting VQ02 tokenizer...")
-    loaded_vq02 = load_step_audio_vq02_model(tokenizer_dir)
+    loaded_vq02 = load_step_audio_vq02_source_model(tokenizer_dir)
     _save_component(
         loaded_vq02.model, output_dir, "vq02",
         asdict(loaded_vq02.config),
@@ -201,14 +240,18 @@ def main() -> None:
 
     # 7. VQ06 tokenizer (bf16 — custom StepAudioVQ06Linear, no nn.Linear)
     print("Converting VQ06 tokenizer...")
-    loaded_vq06 = load_step_audio_vq06_model(tokenizer_dir)
+    loaded_vq06 = load_step_audio_vq06_source_model(tokenizer_dir)
     _save_component(
         loaded_vq06.model, output_dir, "vq06",
         asdict(loaded_vq06.config),
     )
     del loaded_vq06
 
-    # 8. Copy Step1 tokenizer files
+    # 8. Package frontend and VQ preprocessing configuration/assets
+    _save_frontend_config(input_dir, output_dir)
+    _save_tokenizer_runtime_assets(tokenizer_dir, output_dir)
+
+    # 9. Copy Step1 tokenizer files
     _copy_tokenizer_files(input_dir, output_dir)
 
     print()

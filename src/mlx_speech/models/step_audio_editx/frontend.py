@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -25,6 +26,38 @@ class StepAudioCosyVoiceMelConfig:
     sampling_rate: int = 24000
     fmin: float = 0.0
     fmax: float = 8000.0
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, object]) -> "StepAudioCosyVoiceMelConfig":
+        return cls(
+            num_mels=int(payload["num_mels"]),
+            n_fft=int(payload["n_fft"]),
+            hop_size=int(payload["hop_size"]),
+            win_size=int(payload["win_size"]),
+            sampling_rate=int(payload["sampling_rate"]),
+            fmin=float(payload["fmin"]),
+            fmax=float(payload["fmax"]),
+        )
+
+    @classmethod
+    def from_path(cls, model_dir: str | Path) -> "StepAudioCosyVoiceMelConfig":
+        path = Path(model_dir) / "frontend-config.json"
+        with path.open(encoding="utf-8") as file:
+            payload = json.load(file)
+        if not isinstance(payload, dict):
+            raise ValueError(f"Invalid Step-Audio frontend config: {path}")
+        return cls.from_dict(payload)
+
+    def to_dict(self) -> dict[str, int | float]:
+        return {
+            "num_mels": self.num_mels,
+            "n_fft": self.n_fft,
+            "hop_size": self.hop_size,
+            "win_size": self.win_size,
+            "sampling_rate": self.sampling_rate,
+            "fmin": self.fmin,
+            "fmax": self.fmax,
+        }
 
     @classmethod
     def from_yaml_path(cls, path: str | Path) -> "StepAudioCosyVoiceMelConfig":
@@ -142,23 +175,17 @@ class StepAudioCosyVoiceFrontEnd:
         self,
         config: StepAudioCosyVoiceMelConfig,
         *,
-        cosyvoice_dir: Path | None = None,
+        model_dir: Path | None = None,
         campplus_model: "LoadedStepAudioCampPlusModel | None" = None,
     ):
         self.config = config
-        self.cosyvoice_dir = cosyvoice_dir
+        self.model_dir = model_dir
         self._campplus_model = campplus_model
 
     @classmethod
     def from_model_dir(cls, model_dir: str | Path) -> "StepAudioCosyVoiceFrontEnd":
         resolved = Path(model_dir)
-        try:
-            cosyvoice_dir = resolve_step_audio_cosyvoice_dir(resolved)
-            config = StepAudioCosyVoiceMelConfig.from_yaml_path(cosyvoice_dir / "cosyvoice.yaml")
-        except FileNotFoundError:
-            cosyvoice_dir = resolved
-            config = StepAudioCosyVoiceMelConfig()
-        return cls(config, cosyvoice_dir=cosyvoice_dir)
+        return cls(StepAudioCosyVoiceMelConfig.from_path(resolved), model_dir=resolved)
 
     def extract_speech_feat(
         self,
@@ -201,11 +228,11 @@ class StepAudioCosyVoiceFrontEnd:
 
     def _ensure_campplus_model(self) -> "LoadedStepAudioCampPlusModel":
         if self._campplus_model is None:
-            if self.cosyvoice_dir is None:
-                raise ValueError("CosyVoice frontend was created without a model directory.")
+            if self.model_dir is None:
+                raise ValueError("Step-Audio frontend was created without a model directory.")
             from .campplus import load_step_audio_campplus_model
 
-            self._campplus_model = load_step_audio_campplus_model(self.cosyvoice_dir)
+            self._campplus_model = load_step_audio_campplus_model(self.model_dir)
         return self._campplus_model
 
     def extract_spk_embedding(

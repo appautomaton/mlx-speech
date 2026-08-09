@@ -557,12 +557,17 @@ def _load_campplus_from_safetensors(model_dir: Path) -> LoadedStepAudioCampPlusM
 
 def load_step_audio_campplus_model(
     model_dir: str | Path,
+) -> LoadedStepAudioCampPlusModel:
+    return _load_campplus_from_safetensors(Path(model_dir))
+
+
+def load_step_audio_campplus_source_model(
+    model_dir: str | Path,
     *,
     strict: bool = True,
 ) -> LoadedStepAudioCampPlusModel:
-    resolved = Path(model_dir)
-    if (resolved / "campplus.safetensors").exists():
-        return _load_campplus_from_safetensors(resolved)
+    """Load original CAMPPlus assets for checkpoint conversion only."""
+
     checkpoint = load_step_audio_campplus_checkpoint(model_dir)
     model = StepAudioCampPlusModel(checkpoint.config)
     report = validate_step_audio_campplus_checkpoint_against_model(model, checkpoint)
@@ -641,6 +646,7 @@ __all__ = [
     "StepAudioCampPlusRuntime",
     "load_step_audio_campplus_checkpoint",
     "load_step_audio_campplus_model",
+    "load_step_audio_campplus_source_model",
     "sanitize_step_audio_campplus_state_dict",
     "validate_step_audio_campplus_checkpoint_against_model",
 ]

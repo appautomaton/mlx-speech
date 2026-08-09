@@ -56,8 +56,11 @@ This bundle is self-contained — all weights are packaged in one repository.
 | `config.json` | Step1 LM config + quantization | JSON | — |
 | `flow-model-config.json` | Flow model config | JSON | — |
 | `vq02-config.json`, `vq06-config.json` | Tokenizer configs | JSON | — |
+| `step-audio-tokenizer-assets.safetensors` | VQ02 codebook + CMVN | FP32 | ~2 MB |
+| `step-audio-tokenizer-config.json` | Tokenizer runtime config | JSON | — |
+| `frontend-config.json` | Prompt mel frontend config | JSON | — |
 | `hift-config.json`, `campplus-config.json`, `flow-conditioner-config.json` | Component configs | JSON | — |
-| `tokenizer.json`, `tokenizer.model`, `tokenizer_config.json` | Step1 tokenizer | JSON | — |
+| `tokenizer.json`, `tokenizer_config.json` | Step1 tokenizer | JSON | — |
 
 ## How to Get Started
 

@@ -1,9 +1,14 @@
 """Step-Audio dual tokenizer support."""
 
 from .checkpoint import (
+    RUNTIME_ASSETS_FILENAME,
+    RUNTIME_CONFIG_FILENAME,
     StepAudioTokenizerAssets,
+    StepAudioTokenizerRuntimeAssets,
+    load_step_audio_cmvn,
     load_step_audio_funasr_checkpoint,
     load_step_audio_tokenizer_assets,
+    load_step_audio_tokenizer_runtime_assets,
     resolve_step_audio_tokenizer_model_dir,
 )
 from .config import DEFAULT_FUNASR_MODEL_ID, StepAudioTokenizerConfig
@@ -42,6 +47,7 @@ from .vq02 import (
     StepAudioVQ02Runtime,
     load_step_audio_vq02_checkpoint,
     load_step_audio_vq02_model,
+    load_step_audio_vq02_source_model,
     sanitize_step_audio_vq02_state_dict,
     validate_step_audio_vq02_checkpoint_against_model,
 )
@@ -56,6 +62,7 @@ from .vq06 import (
     StepAudioVQ06Runtime,
     load_step_audio_vq06_checkpoint,
     load_step_audio_vq06_model,
+    load_step_audio_vq06_source_model,
     sanitize_step_audio_vq06_state_dict,
     validate_step_audio_vq06_checkpoint_against_model,
 )
@@ -63,7 +70,10 @@ from .vq06 import (
 __all__ = [
     "AUDIO_TOKEN_RE",
     "DEFAULT_FUNASR_MODEL_ID",
+    "RUNTIME_ASSETS_FILENAME",
+    "RUNTIME_CONFIG_FILENAME",
     "StepAudioTokenizerAssets",
+    "StepAudioTokenizerRuntimeAssets",
     "StepAudioTokenizerConfig",
     "StepAudioTokenizerProcessor",
     "StepAudioVQ06Chunk",
@@ -86,12 +96,16 @@ __all__ = [
     "deinterleave_step_audio_tokens",
     "format_audio_token_string",
     "load_step_audio_funasr_checkpoint",
+    "load_step_audio_cmvn",
     "load_step_audio_vq02_checkpoint",
     "load_step_audio_vq02_model",
+    "load_step_audio_vq02_source_model",
     "interleave_step_audio_tokens",
     "load_step_audio_tokenizer_assets",
+    "load_step_audio_tokenizer_runtime_assets",
     "load_step_audio_vq06_checkpoint",
     "load_step_audio_vq06_model",
+    "load_step_audio_vq06_source_model",
     "mixed_ids_to_prompt_tokens",
     "pack_raw_codes_to_mixed_ids",
     "pack_raw_codes_to_prompt_tokens",
