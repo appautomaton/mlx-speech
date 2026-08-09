@@ -18,7 +18,7 @@ tags:
 
 # Cohere Transcribe — MLX
 
-This repository contains an MLX-native int8 conversion of Cohere Transcribe for local automatic speech recognition on Apple Silicon.
+This repository contains an MLX-native int8 conversion of Cohere Transcribe for local automatic speech recognition on Apple Silicon. Eligible `Linear` and `Embedding` weights use affine 8-bit quantization with group size 64; convolution and normalization layers retain their native floating-point precision.
 
 It is intended for local transcription with [`mlx-speech`](https://github.com/appautomaton/mlx-speech), without a PyTorch runtime or cloud API dependency at inference time.
 
@@ -71,6 +71,7 @@ print(result.text)
 
 - This repo contains the quantized MLX runtime artifact only.
 - The conversion keeps the original encoder-decoder ASR architecture and remaps weights explicitly for MLX inference.
+- The 2.42 GB weight file contains 517 quantized modules; loading reconstructs those modules from the stored `scales` and `biases` tensors.
 - The example above resamples to 16 kHz before calling `transcribe()`, which matches the runtime requirement.
 
 ## Links
