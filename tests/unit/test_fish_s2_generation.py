@@ -411,12 +411,12 @@ def test_generation_raises_on_missing_codec(monkeypatch):
         generate_fish_s2_pro("hello")
 
 
-def test_generate_requires_explicit_codec_dir_when_default_missing(tmp_path):
+def test_generate_requires_complete_model_bundle(tmp_path):
     with pytest.raises(FileNotFoundError):
         generate_fish_s2_pro("hello", model_dir=tmp_path)
 
 
-def test_generate_uses_public_sibling_codec_autodiscovery(monkeypatch):
+def test_generate_uses_self_contained_bundle_by_default(monkeypatch):
     calls = {}
 
     class _Runtime:
@@ -425,9 +425,8 @@ def test_generate_uses_public_sibling_codec_autodiscovery(monkeypatch):
             calls["kwargs"] = kwargs
             return "ok"
 
-    def fake_from_dir(model_dir, *, codec_dir=None):
+    def fake_from_dir(model_dir):
         calls["model_dir"] = model_dir
-        calls["codec_dir"] = codec_dir
         return _Runtime()
 
     monkeypatch.setattr(
@@ -438,8 +437,7 @@ def test_generate_uses_public_sibling_codec_autodiscovery(monkeypatch):
     out = generate_fish_s2_pro("hello")
 
     assert out == "ok"
-    assert calls["model_dir"] == "models/fish_s2_pro/original"
-    assert calls["codec_dir"] is None
+    assert calls["model_dir"] == "models/fish_s2_pro/mlx-int8"
     assert calls["text"] == "hello"
     assert calls["kwargs"] == {
         "max_new_tokens": 256,
@@ -485,12 +483,13 @@ def test_generate_script_does_not_expose_dead_sampling_knobs(monkeypatch):
 
     assert not hasattr(args, "temperature")
     assert not hasattr(args, "top_p")
-    assert args.codec_dir is None
+    assert not hasattr(args, "codec_dir")
+    assert args.model_dir == "models/fish_s2_pro/mlx-int8"
 
 
-def test_runtime_prefers_sibling_codec_dir_when_present(monkeypatch, tmp_path):
-    model_dir = tmp_path / "mlx-bf16"
-    codec_dir = tmp_path / "codec-mlx"
+def test_runtime_loads_codec_from_model_bundle(monkeypatch, tmp_path):
+    model_dir = tmp_path / "mlx-int8"
+    codec_dir = model_dir / "codec-mlx"
     model_dir.mkdir()
     codec_dir.mkdir()
 

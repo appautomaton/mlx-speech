@@ -132,6 +132,24 @@ If generation cuts off mid-sentence, increase `max_new_tokens`.
 - Alias: `fish-s2-pro`
 - Repo: [appautomaton/fishaudio-s2-pro-8bit-mlx](https://huggingface.co/appautomaton/fishaudio-s2-pro-8bit-mlx)
 
+## Runtime Bundle
+
+Fish S2 Pro loads one self-contained directory:
+
+```text
+model_dir/
+├── config.json
+├── model.safetensors
+├── tokenizer.json
+├── tokenizer_config.json
+└── codec-mlx/
+    ├── config.json
+    └── model.safetensors
+```
+
+The codec is part of the model artifact. The runtime does not load a separate
+codec path or search a sibling directory.
+
 ## Script
 
 The low-level script offers additional post-processing flags:

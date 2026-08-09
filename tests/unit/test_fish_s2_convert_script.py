@@ -1,4 +1,3 @@
-from pathlib import Path
 import pickle
 import sys
 from types import SimpleNamespace
@@ -168,7 +167,7 @@ def test_codec_rebuild_tensor_v2_expands_bfloat16_storage_bits():
     assert rebuilt.tolist() == [1.0, 2.0]
 
 
-def test_convert_bf16_converts_upstream_codec_to_sibling_dir(monkeypatch, tmp_path):
+def test_convert_bf16_builds_self_contained_bundle(monkeypatch, tmp_path):
     input_dir = tmp_path / "original"
     input_dir.mkdir()
     shard = input_dir / "model-00001-of-00001.safetensors"
@@ -199,13 +198,13 @@ def test_convert_bf16_converts_upstream_codec_to_sibling_dir(monkeypatch, tmp_pa
     assert not (output_dir / "codec.pth").exists()
     assert calls == {
         "src": codec_pth,
-        "out": tmp_path / "codec-mlx",
+        "out": output_dir / "codec-mlx",
     }
-    assert (tmp_path / "codec-mlx" / "config.json").exists()
-    assert (tmp_path / "codec-mlx" / "model.safetensors").exists()
+    assert (output_dir / "codec-mlx" / "config.json").exists()
+    assert (output_dir / "codec-mlx" / "model.safetensors").exists()
 
 
-def test_convert_bf16_uses_output_sibling_for_default_codec_dir(monkeypatch, tmp_path):
+def test_convert_bf16_places_codec_inside_nested_output_bundle(monkeypatch, tmp_path):
     input_dir = tmp_path / "download" / "original"
     input_dir.mkdir(parents=True)
     shard = input_dir / "model-00001-of-00001.safetensors"
@@ -230,7 +229,7 @@ def test_convert_bf16_uses_output_sibling_for_default_codec_dir(monkeypatch, tmp
 
     assert calls == {
         "src": codec_pth,
-        "out": tmp_path / "runtime" / "codec-mlx",
+        "out": output_dir / "codec-mlx",
     }
 
 
@@ -254,18 +253,29 @@ def test_convert_bf16_requires_input_directory(tmp_path):
 def test_convert_bf16_rejects_empty_input_directory(tmp_path):
     input_dir = tmp_path / "original"
     input_dir.mkdir()
+    (input_dir / "codec.pth").write_bytes(b"x")
 
     with pytest.raises(ValueError, match="No .safetensors shards found"):
         convert_script.convert_fish_s2_pro(input_dir, tmp_path / "repacked", bits=16)
 
 
-def test_convert_bf16_repacks_real_shards_and_copies_supporting_files(tmp_path):
+def test_convert_bf16_repacks_real_shards_and_copies_supporting_files(
+    monkeypatch, tmp_path
+):
     input_dir = tmp_path / "original"
     input_dir.mkdir()
     shard = input_dir / "model-00001-of-00001.safetensors"
     mx.save_safetensors(str(shard), {"weight": mx.array([1.0], dtype=mx.bfloat16)})
     (input_dir / "config.json").write_text("{}", encoding="utf-8")
     (input_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+    (input_dir / "codec.pth").write_bytes(b"x")
+
+    def fake_convert_codec(_src, out):
+        out.mkdir(parents=True)
+        (out / "config.json").write_text("{}", encoding="utf-8")
+        (out / "model.safetensors").write_bytes(b"x")
+
+    monkeypatch.setattr(convert_script, "convert_codec_assets", fake_convert_codec)
 
     output_dir = tmp_path / "repacked"
     convert_script.convert_fish_s2_pro(input_dir, output_dir, bits=16)
@@ -273,11 +283,10 @@ def test_convert_bf16_repacks_real_shards_and_copies_supporting_files(tmp_path):
     assert (output_dir / shard.name).exists()
     assert (output_dir / "config.json").exists()
     assert (output_dir / "tokenizer.json").exists()
+    assert (output_dir / "codec-mlx" / "model.safetensors").exists()
 
 
-def test_convert_main_prints_generate_command_with_codec_dir(
-    monkeypatch, capsys, tmp_path
-):
+def test_convert_main_prints_bundle_generate_command(monkeypatch, capsys, tmp_path):
     input_dir = tmp_path / "original"
     output_dir = tmp_path / "repacked"
 
@@ -288,12 +297,13 @@ def test_convert_main_prints_generate_command_with_codec_dir(
             input_dir=input_dir,
             output_dir=output_dir,
             bits=16,
-            codec_dir=None,
             download=False,
         ),
     )
     monkeypatch.setattr(
-        convert_script, "convert_fish_s2_pro", lambda *args, **kwargs: True
+        convert_script,
+        "convert_fish_s2_pro",
+        lambda *args, **kwargs: output_dir / "codec-mlx",
     )
     input_dir.mkdir()
     (input_dir / "codec.pth").write_bytes(b"x")
@@ -302,7 +312,7 @@ def test_convert_main_prints_generate_command_with_codec_dir(
 
     out = capsys.readouterr().out
     assert f"--model-dir {output_dir}" in out
-    assert f"--codec-dir {tmp_path / 'codec-mlx'}" in out
+    assert "--codec-dir" not in out
 
 
 def test_convert_main_defaults_to_codec_only_flow(monkeypatch, capsys, tmp_path):
@@ -317,19 +327,17 @@ def test_convert_main_defaults_to_codec_only_flow(monkeypatch, capsys, tmp_path)
             input_dir=input_dir,
             output_dir=None,
             bits=16,
-            codec_dir=None,
             download=False,
         ),
     )
 
     calls = {}
 
-    def fake_convert(input_dir_arg, output_dir_arg, *, bits, codec_dir):
+    def fake_convert(input_dir_arg, output_dir_arg, *, bits):
         calls["input_dir"] = input_dir_arg
         calls["output_dir"] = output_dir_arg
         calls["bits"] = bits
-        calls["codec_dir"] = codec_dir
-        return True
+        return input_dir_arg / "codec-mlx"
 
     monkeypatch.setattr(convert_script, "convert_fish_s2_pro", fake_convert)
 
@@ -340,10 +348,10 @@ def test_convert_main_defaults_to_codec_only_flow(monkeypatch, capsys, tmp_path)
         "input_dir": input_dir,
         "output_dir": None,
         "bits": 16,
-        "codec_dir": None,
     }
     assert f"--model-dir {input_dir}" in out
-    assert f"--codec-dir {input_dir.parent / 'codec-mlx'}" in out
+    assert f"Converted Fish S2 Pro codec assets into {input_dir / 'codec-mlx'}" in out
+    assert "--codec-dir" not in out
     assert "mlx-int8" not in out
 
 
@@ -360,7 +368,6 @@ def test_convert_main_stays_truthful_when_no_codec_was_converted(
             input_dir=input_dir,
             output_dir=None,
             bits=16,
-            codec_dir=None,
             download=False,
         ),
     )
@@ -371,7 +378,7 @@ def test_convert_main_stays_truthful_when_no_codec_was_converted(
     assert out == ""
 
 
-def test_parse_args_describes_codec_dir_as_conversion_destination(monkeypatch):
+def test_parse_args_does_not_expose_external_codec_destination(monkeypatch):
     monkeypatch.setattr(
         convert_script.argparse.ArgumentParser,
         "parse_args",
@@ -380,11 +387,7 @@ def test_parse_args_describes_codec_dir_as_conversion_destination(monkeypatch):
 
     parser = convert_script.parse_args()
 
-    codec_action = next(
-        action for action in parser._actions if action.dest == "codec_dir"
-    )
-    assert "destination" in codec_action.help
-    assert "converted codec assets" in codec_action.help
+    assert all(action.dest != "codec_dir" for action in parser._actions)
 
 
 def test_download_model_falls_back_when_first_cli_is_missing(monkeypatch, tmp_path):
@@ -423,8 +426,7 @@ def test_generate_main_matches_current_generation_api(monkeypatch, tmp_path):
         lambda: SimpleNamespace(
             text="hello",
             output=str(output_path),
-            model_dir="models/fish_s2_pro/original",
-            codec_dir=None,
+            model_dir="models/fish_s2_pro/mlx-int8",
             max_new_tokens=32,
             reference_audio=None,
             reference_text=None,
@@ -452,8 +454,7 @@ def test_generate_main_matches_current_generation_api(monkeypatch, tmp_path):
     assert calls == {
         "text": "hello",
         "kwargs": {
-            "model_dir": "models/fish_s2_pro/original",
-            "codec_dir": None,
+            "model_dir": "models/fish_s2_pro/mlx-int8",
             "max_new_tokens": 32,
             "reference_audio": None,
             "reference_text": None,

@@ -24,13 +24,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--model-dir",
-        default="models/fish_s2_pro/original",
-        help="Local MLX model directory.",
-    )
-    parser.add_argument(
-        "--codec-dir",
-        default=None,
-        help="Optional local converted Fish codec directory. Defaults to a sibling codec-mlx directory when present.",
+        default="models/fish_s2_pro/mlx-int8",
+        help="Self-contained local MLX model directory.",
     )
     parser.add_argument(
         "--max-new-tokens",
@@ -74,7 +69,6 @@ def main() -> None:
 
     generation_kwargs = {
         "model_dir": args.model_dir,
-        "codec_dir": args.codec_dir,
         "max_new_tokens": args.max_new_tokens,
         "reference_audio": args.reference_audio,
         "reference_text": args.reference_text,
