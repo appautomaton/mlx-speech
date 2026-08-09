@@ -27,7 +27,7 @@ class StepAudioAdapter:
     def from_dir(cls, model_dir: Path) -> StepAudioAdapter:
         from ...generation.step_audio_editx import StepAudioEditXModel
 
-        runtime = StepAudioEditXModel.from_dir(model_dir, prefer_mlx_int8=True)
+        runtime = StepAudioEditXModel.from_dir(model_dir)
         return cls(runtime)
 
     def generate(

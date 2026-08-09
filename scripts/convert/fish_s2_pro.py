@@ -18,8 +18,8 @@ def _runtime_model_dir(input_dir: Path, output_dir: Path | None) -> Path:
     return output_dir or input_dir
 
 
-def _default_codec_dir(input_dir: Path, output_dir: Path | None) -> Path:
-    return _runtime_model_dir(input_dir, output_dir).parent / "codec-mlx"
+def _bundle_codec_dir(input_dir: Path, output_dir: Path | None) -> Path:
+    return _runtime_model_dir(input_dir, output_dir) / "codec-mlx"
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,12 +34,6 @@ def parse_args() -> argparse.Namespace:
         help="Optional output directory for repacked MLX model shards.",
     )
     parser.add_argument("--bits", type=int, default=16, choices=[8, 16])
-    parser.add_argument(
-        "--codec-dir",
-        type=Path,
-        default=None,
-        help="Optional destination directory for converted codec assets.",
-    )
     parser.add_argument(
         "--download",
         action="store_true",
@@ -83,10 +77,7 @@ def repack_bf16(input_dir: Path, output_dir: Path) -> None:
 def copy_supporting_files(
     input_dir: Path,
     output_dir: Path,
-    *,
-    codec_dir: Path | None,
 ) -> None:
-    del codec_dir
     for path in sorted(input_dir.iterdir()):
         if (
             path.is_file()
@@ -108,30 +99,25 @@ def convert_fish_s2_pro(
     output_dir: Path | None,
     *,
     bits: int,
-    codec_dir: Path | None = None,
-) -> bool:
+) -> Path:
     if bits == 8:
         raise NotImplementedError(
             "Fish S2 Pro int8 conversion stays blocked until the faithful model tree and quantization path are real."
         )
     if not input_dir.exists():
         raise FileNotFoundError(f"Missing input directory: {input_dir}")
+    codec_pth = input_dir / "codec.pth"
+    if not codec_pth.is_file():
+        raise FileNotFoundError(
+            f"Missing codec.pth in {input_dir}. A complete Fish runtime bundle requires codec-mlx assets."
+        )
     if output_dir is not None:
         repack_bf16(input_dir, output_dir)
-    codec_pth = input_dir / "codec.pth"
-    converted_codec = False
-    if output_dir is None and not codec_pth.is_file():
-        raise FileNotFoundError(
-            f"Missing codec.pth in {input_dir}. Codec-only conversion needs the upstream codec archive."
-        )
-    if codec_pth.is_file():
-        convert_codec_assets(
-            codec_pth, codec_dir or _default_codec_dir(input_dir, output_dir)
-        )
-        converted_codec = True
+    codec_output_dir = _bundle_codec_dir(input_dir, output_dir)
+    convert_codec_assets(codec_pth, codec_output_dir)
     if output_dir is not None:
-        copy_supporting_files(input_dir, output_dir, codec_dir=codec_dir)
-    return converted_codec
+        copy_supporting_files(input_dir, output_dir)
+    return codec_output_dir
 
 
 def main() -> None:
@@ -142,32 +128,20 @@ def main() -> None:
         raise FileNotFoundError(
             f"Missing input directory: {args.input_dir}. Use --download or run `hf download fishaudio/s2-pro --local-dir {args.input_dir}` first."
         )
-    converted_codec = convert_fish_s2_pro(
+    codec_output_dir = convert_fish_s2_pro(
         args.input_dir,
         args.output_dir,
         bits=args.bits,
-        codec_dir=args.codec_dir,
     )
     runtime_model_dir = _runtime_model_dir(args.input_dir, args.output_dir)
-    codec_output_dir = args.codec_dir or _default_codec_dir(
-        args.input_dir, args.output_dir
-    )
-    generate_command = [
-        "python scripts/generate/fish_s2_pro.py",
-        f"--model-dir {runtime_model_dir}",
-    ]
-    if converted_codec:
-        generate_command.append(f"--codec-dir {codec_output_dir}")
-    if args.output_dir is None and converted_codec:
+    if args.output_dir is None:
         print(f"Converted Fish S2 Pro codec assets into {codec_output_dir}")
-    elif args.output_dir is not None:
+    else:
         print(f"Repacked Fish S2 Pro checkpoint into {args.output_dir}")
-    if converted_codec:
-        print(
-            "Use `"
-            + " ".join(generate_command)
-            + "` to synthesize from the local MLX assets."
-        )
+    print(
+        "Use `python scripts/generate/fish_s2_pro.py "
+        f"--model-dir {runtime_model_dir}` to synthesize from the local MLX bundle."
+    )
 
 
 if __name__ == "__main__":

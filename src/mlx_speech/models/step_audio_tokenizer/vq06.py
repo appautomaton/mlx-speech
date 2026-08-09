@@ -12,7 +12,12 @@ import numpy as np
 from mlx.utils import tree_flatten
 
 from ...checkpoints import LoadedOnnxGraph, load_onnx_graph
-from .checkpoint import StepAudioTokenizerAssets, load_step_audio_tokenizer_assets
+from .checkpoint import (
+    StepAudioTokenizerAssets,
+    StepAudioTokenizerRuntimeAssets,
+    load_step_audio_tokenizer_assets,
+    load_step_audio_tokenizer_runtime_assets,
+)
 from .config import StepAudioVQ06Config
 from .processor import StepAudioTokenizerProcessor
 
@@ -226,7 +231,7 @@ class StepAudioVQ06Model(nn.Module):
 
 @dataclass(frozen=True)
 class LoadedStepAudioVQ06Model:
-    assets: StepAudioTokenizerAssets
+    assets: StepAudioTokenizerAssets | StepAudioTokenizerRuntimeAssets
     config: StepAudioVQ06Config
     checkpoint: StepAudioVQ06Checkpoint
     model: StepAudioVQ06Model
@@ -238,7 +243,7 @@ class StepAudioVQ06Runtime:
     def __init__(
         self,
         *,
-        assets: StepAudioTokenizerAssets,
+        assets: StepAudioTokenizerAssets | StepAudioTokenizerRuntimeAssets,
         config: StepAudioVQ06Config,
         processor: StepAudioTokenizerProcessor,
         model: StepAudioVQ06Model,
@@ -409,12 +414,12 @@ def validate_step_audio_vq06_checkpoint_against_model(
 
 
 def _load_vq06_from_safetensors(
-    safetensors_dir: str | Path,
-    assets: "StepAudioTokenizerAssets",
+    model_dir: str | Path,
+    assets: StepAudioTokenizerRuntimeAssets,
 ) -> LoadedStepAudioVQ06Model:
     import json
 
-    resolved = Path(safetensors_dir)
+    resolved = Path(model_dir)
     with (resolved / "vq06-config.json").open(encoding="utf-8") as f:
         payload = json.load(f)
     payload.pop("quantization", None)
@@ -441,14 +446,20 @@ def _load_vq06_from_safetensors(
 
 
 def load_step_audio_vq06_model(
-    model_dir: str | Path | None = None,
+    model_dir: str | Path,
+) -> LoadedStepAudioVQ06Model:
+    assets = load_step_audio_tokenizer_runtime_assets(model_dir)
+    return _load_vq06_from_safetensors(model_dir, assets)
+
+
+def load_step_audio_vq06_source_model(
+    model_dir: str | Path,
     *,
     strict: bool = True,
-    safetensors_dir: str | Path | None = None,
 ) -> LoadedStepAudioVQ06Model:
+    """Load original assets for checkpoint conversion only."""
+
     assets = load_step_audio_tokenizer_assets(model_dir)
-    if safetensors_dir is not None and (Path(safetensors_dir) / "vq06.safetensors").exists():
-        return _load_vq06_from_safetensors(safetensors_dir, assets)
     checkpoint = load_step_audio_vq06_checkpoint(model_dir)
     model = StepAudioVQ06Model(checkpoint.config)
     report = validate_step_audio_vq06_checkpoint_against_model(model, checkpoint)
@@ -488,6 +499,7 @@ __all__ = [
     "StepAudioVQ06Runtime",
     "load_step_audio_vq06_checkpoint",
     "load_step_audio_vq06_model",
+    "load_step_audio_vq06_source_model",
     "sanitize_step_audio_vq06_state_dict",
     "validate_step_audio_vq06_checkpoint_against_model",
 ]

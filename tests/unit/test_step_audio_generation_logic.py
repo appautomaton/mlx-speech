@@ -126,7 +126,6 @@ def _build_stub_wrapper(*, generated_tokens: list[int]) -> StepAudioEditXModel:
     return StepAudioEditXModel(
         step1=step1,
         tokenizer=tokenizer,
-        tokenizer_dir=Path("models/stepfun/step_audio_tokenizer/original"),
         vq02=vq02,
         vq06=vq06,
         frontend=frontend,
@@ -243,14 +242,22 @@ def test_clone_reports_elapsed_sec_and_rtf(monkeypatch: pytest.MonkeyPatch) -> N
     assert result.rtf == pytest.approx((240 / 24000) / 0.5)
 
 
-def test_from_dir_loads_all_runtime_components(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_from_dir_loads_all_runtime_components_from_one_bundle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: dict[str, object] = {}
     module = __import__(
         "mlx_speech.generation.step_audio_editx",
         fromlist=["StepAudioEditXModel"],
     )
 
-    step1_loaded = SimpleNamespace(model_dir=Path("/tmp/step_audio_editx/original"), config=SimpleNamespace(max_seq_len=32768))
+    for name in ("vq02.safetensors", "vq06.safetensors"):
+        (tmp_path / name).touch()
+    step1_loaded = SimpleNamespace(
+        model_dir=tmp_path,
+        config=SimpleNamespace(max_seq_len=32768),
+    )
     tokenizer_loaded = SimpleNamespace()
     vq02_loaded = SimpleNamespace()
     vq06_loaded = SimpleNamespace()
@@ -259,25 +266,33 @@ def test_from_dir_loads_all_runtime_components(monkeypatch: pytest.MonkeyPatch) 
     flow_loaded = SimpleNamespace()
     hift_loaded = SimpleNamespace()
 
-    def fake_load_step_audio_editx_model(model_dir, *, prefer_mlx_int8, strict):
-        calls["editx"] = (model_dir, prefer_mlx_int8, strict)
+    def fake_load_step_audio_editx_model(model_dir, *, strict=True):
+        calls["editx"] = (model_dir, strict)
         return step1_loaded
 
-    def fake_resolve_tokenizer_dir(tokenizer_dir):
-        calls["resolve_tokenizer_dir"] = tokenizer_dir
-        return Path("/tmp/tokenizer")
+    def fake_load_vq02_model(model_dir):
+        calls["vq02"] = model_dir
+        return vq02_loaded
+
+    def fake_load_vq06_model(model_dir):
+        calls["vq06"] = model_dir
+        return vq06_loaded
 
     monkeypatch.setattr(module, "load_step_audio_editx_model", fake_load_step_audio_editx_model)
-    monkeypatch.setattr(module, "resolve_step_audio_tokenizer_model_dir", fake_resolve_tokenizer_dir)
+    monkeypatch.setattr(
+        module,
+        "validate_step_audio_editx_runtime_bundle",
+        lambda path: Path(path),
+    )
     monkeypatch.setattr(module.StepAudioEditXTokenizer, "from_path", staticmethod(lambda path: tokenizer_loaded))
-    monkeypatch.setattr(module, "load_step_audio_vq02_model", lambda path, strict: vq02_loaded)
-    monkeypatch.setattr(module, "load_step_audio_vq06_model", lambda path, strict: vq06_loaded)
+    monkeypatch.setattr(module, "load_step_audio_vq02_model", fake_load_vq02_model)
+    monkeypatch.setattr(module, "load_step_audio_vq06_model", fake_load_vq06_model)
     monkeypatch.setattr(module.StepAudioCosyVoiceFrontEnd, "from_model_dir", staticmethod(lambda path: frontend_loaded))
     monkeypatch.setattr(module, "load_step_audio_flow_conditioner", lambda path: conditioner_loaded)
     monkeypatch.setattr(module, "load_step_audio_flow_model", lambda path: flow_loaded)
     monkeypatch.setattr(module, "load_step_audio_hift_model", lambda path: hift_loaded)
 
-    loaded = module.StepAudioEditXModel.from_dir("/tmp/model", tokenizer_dir="/tmp/tokenizer", prefer_mlx_int8=True, strict=False)
+    loaded = module.StepAudioEditXModel.from_dir(tmp_path)
 
     assert loaded.step1 is step1_loaded
     assert loaded.tokenizer is tokenizer_loaded
@@ -287,5 +302,22 @@ def test_from_dir_loads_all_runtime_components(monkeypatch: pytest.MonkeyPatch) 
     assert loaded.conditioner is conditioner_loaded
     assert loaded.flow is flow_loaded
     assert loaded.hift is hift_loaded
-    assert calls["editx"] == ("/tmp/model", True, False)
-    assert calls["resolve_tokenizer_dir"] == "/tmp/tokenizer"
+    assert calls["editx"] == (tmp_path, True)
+    assert calls["vq02"] == tmp_path
+    assert calls["vq06"] == tmp_path
+
+
+def test_from_dir_rejects_incomplete_runtime_bundle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "vq02.safetensors").touch()
+    step1_loaded = SimpleNamespace(model_dir=tmp_path)
+    monkeypatch.setattr(
+        generation_module,
+        "load_step_audio_editx_model",
+        lambda *args, **kwargs: step1_loaded,
+    )
+
+    with pytest.raises(FileNotFoundError, match="vq06.safetensors"):
+        StepAudioEditXModel.from_dir(tmp_path)

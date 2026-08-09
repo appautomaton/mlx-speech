@@ -7,7 +7,7 @@ import pytest
 import soundfile as sf
 
 from mlx_speech.generation.step_audio_editx import StepAudioEditXModel
-from tests.helpers.step_audio import EDITX_DIR, PROMPT_AUDIO, TOKENIZER_DIR, skip_no_integration
+from tests.helpers.step_audio import EDITX_RUNTIME_DIR, PROMPT_AUDIO, skip_no_integration
 
 pytestmark = pytest.mark.integration
 
@@ -18,11 +18,7 @@ def test_step_audio_clone_public_api_produces_waveform() -> None:
     if audio.ndim > 1:
         audio = audio.mean(axis=1, dtype=np.float32)
 
-    model = StepAudioEditXModel.from_dir(
-        EDITX_DIR,
-        tokenizer_dir=TOKENIZER_DIR,
-        prefer_mlx_int8=False,
-    )
+    model = StepAudioEditXModel.from_dir(EDITX_RUNTIME_DIR)
     result = model.clone(
         audio,
         sample_rate,

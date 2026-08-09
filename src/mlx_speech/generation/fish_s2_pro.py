@@ -160,29 +160,10 @@ class FishS2ProRuntime:
             self.config.audio_decoder_config.num_codebooks,
         )
 
-    @staticmethod
-    def _resolve_codec_dir(
-        model_dir: str | Path,
-        codec_dir: str | Path | None = None,
-    ) -> Path:
-        if codec_dir is not None:
-            return Path(codec_dir)
-
-        resolved = Path(model_dir)
-        bundled_codec_dir = resolved / "codec-mlx"
-        if bundled_codec_dir.is_dir():
-            return bundled_codec_dir
-        sibling_codec_dir = resolved.parent / "codec-mlx"
-        if sibling_codec_dir.is_dir():
-            return sibling_codec_dir
-        return resolved
-
     @classmethod
     def from_dir(
         cls,
         model_dir: str | Path,
-        *,
-        codec_dir: str | Path | None = None,
     ) -> "FishS2ProRuntime":
         resolved = Path(model_dir)
         checkpoint = load_fish_s2_pro_checkpoint(resolved)
@@ -195,7 +176,7 @@ class FishS2ProRuntime:
             )
         load_checkpoint_into_model(model, checkpoint, strict=True)
         tokenizer = FishS2Tokenizer.from_pretrained(str(resolved))
-        codec = FishS2Codec.from_dir(cls._resolve_codec_dir(resolved, codec_dir))
+        codec = FishS2Codec.from_dir(resolved / "codec-mlx")
         return cls(
             model=model,
             tokenizer=tokenizer,
@@ -383,15 +364,14 @@ class FishS2ProRuntime:
 def generate_fish_s2_pro(
     text: str,
     *,
-    model_dir: str = "models/fish_s2_pro/original",
-    codec_dir: str | None = None,
+    model_dir: str = "models/fish_s2_pro/mlx-int8",
     max_new_tokens: int = 256,
     reference_audio: str | None = None,
     reference_text: str | None = None,
 ) -> FishS2ProOutput:
     if max_new_tokens <= 0:
         raise ValueError("max_new_tokens must be > 0")
-    runtime = FishS2ProRuntime.from_dir(model_dir, codec_dir=codec_dir)
+    runtime = FishS2ProRuntime.from_dir(model_dir)
     return runtime.synthesize(
         text,
         max_new_tokens=max_new_tokens,

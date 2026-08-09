@@ -9,7 +9,12 @@ import numpy as np
 
 from mlx_speech.generation.step_audio_editx import StepAudioEditXResult
 
-SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "generate_step_audio_editx.py"
+SCRIPT_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "scripts"
+    / "generate"
+    / "step_audio_editx.py"
+)
 
 
 def _load_script_module():
@@ -31,7 +36,6 @@ def test_parser_help_documents_clone_and_edit_modes() -> None:
     assert "edit" in help_text
     assert "--flow-steps" in help_text
     assert "--temperature" in help_text
-    assert "--prefer-mlx-int8" in help_text
 
 
 def test_parser_accepts_clone_arguments() -> None:
@@ -55,7 +59,6 @@ def test_parser_accepts_clone_arguments() -> None:
     assert args.target_text == "New text."
     assert args.flow_steps == 10
     assert args.temperature == 0.7
-    assert args.prefer_mlx_int8 is False
 
 
 def test_parser_accepts_edit_arguments() -> None:
@@ -80,27 +83,6 @@ def test_parser_accepts_edit_arguments() -> None:
     assert args.mode == "edit"
     assert args.edit_type == "style"
     assert args.edit_info == "whispering"
-
-
-def test_parser_can_opt_into_mlx_int8_runtime() -> None:
-    module = _load_script_module()
-
-    args = module._build_parser().parse_args(
-        [
-            "--prompt-audio",
-            "ref.wav",
-            "--prompt-text",
-            "Prompt text.",
-            "--output",
-            "out.wav",
-            "--prefer-mlx-int8",
-            "clone",
-            "--target-text",
-            "New text.",
-        ]
-    )
-
-    assert args.prefer_mlx_int8 is True
 
 
 def test_main_prints_elapsed_sec_and_rtf(monkeypatch, capsys) -> None:

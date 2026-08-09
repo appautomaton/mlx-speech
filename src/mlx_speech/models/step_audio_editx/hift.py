@@ -673,12 +673,17 @@ def _load_hift_from_safetensors(model_dir: Path) -> LoadedStepAudioHiFTModel:
 
 def load_step_audio_hift_model(
     model_dir: str | Path,
+) -> LoadedStepAudioHiFTModel:
+    return _load_hift_from_safetensors(Path(model_dir))
+
+
+def load_step_audio_hift_source_model(
+    model_dir: str | Path,
     *,
     strict: bool = True,
 ) -> LoadedStepAudioHiFTModel:
-    resolved = Path(model_dir)
-    if (resolved / "hift.safetensors").exists():
-        return _load_hift_from_safetensors(resolved)
+    """Load original HiFT assets for checkpoint conversion only."""
+
     checkpoint = load_step_audio_hift_checkpoint(model_dir)
     model = StepAudioHiFTGenerator(checkpoint.config)
     report = validate_step_audio_hift_checkpoint_against_model(model, checkpoint)
@@ -708,6 +713,7 @@ __all__ = [
     "StepAudioHiFTGenerator",
     "load_step_audio_hift_checkpoint",
     "load_step_audio_hift_model",
+    "load_step_audio_hift_source_model",
     "sanitize_step_audio_hift_state_dict",
     "validate_step_audio_hift_checkpoint_against_model",
 ]

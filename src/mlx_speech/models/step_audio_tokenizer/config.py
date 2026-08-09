@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 import re
 from typing import Any
@@ -85,6 +85,42 @@ class StepAudioTokenizerConfig:
         payload.update(self.extra)
         return payload
 
+    def to_runtime_dict(self) -> dict[str, Any]:
+        """Serialize only values consumed by the converted MLX runtime."""
+
+        return {
+            "model_type": self.model_type,
+            "vq02_sample_rate": self.vq02_sample_rate,
+            "vq06_sample_rate": self.vq06_sample_rate,
+            "vq02_codebook_size": self.vq02_codebook_size,
+            "vq06_token_rate_hz": self.vq06_token_rate_hz,
+            "vq06_n_fft": self.vq06_n_fft,
+            "vq06_hop_length": self.vq06_hop_length,
+            "vq06_num_mels": self.vq06_num_mels,
+            "vq06_max_chunk_seconds": self.vq06_max_chunk_seconds,
+            "vq06_min_chunk_samples": self.vq06_min_chunk_samples,
+            "trim_top_db": self.trim_top_db,
+            "trim_frame_length": self.trim_frame_length,
+            "trim_hop_length": self.trim_hop_length,
+            "trim_keep_left_seconds": self.trim_keep_left_seconds,
+            "trim_keep_right_seconds": self.trim_keep_right_seconds,
+            "trim_output_hop_samples": self.trim_output_hop_samples,
+            "vq02_chunk_size": list(self.vq02_chunk_size),
+            "encoder_chunk_look_back": self.encoder_chunk_look_back,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "StepAudioTokenizerConfig":
+        raw = dict(payload)
+        if "vq02_chunk_size" in raw:
+            raw["vq02_chunk_size"] = tuple(int(value) for value in raw["vq02_chunk_size"])
+
+        field_names = {item.name for item in fields(cls)}
+        known = field_names - {"extra"}
+        kwargs = {key: raw[key] for key in known if key in raw}
+        extra = {key: value for key, value in raw.items() if key not in known}
+        return cls(**kwargs, extra=extra)
+
     @classmethod
     def from_loaded_assets(
         cls,
@@ -99,10 +135,9 @@ class StepAudioTokenizerConfig:
 
     @classmethod
     def from_path(cls, model_dir: str | Path) -> "StepAudioTokenizerConfig":
-        from .checkpoint import load_step_audio_tokenizer_assets
+        from .checkpoint import load_step_audio_tokenizer_runtime_assets
 
-        loaded = load_step_audio_tokenizer_assets(model_dir)
-        return loaded.config
+        return load_step_audio_tokenizer_runtime_assets(model_dir).config
 
 
 def _parse_scalar(value: str) -> Any:

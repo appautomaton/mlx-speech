@@ -13,7 +13,7 @@ from mlx_speech.models.step_audio_editx import (
     load_step_audio_flow_model,
     load_step_audio_hift_model,
 )
-from tests.helpers.step_audio import EDITX_DIR, skip_no_cosyvoice
+from tests.helpers.step_audio import EDITX_RUNTIME_DIR, skip_no_runtime_bundle
 
 pytestmark = pytest.mark.runtime
 
@@ -24,9 +24,9 @@ def _sine_wave(sample_rate: int, frequency_hz: float, seconds: float = 1.0) -> n
     return 0.1 * np.sin(2.0 * np.pi * frequency_hz * time)
 
 
-@skip_no_cosyvoice
-def test_frontend_config_parses_local_yaml() -> None:
-    config = StepAudioCosyVoiceMelConfig.from_yaml_path(EDITX_DIR / "CosyVoice-300M-25Hz" / "cosyvoice.yaml")
+@skip_no_runtime_bundle
+def test_frontend_config_parses_runtime_bundle() -> None:
+    config = StepAudioCosyVoiceMelConfig.from_path(EDITX_RUNTIME_DIR)
 
     assert config.num_mels == 80
     assert config.n_fft == 1920
@@ -37,9 +37,9 @@ def test_frontend_config_parses_local_yaml() -> None:
     assert config.fmax == 8000.0
 
 
-@skip_no_cosyvoice
+@skip_no_runtime_bundle
 def test_frontend_extract_speech_feat_resamples_and_returns_prompt_shape() -> None:
-    frontend = StepAudioCosyVoiceFrontEnd.from_model_dir(EDITX_DIR)
+    frontend = StepAudioCosyVoiceFrontEnd.from_model_dir(EDITX_RUNTIME_DIR)
     sample_rate = 16000
     audio = _sine_wave(sample_rate=sample_rate, frequency_hz=330.0)
 
@@ -50,9 +50,9 @@ def test_frontend_extract_speech_feat_resamples_and_returns_prompt_shape() -> No
     assert speech_feat.dtype == np.float32
 
 
-@skip_no_cosyvoice
+@skip_no_runtime_bundle
 def test_campplus_runtime_extract_embedding_is_deterministic() -> None:
-    loaded = load_step_audio_campplus_model(EDITX_DIR)
+    loaded = load_step_audio_campplus_model(EDITX_RUNTIME_DIR)
     audio = _sine_wave(sample_rate=16000, frequency_hz=440.0)
 
     first = loaded.runtime.extract_embedding(audio, 16000)
@@ -64,10 +64,10 @@ def test_campplus_runtime_extract_embedding_is_deterministic() -> None:
     assert np.allclose(first, second)
 
 
-@skip_no_cosyvoice
+@skip_no_runtime_bundle
 def test_frontend_extract_spk_embedding_matches_loaded_runtime() -> None:
-    frontend = StepAudioCosyVoiceFrontEnd.from_model_dir(EDITX_DIR)
-    direct = load_step_audio_campplus_model(EDITX_DIR)
+    frontend = StepAudioCosyVoiceFrontEnd.from_model_dir(EDITX_RUNTIME_DIR)
+    direct = load_step_audio_campplus_model(EDITX_RUNTIME_DIR)
     audio = _sine_wave(sample_rate=24000, frequency_hz=330.0)
 
     from_frontend = frontend.extract_spk_embedding(audio, 24000)
@@ -78,10 +78,10 @@ def test_frontend_extract_spk_embedding_matches_loaded_runtime() -> None:
     assert np.allclose(from_frontend, from_runtime, atol=1e-5, rtol=1e-5)
 
 
-@skip_no_cosyvoice
+@skip_no_runtime_bundle
 def test_flow_conditioner_prepares_nonstream_inputs_from_real_assets() -> None:
-    frontend = StepAudioCosyVoiceFrontEnd.from_model_dir(EDITX_DIR)
-    conditioner = load_step_audio_flow_conditioner(EDITX_DIR)
+    frontend = StepAudioCosyVoiceFrontEnd.from_model_dir(EDITX_RUNTIME_DIR)
+    conditioner = load_step_audio_flow_conditioner(EDITX_RUNTIME_DIR)
     audio = _sine_wave(sample_rate=24000, frequency_hz=330.0)
     prompt_feat, _ = frontend.extract_speech_feat(audio, 24000)
     speaker_embedding = frontend.extract_spk_embedding(audio, 24000)
@@ -107,11 +107,11 @@ def test_flow_conditioner_prepares_nonstream_inputs_from_real_assets() -> None:
     )
 
 
-@skip_no_cosyvoice
+@skip_no_runtime_bundle
 def test_flow_model_inference_returns_generated_mel_shape() -> None:
-    frontend = StepAudioCosyVoiceFrontEnd.from_model_dir(EDITX_DIR)
-    conditioner = load_step_audio_flow_conditioner(EDITX_DIR)
-    flow_model = load_step_audio_flow_model(EDITX_DIR)
+    frontend = StepAudioCosyVoiceFrontEnd.from_model_dir(EDITX_RUNTIME_DIR)
+    conditioner = load_step_audio_flow_conditioner(EDITX_RUNTIME_DIR)
+    flow_model = load_step_audio_flow_model(EDITX_RUNTIME_DIR)
     audio = _sine_wave(sample_rate=24000, frequency_hz=330.0)
     prompt_feat, _ = frontend.extract_speech_feat(audio, 24000)
     speaker_embedding = frontend.extract_spk_embedding(audio, 24000)
@@ -129,9 +129,9 @@ def test_flow_model_inference_returns_generated_mel_shape() -> None:
     assert np.isfinite(mel).all()
 
 
-@skip_no_cosyvoice
+@skip_no_runtime_bundle
 def test_hift_inference_returns_waveform_shape_for_synthetic_mel() -> None:
-    loaded = load_step_audio_hift_model(EDITX_DIR)
+    loaded = load_step_audio_hift_model(EDITX_RUNTIME_DIR)
     mel = np.zeros((1, 80, 10), dtype=np.float32)
 
     waveform, source = loaded.model.inference(mel)
@@ -144,12 +144,12 @@ def test_hift_inference_returns_waveform_shape_for_synthetic_mel() -> None:
     assert np.isfinite(source).all()
 
 
-@skip_no_cosyvoice
+@skip_no_runtime_bundle
 def test_flow_mel_output_decodes_to_waveform_via_hift() -> None:
-    frontend = StepAudioCosyVoiceFrontEnd.from_model_dir(EDITX_DIR)
-    conditioner = load_step_audio_flow_conditioner(EDITX_DIR)
-    flow_model = load_step_audio_flow_model(EDITX_DIR)
-    hift_model = load_step_audio_hift_model(EDITX_DIR)
+    frontend = StepAudioCosyVoiceFrontEnd.from_model_dir(EDITX_RUNTIME_DIR)
+    conditioner = load_step_audio_flow_conditioner(EDITX_RUNTIME_DIR)
+    flow_model = load_step_audio_flow_model(EDITX_RUNTIME_DIR)
+    hift_model = load_step_audio_hift_model(EDITX_RUNTIME_DIR)
 
     sample_rate = 24000
     audio = _sine_wave(sample_rate=sample_rate, frequency_hz=330.0)

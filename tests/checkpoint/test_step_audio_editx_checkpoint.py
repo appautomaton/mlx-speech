@@ -8,12 +8,12 @@ from mlx_speech.models.step_audio_editx import (
     Step1Config,
     Step1ForCausalLM,
     StepAudioCampPlusConfig,
-    load_step_audio_campplus_model,
+    load_step_audio_campplus_source_model,
     load_step_audio_editx_checkpoint,
     load_step_audio_editx_model,
-    load_step_audio_flow_conditioner,
-    load_step_audio_flow_model,
-    load_step_audio_hift_model,
+    load_step_audio_flow_conditioner_source_model,
+    load_step_audio_flow_source_model,
+    load_step_audio_hift_source_model,
     resolve_step_audio_cosyvoice_dir,
     validate_checkpoint_against_model,
 )
@@ -50,7 +50,7 @@ def test_step1_checkpoint_alignment_is_exact() -> None:
 
 @skip_no_editx
 def test_step1_model_loads_real_checkpoint() -> None:
-    loaded = load_step_audio_editx_model(EDITX_DIR, strict=True, prefer_mlx_int8=False)
+    loaded = load_step_audio_editx_model(EDITX_DIR, strict=True)
     assert loaded.alignment_report.is_exact_match
     assert loaded.model.config.hidden_size == 3072
 
@@ -63,7 +63,7 @@ def test_cosyvoice_dir_resolves_from_step_audio_root() -> None:
 
 @skip_no_cosyvoice
 def test_campplus_checkpoint_alignment_is_exact() -> None:
-    loaded = load_step_audio_campplus_model(EDITX_DIR)
+    loaded = load_step_audio_campplus_source_model(EDITX_DIR)
     assert loaded.alignment_report.is_exact_match
     assert loaded.config.embedding_size == 192
     assert loaded.config.block_layers == (12, 24, 16)
@@ -71,7 +71,7 @@ def test_campplus_checkpoint_alignment_is_exact() -> None:
 
 @skip_no_cosyvoice
 def test_flow_conditioner_checkpoint_alignment_is_exact() -> None:
-    loaded = load_step_audio_flow_conditioner(EDITX_DIR)
+    loaded = load_step_audio_flow_conditioner_source_model(EDITX_DIR)
     assert loaded.alignment_report.is_exact_match
     assert loaded.config.vocab_size == 5121
     assert loaded.config.input_size == 512
@@ -81,7 +81,7 @@ def test_flow_conditioner_checkpoint_alignment_is_exact() -> None:
 
 @skip_no_cosyvoice
 def test_flow_model_checkpoint_alignment_is_exact() -> None:
-    loaded = load_step_audio_flow_model(EDITX_DIR)
+    loaded = load_step_audio_flow_source_model(EDITX_DIR)
     assert loaded.alignment_report.is_exact_match
     assert loaded.config.input_size == 512
     assert loaded.config.output_size == 80
@@ -94,7 +94,7 @@ def test_flow_model_checkpoint_alignment_is_exact() -> None:
 def test_hift_config_parses_local_yaml_and_alignment_is_exact() -> None:
     config = StepAudioCampPlusConfig  # keep import live for checkpoint tier parity with other model tests
     _ = config
-    loaded = load_step_audio_hift_model(EDITX_DIR)
+    loaded = load_step_audio_hift_source_model(EDITX_DIR)
     assert loaded.alignment_report.is_exact_match
     assert loaded.config.sampling_rate == 24000
     assert loaded.config.upsample_rates == (8, 5, 3)

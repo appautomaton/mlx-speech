@@ -80,6 +80,11 @@ MODELS: dict[str, tuple[str, str, bool]] = {
         "models/vibevoice/mlx-int8",
         True,
     ),
+    "step-audio-editx": (
+        "appautomaton/step-audio-editx-8bit-mlx",
+        "models/stepfun/step_audio_editx/mlx-int8",
+        True,
+    ),
     "dramabox": (
         "appautomaton/dramabox-tts-3.3b-bf16-mlx",
         "models/dramabox/mlx-bf16",
@@ -113,6 +118,27 @@ DOTS_TTS_WEIGHT_FILES = (
     "speaker.safetensors",
     "latent_stats.safetensors",
 )
+STEP_AUDIO_RUNTIME_FILES = {
+    "campplus-config.json",
+    "campplus.safetensors",
+    "config.json",
+    "flow-conditioner-config.json",
+    "flow-conditioner.safetensors",
+    "flow-model-config.json",
+    "flow-model.safetensors",
+    "frontend-config.json",
+    "hift-config.json",
+    "hift.safetensors",
+    "model.safetensors",
+    "step-audio-tokenizer-assets.safetensors",
+    "step-audio-tokenizer-config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "vq02-config.json",
+    "vq02.safetensors",
+    "vq06-config.json",
+    "vq06.safetensors",
+}
 DOTS_TTS_REQUIRED_FILES = {
     "config.json",
     "llm_config.json",
@@ -187,7 +213,7 @@ def _require_files(path: Path, names: set[str]) -> None:
     missing = sorted(name for name in names if not (path / name).is_file())
     if missing:
         raise FileNotFoundError(
-            f"Missing dots.tts release files under {path}: {', '.join(missing)}"
+            f"Missing release files under {path}: {', '.join(missing)}"
         )
 
 
@@ -388,6 +414,8 @@ def upload(alias: str, *, root: Path, hf: str) -> None:
     if not local_path.exists():
         print(f"Missing: {local_path}")
         sys.exit(1)
+    if alias == "step-audio-editx":
+        _require_files(local_path, STEP_AUDIO_RUNTIME_FILES)
 
     env = os.environ.copy()
     env["HF_HUB_DISABLE_XET"] = "1"

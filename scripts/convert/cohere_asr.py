@@ -86,7 +86,7 @@ def main() -> None:
     print(f"  exact match: {report.is_exact_match}")
 
     print("Quantizing...")
-    model = quantize_cohere_asr_model(model, quantization, state_dict=ckpt.state_dict)
+    model = quantize_cohere_asr_model(model, quantization)
 
     print(f"Saving to {output_dir} ...")
     save_cohere_asr_model(

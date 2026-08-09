@@ -11,7 +11,11 @@ import mlx.core as mx
 import numpy as np
 
 from ...audio import resample_audio
-from .checkpoint import StepAudioTokenizerAssets, load_step_audio_tokenizer_assets
+from .checkpoint import (
+    StepAudioTokenizerAssets,
+    StepAudioTokenizerRuntimeAssets,
+    load_step_audio_tokenizer_runtime_assets,
+)
 
 _LOG_FLOOR = 1e-10
 
@@ -221,7 +225,10 @@ class StepAudioVQ06Chunk:
 class StepAudioTokenizerProcessor:
     """Pure-MLX/NumPy tokenizer preprocessing utilities for Step-Audio."""
 
-    def __init__(self, assets: StepAudioTokenizerAssets):
+    def __init__(
+        self,
+        assets: StepAudioTokenizerAssets | StepAudioTokenizerRuntimeAssets,
+    ):
         self.assets = assets
         self.config = assets.config
         self._vq06_mel_filters = _build_slaney_mel_filters(
@@ -231,8 +238,8 @@ class StepAudioTokenizerProcessor:
         )
 
     @classmethod
-    def from_path(cls, model_dir: str | Path | None = None) -> "StepAudioTokenizerProcessor":
-        return cls(load_step_audio_tokenizer_assets(model_dir))
+    def from_path(cls, model_dir: str | Path) -> "StepAudioTokenizerProcessor":
+        return cls(load_step_audio_tokenizer_runtime_assets(model_dir))
 
     def preprocess_wav(
         self,

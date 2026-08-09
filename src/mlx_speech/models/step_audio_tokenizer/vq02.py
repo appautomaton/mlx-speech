@@ -14,8 +14,11 @@ from mlx.utils import tree_flatten
 
 from .checkpoint import (
     StepAudioTokenizerAssets,
+    StepAudioTokenizerRuntimeAssets,
+    load_step_audio_cmvn,
     load_step_audio_funasr_checkpoint,
     load_step_audio_tokenizer_assets,
+    load_step_audio_tokenizer_runtime_assets,
 )
 from .config import StepAudioVQ02Config
 from .processor import StepAudioTokenizerProcessor
@@ -41,27 +44,6 @@ class StepAudioVQ02AlignmentReport:
             and not self.missing_in_checkpoint
             and not self.shape_mismatches
         )
-
-
-def _load_cmvn(path: str | Path) -> np.ndarray:
-    means_list: list[float] = []
-    vars_list: list[float] = []
-    lines = Path(path).read_text(encoding="utf-8").splitlines()
-    for index, raw_line in enumerate(lines):
-        parts = raw_line.split()
-        if not parts:
-            continue
-        if parts[0] == "<AddShift>" and index + 1 < len(lines):
-            line_item = lines[index + 1].split()
-            if line_item and line_item[0] == "<LearnRateCoef>":
-                means_list = [float(value) for value in line_item[3:-1]]
-        if parts[0] == "<Rescale>" and index + 1 < len(lines):
-            line_item = lines[index + 1].split()
-            if line_item and line_item[0] == "<LearnRateCoef>":
-                vars_list = [float(value) for value in line_item[3:-1]]
-    if not means_list or not vars_list:
-        raise ValueError(f"Failed to parse CMVN file: {path}")
-    return np.asarray([means_list, vars_list], dtype=np.float32)
 
 
 def _next_power_of_two(value: int) -> int:
@@ -742,12 +724,12 @@ def validate_step_audio_vq02_checkpoint_against_model(
 
 
 def _load_vq02_from_safetensors(
-    safetensors_dir: str | Path,
-    assets: "StepAudioTokenizerAssets",
+    model_dir: str | Path,
+    assets: StepAudioTokenizerRuntimeAssets,
 ) -> "LoadedStepAudioVQ02Model":
     import json
 
-    resolved = Path(safetensors_dir)
+    resolved = Path(model_dir)
     with (resolved / "vq02-config.json").open(encoding="utf-8") as f:
         payload = json.load(f)
     quantization = payload.pop("quantization", None)
@@ -776,7 +758,7 @@ def _load_vq02_from_safetensors(
     model.load_weights(list(weights.items()))
     runtime = StepAudioVQ02Runtime(
         assets=assets, config=config,
-        frontend=StepAudioVQ02Frontend(config, _load_cmvn(assets.funasr_model_dir / "am.mvn")),
+        frontend=StepAudioVQ02Frontend(config, assets.cmvn),
         processor=StepAudioTokenizerProcessor(assets),
         model=model,
     )
@@ -794,14 +776,20 @@ def _load_vq02_from_safetensors(
 
 
 def load_step_audio_vq02_model(
-    model_dir: str | Path | None = None,
+    model_dir: str | Path,
+) -> "LoadedStepAudioVQ02Model":
+    assets = load_step_audio_tokenizer_runtime_assets(model_dir)
+    return _load_vq02_from_safetensors(model_dir, assets)
+
+
+def load_step_audio_vq02_source_model(
+    model_dir: str | Path,
     *,
     strict: bool = True,
-    safetensors_dir: str | Path | None = None,
 ) -> "LoadedStepAudioVQ02Model":
+    """Load original assets for checkpoint conversion only."""
+
     assets = load_step_audio_tokenizer_assets(model_dir)
-    if safetensors_dir is not None and (Path(safetensors_dir) / "vq02.safetensors").exists():
-        return _load_vq02_from_safetensors(safetensors_dir, assets)
     checkpoint = load_step_audio_vq02_checkpoint(model_dir)
     model = StepAudioVQ02Model(checkpoint.config)
     report = validate_step_audio_vq02_checkpoint_against_model(model, checkpoint)
@@ -816,7 +804,10 @@ def load_step_audio_vq02_model(
     runtime = StepAudioVQ02Runtime(
         assets=assets,
         config=checkpoint.config,
-        frontend=StepAudioVQ02Frontend(checkpoint.config, _load_cmvn(assets.funasr_model_dir / "am.mvn")),
+        frontend=StepAudioVQ02Frontend(
+            checkpoint.config,
+            load_step_audio_cmvn(assets.funasr_model_dir / "am.mvn"),
+        ),
         processor=StepAudioTokenizerProcessor(assets),
         model=model,
     )
@@ -832,7 +823,7 @@ def load_step_audio_vq02_model(
 
 @dataclass(frozen=True)
 class LoadedStepAudioVQ02Model:
-    assets: StepAudioTokenizerAssets
+    assets: StepAudioTokenizerAssets | StepAudioTokenizerRuntimeAssets
     config: StepAudioVQ02Config
     checkpoint: StepAudioVQ02Checkpoint
     model: StepAudioVQ02Model
@@ -844,7 +835,7 @@ class StepAudioVQ02Runtime:
     def __init__(
         self,
         *,
-        assets: StepAudioTokenizerAssets,
+        assets: StepAudioTokenizerAssets | StepAudioTokenizerRuntimeAssets,
         config: StepAudioVQ02Config,
         frontend: StepAudioVQ02Frontend,
         processor: StepAudioTokenizerProcessor,
@@ -961,6 +952,7 @@ __all__ = [
     "StepAudioVQ02Runtime",
     "load_step_audio_vq02_checkpoint",
     "load_step_audio_vq02_model",
+    "load_step_audio_vq02_source_model",
     "sanitize_step_audio_vq02_state_dict",
     "validate_step_audio_vq02_checkpoint_against_model",
 ]

@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from scripts.generate.granite_speech_asr import TranscriptRecord, transcribe_paths  # noqa: E402
 
 
-DEFAULT_MODEL_DIR = Path("models/ibm/granite_4_0_1b_speech/original")
+DEFAULT_MODEL_DIR = Path("models/ibm/granite_4_0_1b_speech/mlx-int8")
 DEFAULT_SOURCE = "three-bears-catamount"
 
 

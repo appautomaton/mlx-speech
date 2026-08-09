@@ -8,6 +8,7 @@ from mlx_speech.checkpoints.layout import MODELS_ROOT
 
 
 EDITX_DIR = MODELS_ROOT / "stepfun" / "step_audio_editx" / "original"
+EDITX_RUNTIME_DIR = MODELS_ROOT / "stepfun" / "step_audio_editx" / "mlx-int8"
 TOKENIZER_DIR = MODELS_ROOT / "stepfun" / "step_audio_tokenizer" / "original"
 COSYVOICE_DIR = EDITX_DIR / "CosyVoice-300M-25Hz"
 FUNASR_DIR = (
@@ -24,6 +25,17 @@ HAS_COSYVOICE_ASSETS = COSYVOICE_DIR.exists()
 HAS_FUNASR_ASSETS = FUNASR_DIR.exists()
 HAS_VQ06_ASSETS = (TOKENIZER_DIR / "speech_tokenizer_v1.onnx").exists()
 HAS_LOCAL_TOKENIZER = LOCAL_TOKENIZER_JSON.exists()
+HAS_RUNTIME_BUNDLE = all(
+    (EDITX_RUNTIME_DIR / name).exists()
+    for name in (
+        "model.safetensors",
+        "vq02.safetensors",
+        "vq06.safetensors",
+        "frontend-config.json",
+        "step-audio-tokenizer-assets.safetensors",
+        "step-audio-tokenizer-config.json",
+    )
+)
 RUN_LOCAL_INTEGRATION = os.environ.get("RUN_LOCAL_INTEGRATION") == "1"
 HAS_LOCAL_PROMPT_AUDIO = PROMPT_AUDIO.exists()
 
@@ -52,6 +64,10 @@ skip_no_local_tokenizer = pytest.mark.skipif(
     reason="Step-Audio tokenizer.json not found",
 )
 skip_no_integration = pytest.mark.skipif(
-    not RUN_LOCAL_INTEGRATION or not (HAS_EDITX_CHECKPOINT and HAS_TOKENIZER_CHECKPOINT and HAS_LOCAL_PROMPT_AUDIO),
-    reason="manual local integration test; requires RUN_LOCAL_INTEGRATION=1 and local Step-Audio assets",
+    not RUN_LOCAL_INTEGRATION or not (HAS_RUNTIME_BUNDLE and HAS_LOCAL_PROMPT_AUDIO),
+    reason="manual local integration test; requires RUN_LOCAL_INTEGRATION=1 and a local Step-Audio runtime bundle",
+)
+skip_no_runtime_bundle = pytest.mark.skipif(
+    not HAS_RUNTIME_BUNDLE,
+    reason="Step-Audio runtime bundle not found",
 )

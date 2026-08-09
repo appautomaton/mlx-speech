@@ -140,21 +140,10 @@ def load_step_audio_editx_checkpoint(model_dir: str | Path) -> Step1Checkpoint:
 
 def resolve_step_audio_editx_model_dir(
     model_dir: str | Path | None = None,
-    *,
-    prefer_mlx_int8: bool = False,
 ) -> Path:
     if model_dir is not None:
         return Path(model_dir)
-
-    base = MODELS_ROOT / "stepfun" / "step_audio_editx"
-    int8_dir = base / "mlx-int8"
-    original_dir = base / "original"
-
-    if prefer_mlx_int8 and any(int8_dir.glob("*.safetensors")):
-        return int8_dir
-    if any(original_dir.glob("*.safetensors")):
-        return original_dir
-    return int8_dir if prefer_mlx_int8 else original_dir
+    return MODELS_ROOT / "stepfun" / "step_audio_editx" / "mlx-int8"
 
 
 def validate_checkpoint_against_model(
@@ -268,15 +257,11 @@ def save_step_audio_editx_model(
 def load_step_audio_editx_model(
     model_dir: str | Path | None = None,
     *,
-    prefer_mlx_int8: bool = False,
     strict: bool = True,
 ) -> LoadedStepAudioEditXModel:
     from .model import Step1ForCausalLM
 
-    resolved = resolve_step_audio_editx_model_dir(
-        model_dir,
-        prefer_mlx_int8=prefer_mlx_int8,
-    )
+    resolved = resolve_step_audio_editx_model_dir(model_dir)
     checkpoint = load_step_audio_editx_checkpoint(resolved)
     model = Step1ForCausalLM(checkpoint.config)
     quantization = get_quantization_config(checkpoint.config)

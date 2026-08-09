@@ -12,8 +12,7 @@ It is currently best thought of as:
 
 Current local runtime target:
 
-- `models/stepfun/step_audio_editx/mlx-int8` (unified CLI default)
-- `models/stepfun/step_audio_editx/original` (script default)
+- `models/stepfun/step_audio_editx/mlx-int8`
 
 ## Main Python API
 
@@ -81,7 +80,7 @@ mlx-speech tts \
 
 ## Script CLI (Advanced)
 
-For `--temperature`, `--seed`, `--flow-steps`, and original-weight path:
+For `--temperature`, `--seed`, and `--flow-steps`:
 
 - `scripts/generate/step_audio_editx.py`
 
@@ -93,7 +92,6 @@ Modes:
 Current key flags:
 
 - `--model-dir`
-- `--tokenizer-dir`
 - `--prompt-audio`
 - `--prompt-text`
 - `--output`
@@ -101,12 +99,6 @@ Current key flags:
 - `--temperature`
 - `--seed`
 - `--flow-steps`
-- `--prefer-mlx-int8`
-
-Important script default:
-
-- the script defaults to **original** weights
-- pass `--prefer-mlx-int8` to use the quantized path via the script
 
 ## Clone and Edit Semantics
 
@@ -162,7 +154,8 @@ Current reliable path:
 Current caveats:
 
 - public integration coverage is gated and manual, not part of the default autorun suite
-- `mlx-int8` packaging works, but original remains the safer default until parity is more thoroughly proven
+- the runtime bundle must contain every Step1, VQ, frontend, flow, vocoder,
+  tokenizer, and preprocessing asset required by inference
 - this family does not expose streaming in the current public API
 - this family currently documents clone/edit only; no broader server/runtime surface is promised
 

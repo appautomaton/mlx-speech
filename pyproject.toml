@@ -1,6 +1,6 @@
 [project]
 name = "mlx-speech"
-version = "0.5.1"
+version = "0.5.2"
 description = "MLX-native speech library for Apple Silicon."
 license = { file = "LICENSE" }
 authors = [{ name = "appautomaton" }]

@@ -385,7 +385,6 @@ def _build_tts_commands(output_dir: Path) -> list[tuple[str, list[str], Path, st
             [
                 sys.executable,
                 "scripts/generate/step_audio_editx.py",
-                "--prefer-mlx-int8",
                 "--prompt-audio",
                 "outputs/source/hank_hill_ref.wav",
                 "--prompt-text",

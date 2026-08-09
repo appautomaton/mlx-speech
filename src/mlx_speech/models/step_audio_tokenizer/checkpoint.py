@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 
 import numpy as np
+from safetensors.numpy import load_file
 
 from ...checkpoints import (
     LoadedTorchArchiveStateDict,
@@ -14,10 +16,13 @@ from ...checkpoints import (
 )
 from .config import DEFAULT_FUNASR_MODEL_ID, StepAudioTokenizerConfig
 
+RUNTIME_ASSETS_FILENAME = "step-audio-tokenizer-assets.safetensors"
+RUNTIME_CONFIG_FILENAME = "step-audio-tokenizer-config.json"
+
 
 @dataclass(frozen=True)
 class StepAudioTokenizerAssets:
-    """Loaded local Step-Audio tokenizer asset bundle."""
+    """Original Step-Audio tokenizer assets used for checkpoint conversion."""
 
     model_dir: Path
     config: StepAudioTokenizerConfig
@@ -27,6 +32,89 @@ class StepAudioTokenizerAssets:
     funasr_config_path: Path
     funasr_checkpoint_path: Path
     linguistic_codebook: np.ndarray
+
+
+@dataclass(frozen=True)
+class StepAudioTokenizerRuntimeAssets:
+    """Small self-contained assets used with converted VQ checkpoints."""
+
+    model_dir: Path
+    config: StepAudioTokenizerConfig
+    linguistic_codebook: np.ndarray
+    cmvn: np.ndarray
+
+
+def load_step_audio_cmvn(path: str | Path) -> np.ndarray:
+    means: list[float] = []
+    scales: list[float] = []
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    for index, raw_line in enumerate(lines):
+        parts = raw_line.split()
+        if not parts or index + 1 >= len(lines):
+            continue
+        values = lines[index + 1].split()
+        if not values or values[0] != "<LearnRateCoef>":
+            continue
+        if parts[0] == "<AddShift>":
+            means = [float(value) for value in values[3:-1]]
+        elif parts[0] == "<Rescale>":
+            scales = [float(value) for value in values[3:-1]]
+    if not means or not scales or len(means) != len(scales):
+        raise ValueError(f"Failed to parse Step-Audio CMVN file: {path}")
+    return np.asarray([means, scales], dtype=np.float32)
+
+
+def load_step_audio_tokenizer_runtime_assets(
+    model_dir: str | Path,
+) -> StepAudioTokenizerRuntimeAssets:
+    """Load only the assets required by converted VQ02/VQ06 inference."""
+
+    resolved_dir = Path(model_dir)
+    config_path = resolved_dir / RUNTIME_CONFIG_FILENAME
+    assets_path = resolved_dir / RUNTIME_ASSETS_FILENAME
+    if not config_path.exists():
+        raise FileNotFoundError(f"Missing Step-Audio runtime config: {config_path}")
+    if not assets_path.exists():
+        raise FileNotFoundError(f"Missing Step-Audio runtime assets: {assets_path}")
+
+    with config_path.open(encoding="utf-8") as file:
+        config = StepAudioTokenizerConfig.from_dict(json.load(file))
+    if config.model_type != "step_audio_tokenizer":
+        raise ValueError(
+            f"Invalid Step-Audio runtime model_type in {config_path}: "
+            f"{config.model_type!r}."
+        )
+    tensors = load_file(assets_path)
+    expected = {"cmvn", "linguistic_codebook"}
+    if set(tensors) != expected:
+        missing = tuple(sorted(expected - set(tensors)))
+        unexpected = tuple(sorted(set(tensors) - expected))
+        raise ValueError(
+            "Invalid Step-Audio runtime asset keys: "
+            f"missing={missing}, unexpected={unexpected}"
+        )
+
+    linguistic_codebook = np.asarray(tensors["linguistic_codebook"], dtype=np.float32)
+    cmvn = np.asarray(tensors["cmvn"], dtype=np.float32)
+    if linguistic_codebook.ndim != 2:
+        raise ValueError(
+            "Expected Step-Audio linguistic codebook to be rank-2, got "
+            f"{linguistic_codebook.shape}."
+        )
+    if linguistic_codebook.shape[0] != config.vq02_codebook_size:
+        raise ValueError(
+            "Step-Audio linguistic codebook size does not match runtime config: "
+            f"{linguistic_codebook.shape[0]} vs {config.vq02_codebook_size}."
+        )
+    if cmvn.ndim != 2 or cmvn.shape[0] != 2 or cmvn.shape[1] == 0:
+        raise ValueError(f"Expected Step-Audio CMVN shape (2, features), got {cmvn.shape}.")
+
+    return StepAudioTokenizerRuntimeAssets(
+        model_dir=resolved_dir,
+        config=config,
+        linguistic_codebook=linguistic_codebook,
+        cmvn=cmvn,
+    )
 
 
 def resolve_step_audio_tokenizer_model_dir(
