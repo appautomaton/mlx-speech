@@ -16,7 +16,7 @@ from mlx_speech.models.dots_tts.checkpoint import (
     quantize_dots_tts_core,
 )
 from mlx_speech.models.dots_tts.config import DotsTTSConfig, DotsTTSQwenConfig
-from test_dots_tts_config import dots_config
+from tests.unit.test_dots_tts_config import dots_config
 
 
 def _core() -> DotsTTSCoreComponents:

@@ -1,7 +1,25 @@
 import json
 from pathlib import Path
 
-from mlx_speech.models.moss_delay import MossTTSDelayConfig
+from mlx_speech.models.moss_delay import (
+    MossTTSDelayConfig,
+    resolve_moss_tts_delay_model_dir,
+)
+from mlx_speech.models.moss_delay import checkpoint as checkpoint_module
+
+
+def test_resolve_moss_tts_delay_model_dir_defaults_to_local_quantized_runtime(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    model_dir = tmp_path / "openmoss" / "moss_ttsd" / "mlx-int8"
+    model_dir.mkdir(parents=True)
+    (model_dir / "model.safetensors").write_bytes(b"fixture")
+    monkeypatch.setattr(checkpoint_module, "MODELS_ROOT", tmp_path)
+
+    resolved = resolve_moss_tts_delay_model_dir()
+
+    assert resolved == model_dir
 
 
 def test_moss_delay_config_from_dict_exposes_derived_properties() -> None:

@@ -10,7 +10,7 @@ import numpy as np
 from mlx_speech.generation.step_audio_editx import StepAudioEditXResult
 
 SCRIPT_PATH = (
-    Path(__file__).resolve().parents[1]
+    Path(__file__).resolve().parents[2]
     / "scripts"
     / "generate"
     / "step_audio_editx.py"

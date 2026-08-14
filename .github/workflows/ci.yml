@@ -23,12 +23,16 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
 
-      - name: Run unit tests
-        run: uv run pytest tests/unit/ -q
+      - name: Run fast tests
+        run: >-
+          uv run pytest -q -ra
+          --cov=mlx_speech
+          --cov-report=term-missing:skip-covered
         env:
           # GitHub's virtualized macOS runner reports Metal but aborts custom kernels.
           MLX_SPEECH_DISABLE_CUSTOM_METAL: "1"
 
-      - name: Run checkpoint tests
-        # Skips cleanly when local checkpoints are absent, which is always on CI.
-        run: uv run pytest tests/checkpoint/ -q
+      - name: Validate opt-in test collection
+        run: >-
+          uv run pytest --collect-only -q
+          tests/checkpoint/ tests/runtime/ tests/integration/

@@ -22,6 +22,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.3,<9",
+    "pytest-cov>=7.1,<8",
     "ruff>=0.11,<0.12",
 ]
 
@@ -30,6 +31,7 @@ requires = ["uv_build>=0.11.2,<0.12"]
 build-backend = "uv_build"
 
 [tool.pytest.ini_options]
+addopts = ["--strict-config", "--strict-markers"]
 testpaths = ["tests"]
 markers = [
     "checkpoint: needs local model checkpoints (skip if absent)",
@@ -37,6 +39,16 @@ markers = [
     "integration: full pipeline with real audio (manual only)",
     "local_integration: test requires local model artifacts or repo-specific runtime assets",
 ]
+
+[tool.coverage.run]
+branch = true
+source = ["mlx_speech"]
+
+[tool.coverage.report]
+fail_under = 72.8
+precision = 1
+show_missing = true
+skip_empty = true
 
 [tool.ruff]
 target-version = "py313"

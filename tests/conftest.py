@@ -36,18 +36,6 @@ def _requested_tiers(root: Path, args: tuple[str, ...]) -> set[str]:
     return enabled
 
 
-def _is_explicit_target(path: Path, root: Path, args: tuple[str, ...]) -> bool:
-    for arg in args:
-        if not arg or arg.startswith("-"):
-            continue
-        candidate = Path(arg)
-        if not candidate.is_absolute():
-            candidate = (root / candidate).resolve()
-        if candidate == path:
-            return True
-    return False
-
-
 def pytest_ignore_collect(collection_path: Path, config) -> bool:  # type: ignore[no-untyped-def]
     root = Path(str(config.rootpath)).resolve()
     args = tuple(config.invocation_params.args)
@@ -57,14 +45,6 @@ def pytest_ignore_collect(collection_path: Path, config) -> bool:  # type: ignor
         tier_dir = (root / "tests" / tier).resolve()
         if path == tier_dir or tier_dir in path.parents:
             return tier not in enabled
-    if path.parent == (root / "tests").resolve() and path.suffix == ".py":
-        text = path.read_text(encoding="utf-8")
-        if (
-            'Path("models/' in text
-            or 'MODEL_DIR = "models/' in text
-            or "pytest.mark.local_integration" in text
-        ):
-            return not _is_explicit_target(path, root, args)
     return False
 
 

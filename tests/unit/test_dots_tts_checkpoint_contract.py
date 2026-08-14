@@ -16,7 +16,7 @@ from mlx_speech.models.dots_tts.checkpoint import (
     storage_dtype,
     validate_artifact_dir,
 )
-from test_dots_tts_config import dots_config, qwen_config
+from tests.unit.test_dots_tts_config import dots_config, qwen_config
 
 
 def _metadata(*, variant: str = "soar", artifact_class: str = "base") -> dict:

@@ -6,7 +6,12 @@ from pathlib import Path
 import sys
 
 
-SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "generate_moss_ttsd.py"
+SCRIPT_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "scripts"
+    / "generate"
+    / "moss_ttsd.py"
+)
 
 
 def _load_script_module():

@@ -22,7 +22,7 @@ from scripts.convert.dots_tts import (
     remap_core_weights,
     remap_speaker_weights,
 )
-from test_dots_tts_config import dots_config, qwen_config
+from tests.unit.test_dots_tts_config import dots_config, qwen_config
 
 
 def test_core_remap_uses_runtime_names_and_native_conv_layout() -> None:

@@ -1,10 +1,23 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from mlx_speech.models.moss_delay import load_moss_sound_effect_model, resolve_moss_sound_effect_model_dir
+from mlx_speech.models.moss_delay import (
+    load_moss_sound_effect_model,
+    resolve_moss_sound_effect_model_dir,
+)
 
-pytestmark = pytest.mark.local_integration
+MODEL_DIR = Path("models/openmoss/moss_sound_effect/mlx-4bit")
+
+pytestmark = [
+    pytest.mark.checkpoint,
+    pytest.mark.skipif(
+        not MODEL_DIR.is_dir(),
+        reason="MOSS sound-effect checkpoint is not present",
+    ),
+]
 
 
 def test_default_moss_sound_effect_runtime_loads_quantized_mlx_model() -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from mlx_speech.tts import StreamingTTSModel, TTSOutput
 from mlx_speech.tts._adapters.dots_tts import DotsTTSAdapter
 
-from test_dots_tts_adapter import _Generator
+from tests.unit.test_dots_tts_adapter import _Generator
 
 
 class _NonStreamingModel:

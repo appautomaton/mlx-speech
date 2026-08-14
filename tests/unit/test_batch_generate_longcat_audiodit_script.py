@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import mlx.core as mx
 
-from scripts.batch_generate_longcat_audiodit import _build_parser, _run_batch_items
+from scripts.generate.batch_longcat_audiodit import _build_parser, _run_batch_items
 
 
 def test_batch_script_builds_parser() -> None:
@@ -41,14 +41,14 @@ def test_run_batch_items_reuses_loaded_model_and_enables_batch_mode(
         written.append(Path(path))
 
     monkeypatch.setattr(
-        "scripts.batch_generate_longcat_audiodit.load_audio", _fake_load_audio
+        "scripts.generate.batch_longcat_audiodit.load_audio", _fake_load_audio
     )
     monkeypatch.setattr(
-        "scripts.batch_generate_longcat_audiodit.synthesize_longcat_audiodit",
+        "scripts.generate.batch_longcat_audiodit.synthesize_longcat_audiodit",
         _fake_synthesize_longcat_audiodit,
     )
     monkeypatch.setattr(
-        "scripts.batch_generate_longcat_audiodit.write_wav", _fake_write_wav
+        "scripts.generate.batch_longcat_audiodit.write_wav", _fake_write_wav
     )
 
     model = SimpleNamespace(config=SimpleNamespace(sampling_rate=24000))

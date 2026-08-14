@@ -31,7 +31,7 @@ def _import_roots(path: Path) -> set[str]:
 
 
 def test_runtime_modules_do_not_import_banned_dependency_stacks() -> None:
-    runtime_root = Path(__file__).resolve().parents[1] / "src" / "mlx_speech"
+    runtime_root = Path(__file__).resolve().parents[2] / "src" / "mlx_speech"
     bad_files: list[str] = []
     for path in runtime_root.rglob("*.py"):
         banned = sorted(_import_roots(path) & BANNED_RUNTIME_IMPORTS)
@@ -41,7 +41,7 @@ def test_runtime_modules_do_not_import_banned_dependency_stacks() -> None:
 
 
 def test_runtime_modules_do_not_reference_upstream_qwen_asr_distribution() -> None:
-    runtime_root = Path(__file__).resolve().parents[1] / "src" / "mlx_speech"
+    runtime_root = Path(__file__).resolve().parents[2] / "src" / "mlx_speech"
     bad_files: list[str] = []
     for path in runtime_root.rglob("*.py"):
         text = path.read_text(encoding="utf-8")

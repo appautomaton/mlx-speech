@@ -1,4 +1,4 @@
-from scripts.generate_longcat_audiodit import _build_parser
+from scripts.generate.longcat_audiodit import _build_parser
 
 
 def test_generate_script_builds_parser() -> None:

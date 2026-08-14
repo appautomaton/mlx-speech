@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import mlx.core as mx
@@ -11,9 +12,25 @@ from mlx_speech.generation import (
     synthesize_moss_tts_local_conversations,
 )
 from mlx_speech.models.moss_audio_tokenizer import load_moss_audio_tokenizer_model
-from mlx_speech.models.moss_local import MossTTSLocalProcessor, load_moss_tts_local_model
+from mlx_speech.models.moss_local import (
+    MossTTSLocalProcessor,
+    load_moss_tts_local_model,
+)
 
-pytestmark = pytest.mark.local_integration
+MODEL_DIR = Path("models/openmoss/moss_tts_local/mlx-int8")
+CODEC_DIR = Path("models/openmoss/moss_audio_tokenizer/mlx-int8")
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        os.environ.get("RUN_LOCAL_INTEGRATION") != "1",
+        reason="set RUN_LOCAL_INTEGRATION=1 for local waveform generation",
+    ),
+    pytest.mark.skipif(
+        not MODEL_DIR.is_dir() or not CODEC_DIR.is_dir(),
+        reason="MOSS-TTS-Local checkpoints are not present",
+    ),
+]
 
 
 def _runtime():
@@ -65,14 +82,18 @@ def test_default_quantized_runtime_supports_main_inference_modes(
         conversations = [
             [
                 processor.build_user_message(**user_kwargs),
-                processor.build_assistant_message(audio_codes_list=[str(reference_audio_path)]),
+                processor.build_assistant_message(
+                    audio_codes_list=[str(reference_audio_path)]
+                ),
             ]
         ]
     else:
         conversations = [
             [
                 processor.build_user_message(**user_kwargs),
-                processor.build_assistant_message(audio_codes_list=[str(reference_audio_path)]),
+                processor.build_assistant_message(
+                    audio_codes_list=[str(reference_audio_path)]
+                ),
             ]
         ]
 
@@ -96,7 +117,11 @@ def test_batch_inference_preserves_output_order(reference_audio_path: Path) -> N
     config = MossTTSLocalGenerationConfig(max_new_tokens=2, do_sample=False)
     conversations = [
         [processor.build_user_message(text="First sample.", tokens=6)],
-        [processor.build_user_message(text="Second sample.", reference=[str(reference_audio_path)], tokens=6)],
+        [
+            processor.build_user_message(
+                text="Second sample.", reference=[str(reference_audio_path)], tokens=6
+            )
+        ],
     ]
 
     result = synthesize_moss_tts_local_conversations(
@@ -141,14 +166,18 @@ def test_cached_and_uncached_single_sample_paths_match(
         conversations = [
             [
                 processor.build_user_message(**user_kwargs),
-                processor.build_assistant_message(audio_codes_list=[str(reference_audio_path)]),
+                processor.build_assistant_message(
+                    audio_codes_list=[str(reference_audio_path)]
+                ),
             ]
         ]
     else:
         conversations = [
             [
                 processor.build_user_message(**user_kwargs),
-                processor.build_assistant_message(audio_codes_list=[str(reference_audio_path)]),
+                processor.build_assistant_message(
+                    audio_codes_list=[str(reference_audio_path)]
+                ),
             ]
         ]
 
@@ -158,7 +187,9 @@ def test_cached_and_uncached_single_sample_paths_match(
         codec,
         conversations=conversations,
         mode=processor_mode,
-        config=MossTTSLocalGenerationConfig(max_new_tokens=2, do_sample=False, use_kv_cache=True),
+        config=MossTTSLocalGenerationConfig(
+            max_new_tokens=2, do_sample=False, use_kv_cache=True
+        ),
     )
     uncached = synthesize_moss_tts_local_conversations(
         model,
@@ -173,9 +204,17 @@ def test_cached_and_uncached_single_sample_paths_match(
         ),
     )
 
-    assert cached.generation.sequences.tolist() == uncached.generation.sequences.tolist()
-    assert cached.generation.generated_rows.tolist() == uncached.generation.generated_rows.tolist()
-    assert cached.generation.audio_codes_list[0].tolist() == uncached.generation.audio_codes_list[0].tolist()
+    assert (
+        cached.generation.sequences.tolist() == uncached.generation.sequences.tolist()
+    )
+    assert (
+        cached.generation.generated_rows.tolist()
+        == uncached.generation.generated_rows.tolist()
+    )
+    assert (
+        cached.generation.audio_codes_list[0].tolist()
+        == uncached.generation.audio_codes_list[0].tolist()
+    )
 
 
 def test_batch_kv_cache_flag_falls_back_to_uncached_path(
@@ -184,7 +223,13 @@ def test_batch_kv_cache_flag_falls_back_to_uncached_path(
     model, processor, codec = _runtime()
     conversations = [
         [processor.build_user_message(text="First cached batch item.", tokens=6)],
-        [processor.build_user_message(text="Second cached batch item.", reference=[str(reference_audio_path)], tokens=6)],
+        [
+            processor.build_user_message(
+                text="Second cached batch item.",
+                reference=[str(reference_audio_path)],
+                tokens=6,
+            )
+        ],
     ]
 
     cached = synthesize_moss_tts_local_conversations(
@@ -193,7 +238,9 @@ def test_batch_kv_cache_flag_falls_back_to_uncached_path(
         codec,
         conversations=conversations,
         mode="generation",
-        config=MossTTSLocalGenerationConfig(max_new_tokens=2, do_sample=False, use_kv_cache=True),
+        config=MossTTSLocalGenerationConfig(
+            max_new_tokens=2, do_sample=False, use_kv_cache=True
+        ),
     )
     uncached = synthesize_moss_tts_local_conversations(
         model,
@@ -208,7 +255,9 @@ def test_batch_kv_cache_flag_falls_back_to_uncached_path(
         ),
     )
 
-    assert cached.generation.sequences.tolist() == uncached.generation.sequences.tolist()
+    assert (
+        cached.generation.sequences.tolist() == uncached.generation.sequences.tolist()
+    )
     assert len(cached.outputs) == 2
     assert cached.outputs[0].waveform.size > 0
     assert cached.outputs[1].waveform.size > 0
@@ -216,7 +265,9 @@ def test_batch_kv_cache_flag_falls_back_to_uncached_path(
 
 def test_default_cached_path_runs() -> None:
     model, processor, codec = _runtime()
-    conversations = [[processor.build_user_message(text="Local cache sample.", tokens=6)]]
+    conversations = [
+        [processor.build_user_message(text="Local cache sample.", tokens=6)]
+    ]
 
     mx.random.seed(0)
     result = synthesize_moss_tts_local_conversations(

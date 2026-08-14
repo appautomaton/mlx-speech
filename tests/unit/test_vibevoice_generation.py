@@ -1,24 +1,14 @@
 """Tests for VibeVoice generation loop."""
 
-from pathlib import Path
-
 import mlx.core as mx
-import pytest
 
 from mlx_speech.generation.vibevoice import (
     VibeVoiceGenerationConfig,
-    VibeVoiceSynthesisOutput,
     _apply_top_p,
     _constrain_logits,
     _format_text_input,
     _sample_next_token,
 )
-
-MODEL_DIR = Path("models/vibevoice/mlx-int8")
-HAS_INT8 = any(MODEL_DIR.glob("*.safetensors")) if MODEL_DIR.exists() else False
-ORIGINAL_DIR = Path("models/vibevoice/original")
-HAS_ORIGINAL = any(ORIGINAL_DIR.glob("*.safetensors")) if ORIGINAL_DIR.exists() else False
-HAS_MODEL = HAS_INT8 or HAS_ORIGINAL
 
 
 class TestConstrainLogits:
@@ -112,52 +102,3 @@ class TestPromptFormatting:
     def test_bracket_speaker_labels_are_treated_as_plain_text(self):
         text = "[1]: Hello.\n[2]: Hi."
         assert _format_text_input(text) == "Speaker 0: [1]: Hello. [2]: Hi."
-
-
-@pytest.mark.skipif(not HAS_MODEL, reason="model not available")
-@pytest.mark.local_integration
-class TestEndToEnd:
-    def _get_model_dir(self):
-        return MODEL_DIR if HAS_INT8 else ORIGINAL_DIR
-
-    def test_short_generation(self):
-        from mlx_speech.models.vibevoice.checkpoint import load_vibevoice_model
-        from mlx_speech.models.vibevoice.tokenizer import VibeVoiceTokenizer
-        from mlx_speech.generation.vibevoice import synthesize_vibevoice
-
-        model_dir = self._get_model_dir()
-        loaded = load_vibevoice_model(model_dir, strict=False)
-        tok = VibeVoiceTokenizer.from_path(model_dir)
-        config = VibeVoiceGenerationConfig(max_new_tokens=20, do_sample=False)
-
-        result = synthesize_vibevoice(loaded.model, tok, "Hello.", config=config)
-        mx.eval(result.waveform)
-
-        assert isinstance(result, VibeVoiceSynthesisOutput)
-        assert result.sample_rate == 24000
-        assert result.generated_tokens > 0
-        assert result.waveform.shape[0] > 0
-
-    def test_voice_cloning(self):
-        from mlx_speech.models.vibevoice.checkpoint import load_vibevoice_model
-        from mlx_speech.models.vibevoice.tokenizer import VibeVoiceTokenizer
-        from mlx_speech.generation.vibevoice import synthesize_vibevoice
-        from mlx_speech.audio.io import load_audio
-
-        ref_path = Path("outputs/source/hank_hill_ref.wav")
-        if not ref_path.exists():
-            pytest.skip("reference audio not available")
-
-        model_dir = self._get_model_dir()
-        loaded = load_vibevoice_model(model_dir, strict=False)
-        tok = VibeVoiceTokenizer.from_path(model_dir)
-        config = VibeVoiceGenerationConfig(max_new_tokens=20, do_sample=False)
-
-        ref_raw, _ = load_audio(str(ref_path), sample_rate=24000)
-        result = synthesize_vibevoice(
-            loaded.model, tok, "Hello.",
-            reference_audio=ref_raw.reshape(1, 1, -1),
-            config=config,
-        )
-        mx.eval(result.waveform)
-        assert result.waveform.shape[0] > 0

@@ -13,7 +13,7 @@ from mlx_speech.models.dots_tts.vocoder import (
     CausalConvTranspose1d,
     Conv1d,
 )
-from test_dots_tts_audio_vae import _config
+from tests.unit.test_dots_tts_audio_vae import _config
 
 
 def test_causal_convolution_does_not_see_future_inputs() -> None:
