@@ -195,9 +195,13 @@ artifact without PyTorch or `mlx-audio`.
 git clone https://github.com/appautomaton/mlx-speech.git
 cd mlx-speech
 uv sync
-uv run pytest tests/unit/
+uv run pytest
 uv run ruff check .
 ```
+
+The default command runs the fast, artifact-free tier. See
+[`tests/README.md`](tests/README.md) for checkpoint, runtime, integration,
+fixture, and coverage gates.
 
 ```text
 mlx-speech/

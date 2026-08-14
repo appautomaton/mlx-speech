@@ -11,9 +11,15 @@ from mlx_speech.models.moss_audio_tokenizer.config import MossAudioTokenizerConf
 from mlx_speech.models.moss_local import MossTTSLocalProcessor
 from mlx_speech.models.moss_local.tokenizer import DEFAULT_MOSS_CHAT_TEMPLATE
 
-pytestmark = pytest.mark.local_integration
+MODEL_DIR = Path("models/openmoss/moss_tts_local/mlx-int8")
 
-MODEL_DIR = "models/openmoss/moss_tts_local/mlx-int8"
+pytestmark = [
+    pytest.mark.runtime,
+    pytest.mark.skipif(
+        not MODEL_DIR.is_dir(),
+        reason="MOSS-TTS-Local tokenizer assets are not present",
+    ),
+]
 
 
 def _tiny_codec_config() -> MossAudioTokenizerConfig:
@@ -84,7 +90,7 @@ def _load_upstream_processor():
     transformers = pytest.importorskip("transformers")
     torch = pytest.importorskip("torch")
 
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     upstream_root = repo_root / ".references" / "MOSS-TTS"
     if str(upstream_root) not in sys.path:
         sys.path.insert(0, str(upstream_root))
@@ -93,7 +99,9 @@ def _load_upstream_processor():
     from moss_tts_local.processing_moss_tts import MossTTSDelayProcessor
 
     model_dir = repo_root / "models" / "openmoss" / "moss_tts_local" / "mlx-int8"
-    tokenizer = transformers.AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=True)
+    tokenizer = transformers.AutoTokenizer.from_pretrained(
+        str(model_dir), trust_remote_code=True
+    )
     tokenizer.chat_template = DEFAULT_MOSS_CHAT_TEMPLATE
     config = MossTTSDelayConfig.from_pretrained(str(model_dir), trust_remote_code=True)
     processor = MossTTSDelayProcessor(
@@ -117,7 +125,9 @@ def _assert_processor_parity(
     upstream_batch = upstream_processor([upstream_conversation], mode=mode)
 
     assert our_batch.input_ids.tolist() == upstream_batch["input_ids"].tolist()
-    assert our_batch.attention_mask.tolist() == upstream_batch["attention_mask"].tolist()
+    assert (
+        our_batch.attention_mask.tolist() == upstream_batch["attention_mask"].tolist()
+    )
 
 
 def test_processor_loads_local_tokenizer_assets() -> None:
@@ -172,7 +182,9 @@ def test_processor_generation_parity_with_upstream_direct() -> None:
 def test_processor_generation_parity_with_upstream_clone() -> None:
     processor = MossTTSLocalProcessor.from_path(MODEL_DIR)
     reference_codes = _make_reference_codes()
-    our_message = processor.build_user_message(text="Clone this.", reference=[reference_codes])
+    our_message = processor.build_user_message(
+        text="Clone this.", reference=[reference_codes]
+    )
     upstream_processor, torch = _load_upstream_processor()
     upstream_message = upstream_processor.build_user_message(
         text="Clone this.",
@@ -197,7 +209,9 @@ def test_processor_continuation_parity_with_upstream() -> None:
         ),
     ]
 
-    _assert_processor_parity(our_conversation, upstream_conversation, mode="continuation")
+    _assert_processor_parity(
+        our_conversation, upstream_conversation, mode="continuation"
+    )
 
 
 def test_processor_continue_clone_parity_with_upstream() -> None:
@@ -210,11 +224,15 @@ def test_processor_continue_clone_parity_with_upstream() -> None:
     upstream_processor, torch = _load_upstream_processor()
     upstream_codes = torch.tensor(prefix_codes.tolist(), dtype=torch.long)
     upstream_conversation = [
-        upstream_processor.build_user_message(text="Continue clone.", reference=[upstream_codes]),
+        upstream_processor.build_user_message(
+            text="Continue clone.", reference=[upstream_codes]
+        ),
         upstream_processor.build_assistant_message(audio_codes_list=[upstream_codes]),
     ]
 
-    _assert_processor_parity(our_conversation, upstream_conversation, mode="continuation")
+    _assert_processor_parity(
+        our_conversation, upstream_conversation, mode="continuation"
+    )
 
 
 @pytest.mark.parametrize(
@@ -249,14 +267,25 @@ def test_processor_continue_clone_parity_with_upstream() -> None:
         ),
     ],
 )
-def test_processor_continuation_modes_ignore_tokens_conditioning(with_tokens, without_tokens) -> None:
+def test_processor_continuation_modes_ignore_tokens_conditioning(
+    with_tokens, without_tokens
+) -> None:
     processor = MossTTSLocalProcessor.from_path(MODEL_DIR)
     prefix_codes = _make_reference_codes()
-    with_tokens_batch = processor([with_tokens(processor, prefix_codes)], mode="continuation")
-    without_tokens_batch = processor([without_tokens(processor, prefix_codes)], mode="continuation")
+    with_tokens_batch = processor(
+        [with_tokens(processor, prefix_codes)], mode="continuation"
+    )
+    without_tokens_batch = processor(
+        [without_tokens(processor, prefix_codes)], mode="continuation"
+    )
 
-    assert with_tokens_batch.input_ids.tolist() == without_tokens_batch.input_ids.tolist()
-    assert with_tokens_batch.attention_mask.tolist() == without_tokens_batch.attention_mask.tolist()
+    assert (
+        with_tokens_batch.input_ids.tolist() == without_tokens_batch.input_ids.tolist()
+    )
+    assert (
+        with_tokens_batch.attention_mask.tolist()
+        == without_tokens_batch.attention_mask.tolist()
+    )
 
 
 def test_processor_audio_helpers_encode_and_decode_with_bound_codec() -> None:

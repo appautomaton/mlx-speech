@@ -1,7 +1,5 @@
 """Tests for VibeVoice acoustic tokenizer."""
 
-from pathlib import Path
-
 import mlx.core as mx
 import pytest
 
@@ -15,9 +13,6 @@ from mlx_speech.models.vibevoice.acoustic import (
     VibeVoiceConvEncoder,
 )
 from mlx_speech.models.vibevoice.config import VibeVoiceConvTokenizerConfig
-
-MODEL_DIR = Path("models/vibevoice/mlx-int8")
-HAS_CHECKPOINT = (MODEL_DIR / "config.json").exists()
 
 
 class TestCausalConv1d:
@@ -121,7 +116,9 @@ class TestBlock1D:
 class TestEncoder:
     def test_tiny_config(self):
         cfg = VibeVoiceConvTokenizerConfig(
-            vae_dim=8, encoder_ratios=(2, 2), encoder_depths="2-2-2",
+            vae_dim=8,
+            encoder_ratios=(2, 2),
+            encoder_depths="2-2-2",
             encoder_n_filters=4,
         )
         enc = VibeVoiceConvEncoder(cfg)
@@ -134,43 +131,14 @@ class TestEncoder:
 class TestDecoder:
     def test_tiny_config(self):
         cfg = VibeVoiceConvTokenizerConfig(
-            vae_dim=8, encoder_ratios=(2, 2), encoder_depths="2-2-2",
-            encoder_n_filters=4, decoder_n_filters=4,
+            vae_dim=8,
+            encoder_ratios=(2, 2),
+            encoder_depths="2-2-2",
+            encoder_n_filters=4,
+            decoder_n_filters=4,
         )
         dec = VibeVoiceConvDecoder(cfg)
         x = mx.random.normal((1, 8, 4))  # (B, vae_dim, T_frames)
         out = dec(x)
         assert out.shape[0] == 1
         assert out.shape[1] == 1  # channels
-
-
-@pytest.mark.skipif(not HAS_CHECKPOINT, reason="checkpoint not available")
-class TestRealCheckpoint:
-    def test_encoder_output_shape(self):
-        from mlx_speech.models.vibevoice.checkpoint import load_vibevoice_model
-
-        loaded = load_vibevoice_model(MODEL_DIR, strict=False)
-        enc = loaded.model.model.acoustic_tokenizer.encoder
-        x = mx.random.normal((1, 1, 24000))  # 1 second at 24kHz
-        out = enc(x)
-        mx.eval(out)
-        # 24000 / 3200 ≈ 7.5 frames
-        assert out.shape[0] == 1
-        assert out.shape[1] == 64  # vae_dim
-        assert out.shape[2] >= 7
-
-    def test_encode_decode_roundtrip_shape(self):
-        from mlx_speech.models.vibevoice.checkpoint import load_vibevoice_model
-
-        loaded = load_vibevoice_model(MODEL_DIR, strict=False)
-        at = loaded.model.model.acoustic_tokenizer
-        x = mx.random.normal((1, 1, 24000))
-        latent = at.encode(x)
-        mx.eval(latent)
-        # Decode
-        recon = at.decode(latent)
-        mx.eval(recon)
-        assert recon.shape[0] == 1
-        assert recon.shape[1] == 1
-        # Reconstructed length should be close to original
-        assert abs(recon.shape[2] - 24000) < 3200  # within one frame

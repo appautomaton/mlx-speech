@@ -12,7 +12,7 @@ from mlx_speech.models.dots_tts.audio_vae import (
     VocoderDecodeState,
 )
 from mlx_speech.models.dots_tts.vocoder import AliasFreeSnakeBeta
-from test_dots_tts_audio_vae import _config
+from tests.unit.test_dots_tts_audio_vae import _config
 
 
 def _model(seed: int) -> AudioVAE:

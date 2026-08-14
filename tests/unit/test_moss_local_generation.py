@@ -20,7 +20,12 @@ from mlx_speech.models.moss_local import (
 
 
 def _load_generate_script_module():
-    script_path = Path(__file__).resolve().parents[1] / "scripts" / "generate_moss_local.py"
+    script_path = (
+        Path(__file__).resolve().parents[2]
+        / "scripts"
+        / "generate"
+        / "moss_local.py"
+    )
     spec = importlib.util.spec_from_file_location("generate_moss_local_script", script_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load script module from {script_path}.")

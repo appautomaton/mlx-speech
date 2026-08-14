@@ -9,7 +9,7 @@ import numpy as np
 
 def _load_feature_module():
     module_path = (
-        Path(__file__).resolve().parents[1]
+        Path(__file__).resolve().parents[2]
         / "src"
         / "mlx_speech"
         / "models"

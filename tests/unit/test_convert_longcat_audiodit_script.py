@@ -1,4 +1,4 @@
-from scripts.convert_longcat_audiodit import _build_parser
+from scripts.convert.longcat_audiodit import _build_parser
 
 
 def test_convert_script_defaults_to_longcat_layout() -> None:

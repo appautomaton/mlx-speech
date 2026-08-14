@@ -1,11 +1,24 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from mlx_speech.generation import MossTTSDelayGenerationConfig, generate_moss_tts_delay
-from mlx_speech.models.moss_delay import MossTTSDelayProcessor, load_moss_tts_delay_model
+from mlx_speech.models.moss_delay import (
+    MossTTSDelayProcessor,
+    load_moss_tts_delay_model,
+)
 
-pytestmark = pytest.mark.local_integration
+MODEL_DIR = Path("models/openmoss/moss_ttsd/mlx-int8")
+
+pytestmark = [
+    pytest.mark.runtime,
+    pytest.mark.skipif(
+        not MODEL_DIR.is_dir(),
+        reason="MOSS-TTSD checkpoint is not present",
+    ),
+]
 
 
 @pytest.fixture(scope="module")

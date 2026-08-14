@@ -6,11 +6,15 @@ from pathlib import Path
 import sys
 
 
-SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "generate_vibevoice.py"
+SCRIPT_PATH = (
+    Path(__file__).resolve().parents[2] / "scripts" / "generate" / "vibevoice.py"
+)
 
 
 def _load_script_module():
-    spec = importlib.util.spec_from_file_location("generate_vibevoice_script", SCRIPT_PATH)
+    spec = importlib.util.spec_from_file_location(
+        "generate_vibevoice_script", SCRIPT_PATH
+    )
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load script module from {SCRIPT_PATH}.")
     module = importlib.util.module_from_spec(spec)
@@ -31,10 +35,10 @@ def _args(**overrides):
         "diffusion_steps_fast": None,
         "diffusion_warmup_frames": 10,
         "max_new_tokens": 2048,
-        "temperature": 1.0,
-        "top_p": 1.0,
-        "seed": None,
-        "greedy": False,
+        "temperature": 0.95,
+        "top_p": 0.95,
+        "seed": 42,
+        "no_greedy": False,
     }
     data.update(overrides)
     return argparse.Namespace(**data)
@@ -50,29 +54,29 @@ def test_parser_help_documents_sampling_controls() -> None:
     assert "--temperature" in help_text
     assert "--top-p" in help_text
     assert "--seed" in help_text
-    assert "--greedy" in help_text
+    assert "--no-greedy" in help_text
 
 
-def test_build_generation_config_uses_sampling_defaults() -> None:
+def test_build_generation_config_uses_greedy_defaults() -> None:
     module = _load_script_module()
 
     config = module._build_generation_config(_args())
 
-    assert config.do_sample is True
-    assert config.temperature == 1.0
-    assert config.top_p == 1.0
-    assert config.seed is None
+    assert config.do_sample is False
+    assert config.temperature == 0.0
+    assert config.top_p == 0.95
+    assert config.seed == 42
     assert config.diffusion_steps_fast is None
     assert config.diffusion_warmup_frames == 10
 
 
-def test_build_generation_config_can_force_greedy_with_seed() -> None:
+def test_build_generation_config_can_enable_sampling_with_seed() -> None:
     module = _load_script_module()
 
-    config = module._build_generation_config(_args(greedy=True, seed=123, top_p=0.8))
+    config = module._build_generation_config(_args(no_greedy=True, seed=123, top_p=0.8))
 
-    assert config.do_sample is False
-    assert config.temperature == 0.0
+    assert config.do_sample is True
+    assert config.temperature == 0.95
     assert config.top_p == 0.8
     assert config.seed == 123
 
