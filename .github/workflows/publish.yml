@@ -15,7 +15,7 @@ jobs:
         run: python3 scripts/release/verify_version.py "$GITHUB_REF_NAME"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: astral-sh/setup-uv@v10.0.1
 
       - name: Build
         run: uv build --no-sources
