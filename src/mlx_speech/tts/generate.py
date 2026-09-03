@@ -59,6 +59,47 @@ def add_tts_args(parser: argparse.ArgumentParser) -> None:
         help="Maximum tokens to generate.",
     )
     parser.add_argument(
+        "--max-audio-patches",
+        type=int,
+        default=None,
+        help="Maximum latent audio patches for supported TTS models.",
+    )
+    parser.add_argument(
+        "--reference-sample-rate",
+        type=int,
+        default=None,
+        help="Sample rate when --reference-audio is supplied as an in-memory array.",
+    )
+    parser.add_argument(
+        "--language",
+        default=None,
+        help="Generation language name, for example Chinese or English.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Deterministic generation seed.",
+    )
+    parser.add_argument(
+        "--guidance-scale",
+        type=float,
+        default=None,
+        help="Classifier-free guidance scale.",
+    )
+    parser.add_argument(
+        "--flow-steps",
+        type=int,
+        default=None,
+        help="Flow-matching solver steps per generated patch.",
+    )
+    parser.add_argument(
+        "--stop-threshold",
+        type=float,
+        default=None,
+        help="Autoregressive stop probability threshold.",
+    )
+    parser.add_argument(
         "--codec",
         default=None,
         help="Codec model path or HF repo (for MOSS models).",
@@ -150,6 +191,20 @@ def tts_main(args: argparse.Namespace) -> None:
         generate_kwargs["reference_text"] = args.reference_text
     if args.max_new_tokens is not None:
         generate_kwargs["max_new_tokens"] = args.max_new_tokens
+    if args.max_audio_patches is not None:
+        generate_kwargs["max_audio_patches"] = args.max_audio_patches
+    if args.reference_sample_rate is not None:
+        generate_kwargs["reference_sample_rate"] = args.reference_sample_rate
+    if args.language is not None:
+        generate_kwargs["language"] = args.language
+    if args.seed is not None:
+        generate_kwargs["seed"] = args.seed
+    if args.guidance_scale is not None:
+        generate_kwargs["guidance_scale"] = args.guidance_scale
+    if args.flow_steps is not None:
+        generate_kwargs["flow_steps"] = args.flow_steps
+    if args.stop_threshold is not None:
+        generate_kwargs["stop_threshold"] = args.stop_threshold
     if args.edit_type is not None:
         generate_kwargs["edit_type"] = args.edit_type
     if args.edit_info is not None:

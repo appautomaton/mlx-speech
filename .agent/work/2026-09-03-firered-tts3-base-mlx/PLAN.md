@@ -147,6 +147,21 @@ DYLD_LIBRARY_PATH=/opt/homebrew/opt/ffmpeg/lib PYTHONPATH=.references/FireRedTTS
 RUN_LOCAL_INTEGRATION=1 .venv/bin/python -m pytest tests/integration/test_fireredtts3.py
 ```
 
+**Status:** complete
+**Evidence:** registered `fireredtts3_base` with the unified TTS loader and CLI,
+added strict cloning-input validation, official sinc resampling, prompt
+conditioning/trimming, a dev-only PyTorch MPS reference command, runtime-purity
+guards, integration coverage, and the model guide. The mandatory unit suite
+passed 1099 tests; focused adapter/CLI/purity coverage passed 10 tests. With the
+same reference, transcript, target, seed, 10 flow steps, and CFG 2.0, official
+MPS wrote 61,440 samples and MLX wrote 65,280 samples at 24 kHz. Local ASR
+recovered `你好，很高兴认识你。` exactly from both; CAM++ reference/output cosine
+was 0.7781 for MPS and 0.7482 for MLX. The final MLX integration gate passed.
+**Plan correction:** `docs/index.md` does not exist; the repository's actual
+guide index `docs/README.md` was updated instead.
+**Risks / next:** repository-wide Ruff still reports 20 unrelated pre-existing
+unused-import errors outside the FireRed scope; all touched files pass Ruff.
+
 ## Aggregate Verification Commands
 
 | Scope | Command |

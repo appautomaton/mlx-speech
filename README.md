@@ -43,6 +43,7 @@ name links to a guide covering behavior, flags, and known limitations.
 | `dramabox` | [DramaBox](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md) — Resemble flow-matching diffusion TTS, 48 kHz stereo | [bf16](https://huggingface.co/appautomaton/dramabox-tts-3.3b-bf16-mlx)¹ |
 | `dots-tts-soar` | [dots.tts SOAR](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) — continuous autoregressive flow-matching TTS and voice cloning | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
 | `dots-tts-mf` | [dots.tts MeanFlow](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) — distilled continuous autoregressive TTS and voice cloning | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
+| local path | [FireRedTTS3 Base](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md) — multilingual Qwen3/DiT voice cloning, 24 kHz | local BF16 |
 
 ### Speech-to-text
 
@@ -87,6 +88,15 @@ result = model.generate(
     "[excited] This is amazing!",
     reference_audio="reference.wav",
     reference_text="Transcript of the reference audio.",
+)
+
+# FireRedTTS3 Base from a flat local artifact
+firered = mlx_speech.tts.load("models/firered/firered_tts3/mlx-bf16")
+result = firered.generate(
+    "你好，很高兴认识你。",
+    reference_audio="reference.wav",
+    reference_text="Exact reference transcript.",
+    language="Chinese",
 )
 
 # Speech-to-text
@@ -181,6 +191,9 @@ python scripts/convert/cohere_asr.py
 python scripts/convert/qwen3_asr.py
 python scripts/convert/granite_speech_asr.py
 python scripts/convert/dots_tts.py --variant all --precision int8
+python scripts/convert/fireredtts3.py \
+  --input-dir models/firered/firered_tts3/original \
+  --output-dir models/firered/firered_tts3/mlx-bf16
 uv run --with torch python scripts/convert/nemotron_asr.py --quant int8
 ```
 

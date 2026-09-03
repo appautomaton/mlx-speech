@@ -109,6 +109,11 @@ def load(
 
         return DotsTTSAdapter.from_dir(model_dir)
 
+    if family == "fireredtts3":
+        from ._adapters.fireredtts3 import FireRedTTS3Adapter
+
+        return FireRedTTS3Adapter.from_dir(model_dir)
+
     if family in ("moss_local", "moss_delay", "moss_sound_effect"):
         codec_dir = _resolve_codec_path(codec_path_or_repo, revision=revision)
         if family == "moss_local":
