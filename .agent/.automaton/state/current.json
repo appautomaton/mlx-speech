@@ -1,7 +1,6 @@
 {
-  "active_change": "2026-08-02-dots-tts-dit-throughput",
-  "stage": "verified",
-  "canonical_spec": ".agent/work/2026-08-02-dots-tts-dit-throughput/SPEC.md",
-  "canonical_plan": ".agent/work/2026-08-02-dots-tts-dit-throughput/PLAN.md",
-  "disengaged": true
+  "active_change": "2026-09-03-firered-tts3-base-mlx",
+  "stage": "execute",
+  "canonical_spec": ".agent/work/2026-09-03-firered-tts3-base-mlx/SPEC.md",
+  "canonical_plan": ".agent/work/2026-09-03-firered-tts3-base-mlx/PLAN.md"
 }
