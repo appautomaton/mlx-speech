@@ -78,6 +78,16 @@ root config; repeated conversion passed.
 .venv/bin/python -m pytest tests/checkpoint/test_fireredtts3_audio_checkpoint.py
 ```
 
+**Status:** complete
+**Evidence:** added MLX RedAE encode/decode, official 64-token Qwen3 sliding
+attention, same-padding ISTFT, and the shared exact-match CAM++ frontend/model.
+The focused suite passed 11 tests, the shared Qwen3 decoder passed 8 tests,
+and strict real-checkpoint loading plus short-waveform execution passed. The
+regenerated speaker artifact validates all 937 source entries, drops 122
+training-only BatchNorm counters, and strictly loads 815 MLX inference tensors;
+RedAE strictly loads all 458 tensors.
+**Risks / next:** none.
+
 ### Slice 3: MLX autoregressive core and generation loop
 
 **Objective:** Implement Base prompt conditioning and patch-by-patch Qwen3/DiT latent generation.

@@ -6,6 +6,7 @@ import io
 import json
 import math
 import pickle
+import re
 import shutil
 import zipfile
 from collections import OrderedDict
@@ -28,6 +29,7 @@ from .config import (
 SOURCE_REVISION = "dcf1bdcd1b8b25b382fa84c3e34eb82e3054a610"
 SOURCE_CODE_REVISION = "1d32ba780da6af37a71bdfd9c68c12003e908a46"
 EXPECTED_SOURCE_TENSORS = {"core": 677, "redae": 458, "speaker": 937}
+EXPECTED_ARTIFACT_TENSORS = {"core": 677, "redae": 458, "speaker": 815}
 
 _SOURCE_FILES = {
     "core": Path("fireredtts3_base/model.safetensors"),
@@ -233,6 +235,40 @@ def _convert_layout(component: str, name: str, value: mx.array) -> mx.array:
     return value
 
 
+def _speaker_artifact_name(name: str) -> str | None:
+    if name.endswith(".num_batches_tracked"):
+        return None
+    if name.startswith("head."):
+        name = re.sub(r"\.shortcut\.0(?=\.)", ".shortcut", name)
+        return re.sub(r"\.shortcut\.1(?=\.)", ".shortcut_bn", name)
+    match = re.fullmatch(r"xvector\.tdnn\.(.+)", name)
+    if match:
+        return "tdnn." + match.group(1).replace("nonlinear.batchnorm.", "nonlinear.")
+    match = re.fullmatch(r"xvector\.block(\d+)\.tdnnd(\d+)\.(.+)", name)
+    if match:
+        block = int(match.group(1)) - 1
+        layer = int(match.group(2)) - 1
+        suffix = match.group(3).replace("nonlinear1.batchnorm.", "nonlinear1.")
+        suffix = suffix.replace("nonlinear2.batchnorm.", "nonlinear2.")
+        return f"blocks.{block}.layers.{layer}.{suffix}"
+    match = re.fullmatch(r"xvector\.transit(\d+)\.(.+)", name)
+    if match:
+        transit = int(match.group(1)) - 1
+        suffix = match.group(2).replace("nonlinear.batchnorm.", "nonlinear.")
+        return f"transits.{transit}.{suffix}"
+    if name.startswith("xvector.out_nonlinear.batchnorm."):
+        return "out_nonlinear." + name.removeprefix(
+            "xvector.out_nonlinear.batchnorm."
+        )
+    if name.startswith("xvector.dense.linear."):
+        return "dense." + name.removeprefix("xvector.dense.linear.")
+    if name.startswith("xvector.dense.nonlinear.batchnorm."):
+        return "dense_norm." + name.removeprefix(
+            "xvector.dense.nonlinear.batchnorm."
+        )
+    raise ValueError(f"unmapped CAM++ state key: {name}")
+
+
 def _storage_dtype(component: str, name: str, value: mx.array) -> mx.Dtype:
     if value.dtype in {
         mx.int8,
@@ -262,9 +298,14 @@ def convert_component_arrays(
         raise ValueError(f"unknown FireRedTTS3 component: {component}")
     converted: dict[str, mx.array] = {}
     for name, value in arrays.items():
-        layout_value = _convert_layout(component, name, value)
-        converted[name] = layout_value.astype(
-            _storage_dtype(component, name, layout_value)
+        artifact_name = _speaker_artifact_name(name) if component == "speaker" else name
+        if artifact_name is None:
+            continue
+        if artifact_name in converted:
+            raise ValueError(f"duplicate FireRedTTS3 artifact key: {artifact_name}")
+        layout_value = _convert_layout(component, artifact_name, value)
+        converted[artifact_name] = layout_value.astype(
+            _storage_dtype(component, artifact_name, layout_value)
         )
     return converted
 
@@ -280,6 +321,12 @@ def _save_component(
             f"FireRedTTS3 {component} expected {expected} tensors, got {len(arrays)}"
         )
     converted = convert_component_arrays(component, arrays)
+    expected_artifact = EXPECTED_ARTIFACT_TENSORS[component]
+    if len(converted) != expected_artifact:
+        raise ValueError(
+            f"FireRedTTS3 {component} artifact expected {expected_artifact} tensors, "
+            f"got {len(converted)}"
+        )
     temporary = path.with_name(f".{path.stem}.tmp{path.suffix}")
     mx.save_safetensors(
         temporary,
@@ -319,7 +366,7 @@ def build_artifact_config(input_dir: str | Path) -> FireRedTTS3Config:
                 "speaker.*.running_mean",
                 "speaker.*.running_var",
             ],
-            "integer_state": ["speaker.*.num_batches_tracked"],
+            "dropped_source_state": ["speaker.*.num_batches_tracked"],
         },
         "sources": {
             "weights_repo": "FireRedTeam/FireRedTTS3",
@@ -371,6 +418,7 @@ def convert_fireredtts3(
 
 __all__ = [
     "EXPECTED_SOURCE_TENSORS",
+    "EXPECTED_ARTIFACT_TENSORS",
     "SOURCE_CODE_REVISION",
     "SOURCE_REVISION",
     "build_artifact_config",

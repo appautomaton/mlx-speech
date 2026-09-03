@@ -120,12 +120,18 @@ def test_component_conversion_applies_mlx_layout_and_dtype_policy() -> None:
             "head.conv1.weight": mx.ones((2, 3, 5, 7)),
             "head.bn1.running_mean": mx.ones((2,)),
             "head.bn1.num_batches_tracked": mx.array(3, dtype=mx.int64),
+            "xvector.block1.tdnnd2.nonlinear1.batchnorm.weight": mx.ones(
+                (4,)
+            ),
+            "xvector.transit1.linear.weight": mx.ones((2, 3, 1)),
         },
     )
     assert speaker["head.conv1.weight"].shape == (2, 5, 7, 3)
     assert speaker["head.conv1.weight"].dtype == mx.bfloat16
     assert speaker["head.bn1.running_mean"].dtype == mx.float32
-    assert speaker["head.bn1.num_batches_tracked"].dtype == mx.int64
+    assert "head.bn1.num_batches_tracked" not in speaker
+    assert "blocks.0.layers.1.nonlinear1.weight" in speaker
+    assert speaker["transits.0.linear.weight"].shape == (2, 1, 3)
 
 
 def test_component_conversion_rejects_unknown_component() -> None:

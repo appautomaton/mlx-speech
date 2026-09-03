@@ -202,6 +202,18 @@ class Qwen3ASRTextAttention(nn.Module):
         self.attention_output_size = self.num_attention_heads * self.head_dim
         self.kv_repeat = self.num_attention_heads // self.num_key_value_heads
         self.scale = self.head_dim**-0.5
+        use_sliding_window = bool(config.extra.get("use_sliding_window", False))
+        max_window_layers = int(
+            config.extra.get("max_window_layers", config.num_hidden_layers)
+        )
+        sliding_window = config.extra.get("sliding_window")
+        self.sliding_window = (
+            int(sliding_window)
+            if use_sliding_window
+            and sliding_window is not None
+            and layer_idx >= max_window_layers
+            else None
+        )
         self.q_proj = nn.Linear(
             config.hidden_size,
             self.attention_output_size,
@@ -295,6 +307,7 @@ class Qwen3ASRTextAttention(nn.Module):
             dtype=mx.float32,
             attention_mask=attention_mask,
             use_causal_mask=use_causal_mask,
+            sliding_window=self.sliding_window,
         )
         if additive_mask is not None:
             scores = scores + additive_mask
@@ -645,14 +658,20 @@ def _make_additive_attention_mask(
     dtype: mx.Dtype,
     attention_mask: mx.array | None = None,
     use_causal_mask: bool,
+    sliding_window: int | None = None,
 ) -> mx.array | None:
     mask: mx.array | None = None
     if use_causal_mask:
         query_positions = mx.arange(query_offset, query_offset + query_len, dtype=mx.int32)
         key_positions = mx.arange(key_len, dtype=mx.int32)
-        future = key_positions[None, :] > query_positions[:, None]
+        blocked = key_positions[None, :] > query_positions[:, None]
+        if sliding_window is not None:
+            too_old = key_positions[None, :] <= (
+                query_positions[:, None] - sliding_window
+            )
+            blocked = mx.logical_or(blocked, too_old)
         mask = mx.where(
-            future,
+            blocked,
             mx.array(mx.finfo(dtype).min, dtype=dtype),
             mx.array(0, dtype=dtype),
         )[None, None, :, :]
