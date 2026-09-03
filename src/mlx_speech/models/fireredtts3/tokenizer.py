@@ -127,5 +127,8 @@ class FireRedTTS3Tokenizer:
         )
         return list(self.backend.encode(source, add_special_tokens=False).ids)
 
+    def count_tokens(self, text: str) -> int:
+        return len(self.backend.encode(text, add_special_tokens=False).ids)
+
 
 __all__ = ["DIALECTS", "LANGUAGES", "FireRedTTS3Tokenizer"]

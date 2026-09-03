@@ -76,8 +76,10 @@ class FireRedTTS3Adapter:
             waveform, source_rate = load_audio(reference_audio, mono=True)
         else:
             waveform = reference_audio
-            source_rate = self.sample_rate if reference_sample_rate is None else int(
-                reference_sample_rate
+            source_rate = (
+                self.sample_rate
+                if reference_sample_rate is None
+                else int(reference_sample_rate)
             )
         return resample_mono_audio(
             waveform,
@@ -111,9 +113,12 @@ class FireRedTTS3Adapter:
         if not isinstance(reference_text, str) or not reference_text.strip():
             raise ValueError("FireRedTTS3 reference_text must not be empty")
         if not np.isfinite(guidance_scale) or guidance_scale < 0:
-            raise ValueError("FireRedTTS3 guidance_scale must be finite and non-negative")
+            raise ValueError(
+                "FireRedTTS3 guidance_scale must be finite and non-negative"
+            )
         if not np.isfinite(stop_threshold) or not 0 <= stop_threshold <= 1:
             raise ValueError("FireRedTTS3 stop_threshold must be between 0 and 1")
+        patch_budget = self._patch_budget(max_new_tokens, max_audio_patches)
 
         waveform = self._load_reference(
             reference_audio,
@@ -127,6 +132,8 @@ class FireRedTTS3Adapter:
             prompt_audio[0],
             sample_rate=self.sample_rate,
         )
+        mx.eval(prompt_latents, speaker_embedding)
+
         token_ids = self.tokenizer.encode(
             language=language,
             reference_text=reference_text,
@@ -139,10 +146,7 @@ class FireRedTTS3Adapter:
             flow_steps=flow_steps,
             guidance_scale=guidance_scale,
             stop_threshold=stop_threshold,
-            max_generated_patches=self._patch_budget(
-                max_new_tokens,
-                max_audio_patches,
-            ),
+            max_generated_patches=patch_budget,
             seed=seed,
         )
         decoded = self.redae.decode(result.latents).astype(mx.float32)

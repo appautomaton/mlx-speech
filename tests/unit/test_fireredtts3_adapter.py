@@ -20,9 +20,11 @@ class _Core:
 
     def __init__(self) -> None:
         self.kwargs = None
+        self.calls = []
 
     def generate(self, **kwargs):
         self.kwargs = kwargs
+        self.calls.append(kwargs)
         prompt = kwargs["prompt_latents"]
         generated = mx.ones((1, 4, 2), dtype=mx.float32)
         return SimpleNamespace(latents=mx.concatenate((prompt, generated), axis=1))
@@ -32,30 +34,39 @@ class _RedAE:
     sample_rate = 24_000
     downsample_rate = 2
 
+    def __init__(self) -> None:
+        self.encode_calls = 0
+        self.decode_calls = 0
+
     def pad_audio(self, audio, *, multiple=None):
         padding = (-int(audio.shape[-1])) % int(multiple)
         return mx.pad(audio, ((0, 0), (padding, 0)))
 
     def encode(self, audio):
+        self.encode_calls += 1
         return audio.reshape(1, -1, 2)
 
     def decode(self, latents):
+        self.decode_calls += 1
         return latents.reshape(1, -1)
 
 
 class _Speaker:
+    def __init__(self) -> None:
+        self.calls = 0
+
     def __call__(self, audio, *, sample_rate):
         assert sample_rate == 24_000
+        self.calls += 1
         return mx.ones((1, 6), dtype=mx.float32)
 
 
 class _Tokenizer:
+    def __init__(self) -> None:
+        self.calls = []
+
     def encode(self, **kwargs):
-        assert kwargs == {
-            "language": "Chinese",
-            "reference_text": "参考文本",
-            "text": "目标文本",
-        }
+        self.calls.append(kwargs)
         return [1, 2, 3]
 
 
@@ -94,6 +105,48 @@ def test_adapter_prepares_reference_and_returns_trimmed_24khz_waveform() -> None
     assert core.kwargs["stop_threshold"] == 0.6
     assert core.kwargs["max_generated_patches"] == 9
     np.testing.assert_array_equal(core.kwargs["text_tokens"], [[1, 2, 3]])
+    assert adapter.tokenizer.calls == [
+        {
+            "language": "Chinese",
+            "reference_text": "参考文本",
+            "text": "目标文本",
+        }
+    ]
+
+
+def test_adapter_treats_multiple_sentences_as_one_prepared_utterance() -> None:
+    adapter, core = _adapter()
+    first = "甲" * 61 + "。"
+    second = "乙" * 61 + "。"
+
+    output = adapter.generate(
+        first + second,
+        reference_audio=mx.linspace(-0.1, 0.1, 5),
+        reference_sample_rate=24_000,
+        reference_text="参考文本",
+        language="Chinese",
+        seed=7,
+    )
+
+    assert output.waveform.shape == (8,)
+    assert [call["seed"] for call in core.calls] == [7]
+    assert [call["max_generated_patches"] for call in core.calls] == [400]
+    assert [call["text"] for call in adapter.tokenizer.calls] == [first + second]
+    assert adapter.redae.encode_calls == 1
+    assert adapter.redae.decode_calls == 1
+    assert adapter.speaker.calls == 1
+
+
+def test_adapter_uses_a_predictable_english_language_default() -> None:
+    adapter, _ = _adapter()
+
+    adapter.generate(
+        "Prepared utterance.",
+        reference_audio=mx.ones((8,)),
+        reference_text="Reference transcript.",
+    )
+
+    assert adapter.tokenizer.calls[0]["language"] == "English"
 
 
 def test_adapter_rejects_invalid_cloning_inputs_and_patch_conflict() -> None:

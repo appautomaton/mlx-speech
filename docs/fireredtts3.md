@@ -83,6 +83,30 @@ mlx-speech tts \
 waveform defaults to 24 kHz; pass `reference_sample_rate` when it uses another
 rate. File inputs carry their own sample rate and are resampled internally.
 
+## Inference contract
+
+Each `generate()` call accepts one prepared utterance and returns one waveform.
+The runtime performs the model-specific tokenization, reference conditioning,
+autoregressive latent generation, and waveform decoding. It does not normalize
+written text, detect its language, split long input, retry failed segments, or
+join multiple waveforms. Those policies belong to the application that calls
+the MLX runtime.
+
+One generated audio patch contains four 64-dimensional RedAE frames. At 24 kHz,
+each frame covers 480 waveform samples, so one patch represents 80 ms of audio.
+The default 400-patch budget is therefore an approximate 32-second generation
+ceiling, not a recommended utterance duration. For the local Mandarin fixture,
+keeping prepared utterances below about 20 seconds, or roughly 40-60 Chinese
+characters at its measured speaking rate, is a conservative application-level
+operating rule rather than a universal model limit.
+
+The repository's parity-oriented long smoke script demonstrates optional
+caller-owned orchestration. It applies the upstream soft split targets
+(`token_max_n=80`, `token_min_n=60`, `merge_len=20`), calls `generate()` once
+per segment, and joins the resulting waveforms with a 50 ms linear cross-fade.
+The library runtime does none of those operations implicitly, and the script's
+upstream-compatible soft limits are not a recommended production scheduler.
+
 ## MLX runtime behavior
 
 RedAE uses its official 64-token encoder and decoder sliding windows through a
@@ -105,12 +129,22 @@ ASR text (`你好，很高兴认识你。`), and CAM++ reference/output cosine o
 memory stays within a 64 MiB spread across three consecutive requests on one
 loaded model.
 
+A local 514-Chinese-character experiment used seven official-style segments.
+The MLX run produced 150.74 seconds of audio in 110.13 seconds (RTF 0.731) with
+a 5.961 GiB MLX peak. Its matching PyTorch MPS reference produced 139.86 seconds
+in 113.73 seconds (RTF 0.813). Listening found comparably severe noise late in
+both outputs, so this fixture does not identify an MLX-only long-form
+degradation. The numbers characterize this machine, voice, text, and
+orchestration policy; they are not general performance or quality claims.
+
 ## Current limits
 
 - Base voice cloning only; no Instruct tasks.
 - Batch size one and non-streaming generation.
-- The runtime expects already-normalized, single-utterance text and does not
-  reproduce the optional upstream `wetext`/LLM normalization layer.
+- One prepared utterance per request; long-form orchestration is caller-owned.
+- The runtime does not include the optional upstream `wetext`, fastText, or
+  LLM normalization layers. Supply normalized numbers and abbreviations when
+  exact spoken forms matter.
 - BF16 weights occupy about 5.7 GiB on disk across the three component files;
   generation also needs activation and KV-cache memory.
 

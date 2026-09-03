@@ -73,6 +73,8 @@ def test_tokenizer_builds_exact_base_sequence_and_token_order() -> None:
         "<|frame_patch|>",
         "<|end_edit|>",
     ]
+    assert tokenizer.count_tokens("target only") == 3
+    assert backend.source == "target only"
 
 
 def test_tokenizer_rejects_unsupported_language() -> None:
