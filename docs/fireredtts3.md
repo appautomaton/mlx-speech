@@ -83,6 +83,28 @@ mlx-speech tts \
 waveform defaults to 24 kHz; pass `reference_sample_rate` when it uses another
 rate. File inputs carry their own sample rate and are resampled internally.
 
+## MLX runtime behavior
+
+RedAE uses its official 64-token encoder and decoder sliding windows through a
+window-bounded MLX attention path; the three-token CLS downsampler keeps full
+attention. The Base core performs one Qwen prompt prefill followed by cached
+one-token continuation. DiT uses BF16 linear compute and compiles only its
+fixed 12-frame tensor region. Variable KV-cache tensors, stop-score host
+synchronization, and request cleanup remain outside compiled code.
+
+On the local golden request shown above, after one excluded warmup, three runs
+recorded a 2.0518-second median core time and a 6,193,075,587-byte MLX peak.
+That is 22.5% faster than the parity-correct 2.6478-second baseline and 19.7%
+faster than the pre-parity 2.556-second profile, with peak memory effectively
+unchanged. These are local comparison numbers, not cross-machine performance
+claims.
+
+The same golden gate checks two bitwise-identical seeded waveforms, exact local
+ASR text (`你好，很高兴认识你。`), and CAM++ reference/output cosine of
+0.7374. A short end-to-end runtime fixture also checks that post-cleanup active
+memory stays within a 64 MiB spread across three consecutive requests on one
+loaded model.
+
 ## Current limits
 
 - Base voice cloning only; no Instruct tasks.

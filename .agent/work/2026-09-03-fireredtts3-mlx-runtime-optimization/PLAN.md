@@ -134,6 +134,20 @@ MLX_SPEECH_REQUIRE_CHECKPOINTS=1 .venv/bin/python -m pytest tests/runtime/test_f
 RUN_LOCAL_INTEGRATION=1 MLX_SPEECH_REQUIRE_CHECKPOINTS=1 .venv/bin/python -m pytest tests/integration/test_fireredtts3.py
 ```
 
+**Status:** complete
+**Evidence:** the unchanged flat BF16 artifact and public TTS API generate mono
+24 kHz finite, non-silent audio. Two requests on one loaded model with the
+golden arguments produced bitwise-identical waveforms. Local Qwen3-ASR returned
+`你好，很高兴认识你。` exactly, and reference/output CAM++ cosine was
+0.7374283671. The strengthened end-to-end three-request cleanup fixture stayed
+within the 64 MiB active-memory bound. The full 1,103-test unit suite, all three
+FireRed strict checkpoint tests, the runtime test, and the local integration
+test passed with no required-checkpoint skips. The guide now records the
+measured runtime result, compiled/eager boundary, quality evidence, and existing
+Base-only limitations.
+**Risks / next:** none within the approved optimization scope; benchmark values
+remain local-machine comparisons rather than portable performance guarantees.
+
 ## Aggregate verification commands
 
 | Scope | Command |

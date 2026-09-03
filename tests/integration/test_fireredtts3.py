@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import gc
 import os
-import re
 from pathlib import Path
 
 import mlx.core as mx
@@ -18,10 +17,8 @@ ARTIFACT = ROOT / "models/firered/firered_tts3/mlx-bf16"
 ASR_ARTIFACT = ROOT / "models/qwen3_asr_1_7b/mlx-int8"
 REFERENCE = Path("/tmp/fireredtts3-mlx-port/reference.wav")
 OUTPUT = Path("/tmp/fireredtts3-mlx-port/generated-mlx.wav")
-
-
-def _normalized_text(value: str) -> str:
-    return re.sub(r"[^\w\u4e00-\u9fff]", "", value).lower()
+TARGET_TEXT = "你好，很高兴认识你。"
+REFERENCE_TEXT = "For Timothy was a spoiled cat, and he allowed no one."
 
 
 def test_fireredtts3_public_api_generates_and_transcribes_waveform() -> None:
@@ -35,18 +32,29 @@ def test_fireredtts3_public_api_generates_and_transcribes_waveform() -> None:
         pytest.skip(f"reference audio is unavailable: {REFERENCE}")
 
     model = tts.load(str(ARTIFACT))
+    generation_args = {
+        "reference_audio": REFERENCE,
+        "reference_text": REFERENCE_TEXT,
+        "language": "Chinese",
+        "seed": 1234,
+        "guidance_scale": 2.0,
+        "flow_steps": 10,
+        "stop_threshold": 0.5,
+        "max_audio_patches": 40,
+    }
     result = model.generate(
-        "你好，很高兴认识你。",
-        reference_audio=REFERENCE,
-        reference_text="For Timothy was a spoiled cat, and he allowed no one.",
-        language="Chinese",
-        seed=1234,
-        guidance_scale=2.0,
-        flow_steps=10,
-        stop_threshold=0.5,
-        max_audio_patches=40,
+        TARGET_TEXT,
+        **generation_args,
     )
-    mx.eval(result.waveform)
+    repeated = model.generate(
+        TARGET_TEXT,
+        **generation_args,
+    )
+    mx.eval(result.waveform, repeated.waveform)
+    np.testing.assert_array_equal(
+        np.asarray(result.waveform),
+        np.asarray(repeated.waveform),
+    )
     assert result.sample_rate == 24_000
     assert result.waveform.ndim == 1
     assert int(result.waveform.size) > 4_800
@@ -66,10 +74,11 @@ def test_fireredtts3_public_api_generates_and_transcribes_waveform() -> None:
         mx.sqrt(mx.sum(reference_embedding * reference_embedding))
         * mx.sqrt(mx.sum(output_embedding * output_embedding))
     )
-    assert float(speaker_cosine.item()) > 0.5
+    speaker_cosine_value = float(speaker_cosine.item())
+    assert speaker_cosine_value >= 0.70, speaker_cosine_value
     waveform = np.asarray(result.waveform, dtype=np.float32)
 
-    del model, result
+    del model, repeated, result
     gc.collect()
     mx.clear_cache()
 
@@ -84,4 +93,4 @@ def test_fireredtts3_public_api_generates_and_transcribes_waveform() -> None:
         sample_rate=16_000,
         language="Chinese",
     )
-    assert "你好很高兴认识你" in _normalized_text(transcription.text)
+    assert transcription.text == TARGET_TEXT
