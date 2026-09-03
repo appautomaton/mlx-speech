@@ -137,3 +137,16 @@ def test_tiny_core_uses_cache_and_removes_only_dummy_history() -> None:
     assert first.cache_length == first.prompt_length + 1
     np.testing.assert_allclose(first.latents[:, :8], prompt, atol=0.0, rtol=0.0)
     np.testing.assert_allclose(first.latents, second.latents, atol=0.0, rtol=0.0)
+
+
+def test_compiled_dit_matches_uncompiled_fixed_shape() -> None:
+    mx.random.seed(31)
+    core = FireRedTTS3Core(_tiny_config())
+    core.eval()
+    value = mx.random.normal((2, 6, 18))
+    timestep = mx.array([0.25, 0.25])
+    expected = core.dit(value, timestep)
+    compiled = mx.compile(core.dit)
+    actual = compiled(value, timestep)
+    mx.eval(expected, actual)
+    np.testing.assert_allclose(actual, expected, atol=1e-6, rtol=1e-5)

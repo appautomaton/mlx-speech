@@ -87,6 +87,26 @@ MLX_SPEECH_REQUIRE_CHECKPOINTS=1 .venv/bin/python -m pytest tests/runtime/test_f
 .venv/bin/python scripts/audit/fireredtts3_runtime.py profile --model-dir models/firered/firered_tts3/mlx-bf16 --reference-audio /tmp/fireredtts3-mlx-port/reference.wav --reference-text "For Timothy was a spoiled cat, and he allowed no one." --text "你好，很高兴认识你。" --language Chinese --seed 1234 --flow-steps 10 --guidance-scale 2.0 --warmup-runs 1 --runs 3 --parity-baseline /tmp/fireredtts3-mlx-port/parity-baseline.json --baseline-core-seconds 2.556 --baseline-mlx-peak-gib 5.770 --min-candidate-improvement 0.05 --min-total-improvement 0.10 --max-other-regression 0.10
 ```
 
+**Status:** complete
+**Evidence:** retained FireRed-local BF16 linear execution and compilation of
+only the fixed-shape DiT tensor region. The compiled and eager DiT outputs match
+within `atol=1e-6`, `rtol=1e-5`; mutable KV cache, stop synchronization, and
+request cleanup remain eager. The formal three-run profile passed its gate at a
+2.0518-second median core time: 22.5% faster than the parity-correct baseline
+and 19.7% faster than the historical baseline, with a 6,193,075,587-byte median
+MLX peak (effectively unchanged). Twenty-one focused unit tests and the strict
+three-request runtime cleanup test passed.
+**Rejected candidates:** fused full attention improved core time only 2.3% and
+raised peak memory about 2%; compiled single-patch PatchEncoder regressed the
+retained candidate by about 2.9%. Qwen compilation was inapplicable because its
+continuation path owns variable cache tensors and Python cache length. Stable
+DiT rotary/timestep construction is already inside the retained compiled graph;
+shape-growing Qwen rotary caching was not retained. No rejected candidate leaves
+production code behind.
+**Risks / next:** local BF16 compute and DiT compilation can alter floating-point
+rounding while staying equation-compatible, so Slice 3 must re-run bitwise seeded
+waveform, ASR, and speaker-similarity gates before completion.
+
 ### Slice 3: Revalidate public waveform quality and compatibility
 
 **Objective:** Prove that the optimized runtime preserves the existing artifact, API, deterministic generation, and golden voice-cloning result.

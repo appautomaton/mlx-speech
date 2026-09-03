@@ -134,6 +134,7 @@ class FireRedTTS3Core(nn.Module):
             num_heads=config.dit_num_heads,
             hidden_size=config.dit_hidden_size,
         )
+        self._compiled_dit = None
         self.stop_head = nn.Linear(config.qwen_hidden_size, 1)
 
     @classmethod
@@ -144,6 +145,7 @@ class FireRedTTS3Core(nn.Module):
         weights = mx.load(root / artifact.files["core"])
         model.load_weights(list(weights.items()), strict=True)
         model.eval()
+        model._compiled_dit = mx.compile(model.dit)
         return model
 
     @property
@@ -176,7 +178,8 @@ class FireRedTTS3Core(nn.Module):
                 unconditioned = mx.concatenate((state, condition * 0), axis=-1)
                 model_input = mx.concatenate((model_input, unconditioned), axis=0)
                 timestep = mx.broadcast_to(timestep, (2,))
-            velocity = self.dit(model_input, timestep)
+            dit_call = self.dit if self._compiled_dit is None else self._compiled_dit
+            velocity = dit_call(model_input, timestep)
             if guidance_scale > 0:
                 conditional, unconditional = mx.split(velocity, 2, axis=0)
                 velocity = classifier_free_guidance(

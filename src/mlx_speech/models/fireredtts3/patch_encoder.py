@@ -7,10 +7,10 @@ import mlx.nn as nn
 
 
 def _linear(layer: nn.Linear, value: mx.array) -> mx.array:
-    output = mx.matmul(value.astype(mx.float32), layer.weight.astype(mx.float32).T)
-    if layer.bias is not None:
-        output = output + layer.bias.astype(mx.float32)
-    return output.astype(value.dtype)
+    output_dtype = value.dtype
+    compute_dtype = layer.weight.dtype
+    output = layer(value.astype(compute_dtype))
+    return output.astype(output_dtype)
 
 
 class RotaryEmbedding:
