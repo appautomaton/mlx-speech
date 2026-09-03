@@ -169,3 +169,36 @@ unused-import errors outside the FireRed scope; all touched files pass Ruff.
 | Fast regression | `.venv/bin/python -m pytest tests/unit/` |
 | Real checkpoint loading | `.venv/bin/python -m pytest tests/checkpoint/test_fireredtts3_audio_checkpoint.py tests/checkpoint/test_fireredtts3_core_checkpoint.py` |
 | End-to-end waveform | `RUN_LOCAL_INTEGRATION=1 .venv/bin/python -m pytest tests/integration/test_fireredtts3.py` |
+
+## Verification
+
+### Summary
+
+**Overall:** PASS
+**Passed:** 18 of 18 criteria
+**Remaining gaps:** none
+
+### Slice rollup
+
+- **Slice 1 — PASS (5/5):** 9 focused tests passed; a fresh conversion into
+  `/tmp/fireredtts3-auto-verify.8LV0Rc` produced the seven-file flat artifact.
+  Direct safetensors inspection confirmed 677 BF16 core tensors, 458 RedAE
+  tensors (457 BF16, one FP32 window), and 815 CAM++ inference tensors (571
+  BF16, 244 FP32 running statistics), with both pinned source revisions in
+  `config.json`.
+- **Slice 2 — PASS (4/4):** 7 RedAE/CAM++ numerical tests and the strict local
+  audio-checkpoint test passed with `MLX_SPEECH_REQUIRE_CHECKPOINTS=1`; no
+  checkpoint check skipped.
+- **Slice 3 — PASS (4/4):** 6 tokenizer/cache/generation-equation tests and 2
+  strict real-core tests passed with checkpoints required; the real tokenizer
+  IDs and one finite latent patch were exercised.
+- **Slice 4 — PASS (5/5):** the complete unit suite passed 1100 tests; the
+  official SDPA PyTorch MPS command wrote 61,440 samples at 24 kHz; the MLX
+  integration gate passed and wrote 65,280 samples at 24 kHz. Fresh derived
+  checks found finite, non-silent waveforms, exact ASR text
+  `你好，很高兴认识你。` for both, and reference/output CAM++ cosine 0.7781
+  (MPS) and 0.7482 (MLX). Scoped Ruff and dependency-purity checks passed.
+
+**Derived checks:** flat artifact file/dtype inventory and explicit MPS/MLX
+waveform, ASR, and CAM++ metrics.
+**Skipped checks:** none.

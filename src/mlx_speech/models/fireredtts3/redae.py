@@ -130,8 +130,6 @@ class Qwen3CLSDownsample(nn.Module):
                 max_position_embeddings=config.enc_max_position_embeddings,
                 vocab_size=config.vocab_size,
                 rope_theta=config.rope_theta,
-                sliding_window=config.enc_sliding_window,
-                max_window_layers=config.enc_max_window_layers,
             )
         )
 
@@ -171,8 +169,8 @@ class RedAEAudioEncoder(nn.Module):
                 max_position_embeddings=config.enc_max_position_embeddings,
                 vocab_size=config.vocab_size,
                 rope_theta=config.rope_theta,
-                sliding_window=config.dec_sliding_window,
-                max_window_layers=config.dec_max_window_layers,
+                sliding_window=config.enc_sliding_window,
+                max_window_layers=config.enc_max_window_layers,
             )
         )
         self.downsample = Qwen3CLSDownsample(config)
@@ -265,6 +263,8 @@ class RedAEAudioDecoder(nn.Module):
                 max_position_embeddings=config.dec_max_position_embeddings,
                 vocab_size=config.vocab_size,
                 rope_theta=config.rope_theta,
+                sliding_window=config.dec_sliding_window,
+                max_window_layers=config.dec_max_window_layers,
             )
         )
         self.istft_head = ISTFTHead(config.dec_hidden_size, config.audio_patch_size)

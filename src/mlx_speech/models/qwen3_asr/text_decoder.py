@@ -289,6 +289,26 @@ class Qwen3ASRTextAttention(nn.Module):
         use_causal_mask: bool = True,
     ) -> mx.array:
         batch_size, _, query_len, _ = query_states.shape
+        if self.sliding_window is not None and use_causal_mask:
+            attn_output = _sliding_window_attention(
+                query_states,
+                key_states,
+                value_states,
+                scale=self.scale,
+                sliding_window=self.sliding_window,
+                query_offset=query_offset,
+                attention_mask=attention_mask,
+            )
+            attn_output = attn_output.transpose(0, 2, 1, 3).reshape(
+                batch_size,
+                query_len,
+                self.attention_output_size,
+            )
+            return _linear_forward(
+                self.o_proj,
+                attn_output,
+                output_dtype=output_dtype,
+            )
         key_states = _repeat_kv(key_states, self.kv_repeat)
         value_states = _repeat_kv(value_states, self.kv_repeat)
         key_len = int(key_states.shape[2])
@@ -643,6 +663,74 @@ def _repeat_kv(x: mx.array, repeats: int) -> mx.array:
     if repeats == 1:
         return x
     return mx.repeat(x, repeats, axis=1)
+
+
+def _sliding_window_attention(
+    query: mx.array,
+    key: mx.array,
+    value: mx.array,
+    *,
+    scale: float,
+    sliding_window: int,
+    query_offset: int = 0,
+    attention_mask: mx.array | None = None,
+    query_block_size: int | None = None,
+) -> mx.array:
+    """Causal GQA with bounded query blocks and no full T-by-T score tensor."""
+
+    if sliding_window <= 0:
+        raise ValueError("sliding_window must be positive")
+    query_length = int(query.shape[2])
+    key_length = int(key.shape[2])
+    if query_offset < 0 or query_offset + query_length > key_length:
+        raise ValueError(
+            "sliding attention query positions must fit within the key sequence"
+        )
+    block_size = sliding_window if query_block_size is None else query_block_size
+    if block_size <= 0:
+        raise ValueError("query_block_size must be positive")
+    valid_keys: mx.array | None = None
+    if attention_mask is not None:
+        valid_keys = attention_mask.astype(mx.bool_)
+        if valid_keys.ndim != 2 or int(valid_keys.shape[1]) != key_length:
+            raise ValueError(
+                f"Expected attention_mask [batch, {key_length}], "
+                f"got {attention_mask.shape}."
+            )
+
+    outputs: list[mx.array] = []
+    for local_start in range(0, query_length, block_size):
+        local_end = min(local_start + block_size, query_length)
+        global_start = query_offset + local_start
+        global_end = query_offset + local_end
+        key_start = max(0, global_start - sliding_window + 1)
+        query_block = query[:, :, local_start:local_end]
+        key_block = key[:, :, key_start:global_end]
+        value_block = value[:, :, key_start:global_end]
+
+        query_positions = mx.arange(global_start, global_end, dtype=mx.int32)
+        key_positions = mx.arange(key_start, global_end, dtype=mx.int32)
+        allowed = key_positions[None, :] <= query_positions[:, None]
+        allowed = mx.logical_and(
+            allowed,
+            key_positions[None, :]
+            > query_positions[:, None] - sliding_window,
+        )[None, None]
+        if valid_keys is not None:
+            allowed = mx.logical_and(
+                allowed,
+                valid_keys[:, None, None, key_start:global_end],
+            )
+        outputs.append(
+            mx.fast.scaled_dot_product_attention(
+                query_block,
+                key_block,
+                value_block,
+                scale=scale,
+                mask=allowed,
+            )
+        )
+    return mx.concatenate(outputs, axis=2)
 
 
 def _rotate_half(x: mx.array) -> mx.array:

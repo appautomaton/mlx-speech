@@ -47,6 +47,13 @@ def test_tiny_redae_encodes_and_decodes_deterministically() -> None:
     np.testing.assert_allclose(first, second, atol=0.0, rtol=0.0)
 
 
+def test_redae_wires_component_windows_and_keeps_cls_attention_full() -> None:
+    model = RedAE(_tiny_config())
+    assert model.encoder.qwen3.layers[0].self_attn.sliding_window == 64
+    assert model.decoder.qwen3.layers[0].self_attn.sliding_window == 64
+    assert model.encoder.downsample.qwen3.layers[0].self_attn.sliding_window is None
+
+
 def test_redae_padding_uses_25hz_latent_multiple() -> None:
     model = RedAE(_tiny_config())
     padded = model.pad_audio(mx.ones((1, 29)))
