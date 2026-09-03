@@ -112,6 +112,15 @@ RedAE strictly loads all 458 tensors.
 .venv/bin/python -m pytest tests/checkpoint/test_fireredtts3_core_checkpoint.py
 ```
 
+**Status:** complete
+**Evidence:** added the Transformers-free official tokenizer sequence and token
+registration order, four-frame PatchEncoder, full-attention rotary blocks,
+time-conditioned DiT, bounded Qwen3 KV-cache loop, cosine Euler flow, CFG, stop
+logic, and deterministic seeding. Six focused unit tests passed. The 677-tensor
+real core strictly loaded, the real tokenizer matched official token IDs, and a
+one-patch real-weight generation returned finite `(1, 8, 64)` latents.
+**Risks / next:** none.
+
 ### Slice 4: Public API, local MPS comparison, and waveform completion
 
 **Objective:** Connect the generator to the existing TTS interface and prove one complete local voice-cloning request.
