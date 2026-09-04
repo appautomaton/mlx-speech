@@ -207,6 +207,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--reference-text", default=DEFAULT_REFERENCE_TEXT)
     parser.add_argument("--text", default=DEFAULT_TEXT)
+    parser.add_argument(
+        "--segments-file",
+        type=Path,
+        help="UTF-8 text file containing one prepared utterance per non-empty line.",
+    )
     parser.add_argument("--language", default="Chinese")
     parser.add_argument("--output", "-o", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--seed", type=int, default=1234)
@@ -238,18 +243,30 @@ def run(args: argparse.Namespace) -> Path:
     load_started = time.perf_counter()
     model = tts.load(str(args.model_dir))
     load_seconds = time.perf_counter() - load_started
-    processed_text = clean_text(args.text)
-    segments = (
-        [processed_text]
-        if args.no_split
-        else split_text(
-            processed_text,
-            language=args.language,
-            token_count=(
-                None if args.language == "Chinese" else model.tokenizer.count_tokens
-            ),
+    if args.segments_file is not None:
+        if args.no_split:
+            raise ValueError("--segments-file and --no-split cannot be used together")
+        segments = [
+            line.strip()
+            for line in args.segments_file.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        if not segments:
+            raise ValueError("--segments-file must contain a prepared utterance")
+        source_text = "".join(segments)
+    else:
+        source_text = clean_text(args.text)
+        segments = (
+            [source_text]
+            if args.no_split
+            else split_text(
+                source_text,
+                language=args.language,
+                token_count=(
+                    None if args.language == "Chinese" else model.tokenizer.count_tokens
+                ),
+            )
         )
-    )
 
     mx.reset_peak_memory()
     generation_started = time.perf_counter()
@@ -288,11 +305,11 @@ def run(args: argparse.Namespace) -> Path:
     )
     generation_seconds = time.perf_counter() - generation_started
     audio_seconds = sample_count / sample_rate
-    chinese_characters = len(re.findall(r"[\u4e00-\u9fff]", args.text))
+    chinese_characters = len(re.findall(r"[\u4e00-\u9fff]", source_text))
     print(
         "FireRedTTS3 long smoke "
         f"output={output} chinese_chars={chinese_characters} "
-        f"text_codepoints={len(args.text)} segments={len(segments)} "
+        f"text_codepoints={len(source_text)} segments={len(segments)} "
         f"audio={audio_seconds:.3f}s load={load_seconds:.3f}s "
         f"generation={generation_seconds:.3f}s "
         f"rtf={generation_seconds / audio_seconds:.3f} "

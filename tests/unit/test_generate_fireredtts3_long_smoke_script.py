@@ -37,6 +37,7 @@ def test_parser_defaults_reuse_the_local_golden_fixture() -> None:
     assert args.flow_steps == 10
     assert args.stop_threshold == 0.5
     assert args.max_audio_patches == 400
+    assert args.segments_file is None
     assert args.no_split is False
     assert args.cross_fade_ms == 50.0
 
@@ -105,3 +106,44 @@ def test_long_smoke_orchestrates_multiple_runtime_calls(monkeypatch, tmp_path) -
     assert run(args) == output
     assert model.calls == [first, second]
     assert output.is_file()
+
+
+def test_long_smoke_accepts_caller_prepared_utterances(monkeypatch, tmp_path) -> None:
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    reference_audio = tmp_path / "reference.wav"
+    reference_audio.touch()
+    segments_file = tmp_path / "segments.txt"
+    segments_file.write_text("第一段。\n\n第二段。\n", encoding="utf-8")
+    output = tmp_path / "output.wav"
+
+    class _Model:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def generate(self, text: str, **kwargs) -> TTSOutput:
+            self.calls.append(text)
+            return TTSOutput(mx.ones((4,), dtype=mx.float32), 24_000)
+
+    model = _Model()
+    monkeypatch.setattr(
+        "scripts.generate.fireredtts3_long_smoke.tts.load",
+        lambda path: model,
+    )
+    args = _build_parser().parse_args(
+        [
+            "--model-dir",
+            str(model_dir),
+            "--reference-audio",
+            str(reference_audio),
+            "--segments-file",
+            str(segments_file),
+            "--output",
+            str(output),
+            "--cross-fade-ms",
+            "0",
+        ]
+    )
+
+    assert run(args) == output
+    assert model.calls == ["第一段。", "第二段。"]

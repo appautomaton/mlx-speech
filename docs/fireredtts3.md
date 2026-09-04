@@ -148,6 +148,43 @@ orchestration policy; they are not general performance or quality claims.
 - BF16 weights occupy about 5.7 GiB on disk across the three component files;
   generation also needs activation and KV-cache memory.
 
+## Checkpoint-independent regression vectors
+
+The committed `tests/fixtures/fireredtts3/` pack contains bounded golden
+input/output vectors for tiny RedAE, CAM++, DiT, and two-patch autoregressive
+core paths. The tests construct deterministic tiny-model weights from a fixed
+formula, so no weight file is committed. They run from an empty working
+directory and do not require `models/`, `.references/`, PyTorch, network access,
+or a generated waveform.
+
+The fixture manifest records the production BF16 artifact hashes and capture
+provenance. These hashes identify the checkpoint used when the compatible MLX
+behavior was accepted; deterministic micro-model parameters generated during
+the test, rather than the 5.7 GiB artifact, drive routine regression coverage.
+
+Capture the pack once while the production checkpoint is present:
+
+```bash
+.venv/bin/python scripts/audit/fireredtts3_golden_vectors.py capture \
+  --model-dir models/firered/firered_tts3/mlx-bf16 \
+  --output-dir tests/fixtures/fireredtts3
+```
+
+After implementation changes, regenerate into a temporary directory and compare
+against the committed vectors:
+
+```bash
+.venv/bin/python scripts/audit/fireredtts3_golden_vectors.py regenerate \
+  --model-dir models/firered/firered_tts3/mlx-bf16 \
+  --compare tests/fixtures/fireredtts3
+```
+
+Run the checkpoint-independent gate directly:
+
+```bash
+pytest tests/unit/test_fireredtts3_golden_vectors.py
+```
+
 ## PyTorch MPS parity reference
 
 PyTorch is used only in the developer reference environment, never by the MLX
