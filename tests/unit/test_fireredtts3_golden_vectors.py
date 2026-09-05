@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import mlx.core as mx
@@ -26,8 +27,8 @@ FIXTURE_DIR = Path(__file__).resolve().parents[1] / "fixtures/fireredtts3"
 
 
 @pytest.fixture(autouse=True)
-def _run_without_repository_model_paths(monkeypatch, tmp_path) -> None:
-    """Allow MLX loads only from the committed fixture pack."""
+def _run_without_repository_model_paths(monkeypatch, tmp_path) -> Iterator[None]:
+    """Use the capture backend and allow loads only from committed fixtures."""
 
     original_load = mx.load
 
@@ -40,6 +41,9 @@ def _run_without_repository_model_paths(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr(mx, "load", fixture_only_load)
     monkeypatch.chdir(tmp_path)
+    # CPU capture avoids comparing Metal reductions with CPU-only CI results.
+    with mx.stream(mx.cpu):
+        yield
 
 
 def _manifest() -> dict:
@@ -60,6 +64,7 @@ def test_golden_vector_pack_is_self_contained_bounded_and_hashed() -> None:
     total_bytes = sum(path.stat().st_size for path in FIXTURE_DIR.iterdir())
 
     assert total_bytes <= MAX_PACK_BYTES
+    assert manifest["capture"]["device"] == "cpu"
     assert set(manifest["files"]) == {"vectors.npz"}
     assert all(len(item["sha256"]) == 64 for item in manifest["files"].values())
     assert manifest["source_checkpoint"]["contract"] == {

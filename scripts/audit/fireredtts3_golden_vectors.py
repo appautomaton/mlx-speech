@@ -262,8 +262,10 @@ def capture_fixture_pack(output_dir: Path, model_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     source = _source_inventory(model_dir)
-    redae, speaker, core = build_micro_models()
-    vectors = capture_vectors(redae, speaker, core)
+    # Match the test backend even when capture runs on a Mac with a Metal GPU.
+    with mx.stream(mx.cpu):
+        redae, speaker, core = build_micro_models()
+        vectors = capture_vectors(redae, speaker, core)
     vectors_path = output_dir / "vectors.npz"
     np.savez_compressed(vectors_path, **vectors)
 
@@ -275,6 +277,7 @@ def capture_fixture_pack(output_dir: Path, model_dir: Path) -> Path:
             "for regression testing without production model weights."
         ),
         "capture": {
+            "device": "cpu",
             "git_commit": _git_head(),
             "script_sha256": sha256_file(CAPTURE_SCRIPT),
             "python": platform.python_version(),
@@ -324,6 +327,8 @@ def validate_fixture_pack(fixture_dir: Path) -> dict[str, object]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("unsupported FireRedTTS3 fixture schema")
+    if manifest["capture"].get("device") != "cpu":
+        raise ValueError("FireRedTTS3 golden vectors require CPU capture")
     if manifest["capture"].get("script_sha256") != sha256_file(CAPTURE_SCRIPT):
         raise ValueError("fixture capture script provenance mismatch")
     expected_files = set(manifest["files"])

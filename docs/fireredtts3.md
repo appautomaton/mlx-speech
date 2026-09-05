@@ -157,6 +157,11 @@ formula, so no weight file is committed. They run from an empty working
 directory and do not require `models/`, `.references/`, PyTorch, network access,
 or a generated waveform.
 
+Capture and replay use an explicit MLX CPU stream with the same strict
+tolerances on developer Macs and CI. This avoids treating CPU/Metal numerical
+differences as regressions. The manifest records the capture device. GPU
+inference and waveform quality remain covered by the model's other tests.
+
 The fixture manifest records the production BF16 artifact hashes and capture
 provenance. These hashes identify the checkpoint used when the compatible MLX
 behavior was accepted; deterministic micro-model parameters generated during

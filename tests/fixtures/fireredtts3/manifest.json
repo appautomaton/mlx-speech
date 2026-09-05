@@ -130,17 +130,18 @@
   },
   "capture": {
     "command": "python scripts/audit/fireredtts3_golden_vectors.py capture --model-dir models/firered/firered_tts3/mlx-bf16 --output-dir tests/fixtures/fireredtts3",
-    "git_commit": "dcf4d48e2d87e1a4d1fa6a33039ee1e25a9c7522",
+    "device": "cpu",
+    "git_commit": "91d60d545ebf167542fb123823e39173631b01db",
     "mlx": "0.31.1",
     "numpy": "2.4.4",
     "python": "3.13.12",
-    "script_sha256": "b23dc3c18e5aff000dcaf659c207b9a8450623a14e43167fbee0deafd98aad4b"
+    "script_sha256": "45edc22f5190cbbd4aa8d84565a5d98849b255d09413924328398af1764d4255"
   },
   "description": "Self-contained deterministic micro-model inputs and expected outputs for regression testing without production model weights.",
   "files": {
     "vectors.npz": {
-      "bytes": 63611,
-      "sha256": "3698dedde97a87b0c6e43d5da520d128ffb20fb349e7c4d9f5f42344ca8dd3f7"
+      "bytes": 63613,
+      "sha256": "05e6dd4a514f32b0800a34b28b6865a71f7bec81070c8552cea33dd9f2a20a38"
     }
   },
   "generation": {
