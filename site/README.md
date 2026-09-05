@@ -5,11 +5,12 @@ published at <https://appautomaton.renocrypt.com/mlx-speech/>.
 
 ## Stack
 
-A single self-contained `index.html` — no build step, no framework. Styles and
-the small bit of JS (theme toggle, mobile menu, copy, tabs, scroll-reveal,
-equalizer, model rendering) live inline.
+A single self-contained `index.html` with no build step or framework. Model
+cards, headings, and links are static HTML. Styles and the small bit of JS
+(theme toggle, mobile menu, copy, tabs, scroll animation, equalizer) live inline.
+Content remains visible without JavaScript, including both quickstart examples.
 
-- **Type:** Bricolage Grotesque (display), Hanken Grotesk (body), JetBrains Mono
+- **Type:** Big Shoulders Display (display), IBM Plex Sans (body), IBM Plex Mono
   (data) — loaded from Google Fonts via `<link>`.
 - **Icons:** [Lucide](https://lucide.dev) via CDN.
 - **Theme:** simplistic neutral palette + one vermilion accent. Light/dark via
@@ -32,8 +33,20 @@ python3 -m http.server -d site 8000
 # open http://localhost:8000/
 ```
 
-## Regenerating the OG image
+## Updating the page
 
-`assets/og.png` (1200×630) is rendered from a small HTML card with headless
-Chrome so the real fonts are used. See git history for the `_og.html` template,
-or screenshot any 1200×630 card that matches the hero.
+Keep the model counts and decorative ticker in sync with the static cards.
+Each card needs a model heading, loader alias, guide, and published weight link.
+Mention a GitHub installation requirement when a model is ahead of PyPI.
+Update `sitemap.xml` and the WebPage `dateModified` on substantive page changes.
+
+`assets/og.png` is the 1200×630 social preview. The current revision was edited
+with the built-in imagegen tool and resized for Open Graph. Preserve the dark
+background, condensed headline, vermilion accent, and equalizer motif.
+Keep the two supporting lines above the bars with a clear gap:
+
+> Local TTS · voice cloning · dialogue · sound effects · ASR
+> MLX-native speech for Apple Silicon.
+
+Validate desktop and mobile layouts with JavaScript enabled and disabled.
+Run `pytest tests/unit/` before publishing.
