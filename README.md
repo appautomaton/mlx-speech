@@ -77,7 +77,7 @@ and limitations. Weight links open the corresponding Hugging Face repositories.
 | [DramaBox](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md) | Speech synthesis in 48 kHz stereo | `dramabox` | [BF16](https://huggingface.co/appautomaton/dramabox-tts-3.3b-bf16-mlx)¹ |
 | [dots.tts SOAR](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) | Voice cloning and waveform streaming | `dots-tts-soar` | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
 | [dots.tts MeanFlow](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) | Distilled TTS and waveform streaming | `dots-tts-mf` | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
-| [FireRedTTS3 Base](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md) | Multilingual voice cloning at 24 kHz | Local path | Local BF16 |
+| [FireRedTTS3 Base](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md) | Multilingual voice cloning at 24 kHz | `fireredtts3-base` | [BF16](https://huggingface.co/appautomaton/fireredtts3-mlx/tree/main/base/mlx-bf16) |
 
 ### Speech-to-text
 
@@ -88,8 +88,9 @@ and limitations. Weight links open the corresponding Hugging Face repositories.
 | [NVIDIA Nemotron 3.5 ASR Streaming](https://github.com/appautomaton/mlx-speech/blob/main/docs/nemotron-asr.md) | Multilingual streaming transcription | `nemotron-asr-streaming` | [int8](https://huggingface.co/appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx) |
 | [IBM Granite Speech 4.0 1B](https://github.com/appautomaton/mlx-speech/blob/main/docs/granite-speech-asr.md) | Speech recognition with a selective-int8 language model | `granite-speech-4.0-1b` | [int8](https://huggingface.co/appautomaton/granite-4.0-1b-speech-int8-mlx) |
 
-FireRedTTS3 Base currently loads from a local BF16 conversion. Its complete
-voice-cloning pipeline produces mono 24 kHz audio. See the
+FireRedTTS3 Base bundles its speech model, codec, speaker encoder, and tokenizer
+in `base/mlx-bf16/` within the FireRedTTS3 model repository. It produces mono
+24 kHz audio and currently uses the GitHub source installation. See the
 [FireRedTTS3 guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md)
 for conversion, generation, and measured runtime results.
 
