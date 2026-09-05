@@ -39,21 +39,19 @@ tags:
 - bf16
 ---
 
-<!-- Local draft for the verified BF16 bundle. Publication is pending. -->
-
 <div align="center">
 
-# FireRedTTS3 Base
+# FireRedTTS3 for MLX
 
 **Multilingual voice cloning on Apple Silicon**
 
-BF16 weights · Pure MLX inference · Mono 24 kHz audio
+Base BF16 · Pure MLX inference · Mono 24 kHz audio
 
 [Runtime guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md) · [Source code](https://github.com/appautomaton/mlx-speech) · [Upstream model](https://huggingface.co/FireRedTeam/FireRedTTS3) · [Project website](https://appautomaton.renocrypt.com/mlx-speech/)
 
 </div>
 
-This bundle brings
+This repository brings
 [FireRedTTS3 Base](https://huggingface.co/FireRedTeam/FireRedTTS3) to
 [mlx-speech](https://github.com/appautomaton/mlx-speech) as a complete MLX
 voice-cloning pipeline. Give it a reference recording, its transcript, and the
@@ -63,26 +61,31 @@ text you want spoken. It returns a waveform in the reference speaker's voice.
 and runtime. Speech generation runs locally on your Mac, including speaker
 conditioning and waveform reconstruction.
 
+The current release is **Base BF16**, stored in `base/mlx-bf16/`. Each model
+variant has its own complete inference bundle. Instruct will be added under
+`instruct/` after its MLX pipeline is validated, keeping the Base path stable.
+
 ## Start with a reference voice
 
-Requires an Apple Silicon Mac and Python 3.13 or later. For the current local
-bundle, install from an `mlx-speech` source checkout with FireRedTTS3 support:
+Requires an Apple Silicon Mac and Python 3.13 or later. Install the current
+`mlx-speech` runtime from GitHub:
 
 ```bash
-# Run from the mlx-speech repository root
-pip install -e .
+pip install "git+https://github.com/appautomaton/mlx-speech.git"
 ```
 
-Set `model_dir` to the directory containing the bundled files. Replace
-`reference.wav` and `reference_text` with your recording and its exact
-transcript. A reference in the target language is preferred when available.
+The loader downloads the Base bundle on first use. Replace `reference.wav`
+and `reference_text` with your recording and its exact transcript. A reference
+in the target language is preferred when available.
 
 ```python
 from mlx_speech import tts
 from mlx_speech.audio import write_wav
 
-model_dir = "models/firered/firered_tts3/mlx-bf16"
-model = tts.load(model_dir)
+model = tts.load(
+    "appautomaton/fireredtts3-mlx",
+    artifact_subdir="base/mlx-bf16",
+)
 result = model.generate(
     "你好，很高兴认识你。",
     reference_audio="reference.wav",
@@ -95,12 +98,17 @@ result = model.generate(
 write_wav("generated.wav", result.waveform, sample_rate=result.sample_rate)
 ```
 
+The aliases `fireredtts3-base` and `fireredtts3-base-bf16` select the same
+bundle. Only `base/mlx-bf16/` and the root model card are downloaded. Additional
+variants in this repository do not increase the size of a Base download.
+
 <details>
 <summary>The same request from the command line</summary>
 
 ```bash
 mlx-speech tts \
-  --model models/firered/firered_tts3/mlx-bf16 \
+  --model appautomaton/fireredtts3-mlx \
+  --artifact-subdir base/mlx-bf16 \
   --text "你好，很高兴认识你。" \
   --reference-audio reference.wav \
   --reference-text "For Timothy was a spoiled cat, and he allowed no one." \
@@ -127,6 +135,28 @@ separate codec or speaker-model download is needed.
 `config.json`, `tokenizer.json`, `tokenizer_config.json`, and `vocab.json` sit
 beside the weight files at the directory root. The three weight files total
 **5.722 GiB**. Inference also needs memory for activations and the KV cache.
+
+<details>
+<summary>Repository layout</summary>
+
+```text
+README.md
+LICENSE
+base/
+  mlx-bf16/
+    config.json
+    core.safetensors
+    redae.safetensors
+    speaker.safetensors
+    tokenizer.json
+    tokenizer_config.json
+    vocab.json
+```
+
+A downloaded `base/mlx-bf16/` directory also loads directly by local path.
+Base is the only model variant included in this release.
+
+</details>
 
 The conversion casts the original FP32 trainable weights to **BF16** and maps
 their names and layouts for MLX. RedAE's ISTFT window and CAM++ running

@@ -8,12 +8,40 @@ waveform reconstruction. Output is mono 24 kHz audio.
 Only the Base checkpoint is supported. FireRedTTS3-Instruct voice design and
 audio editing are outside this artifact and runtime.
 
-## Local artifact
+## Model repository
+
+The [FireRedTTS3 MLX repository](https://huggingface.co/appautomaton/fireredtts3-mlx)
+groups models by variant and precision. The current Base bundle lives at
+`base/mlx-bf16/` and includes all components required for inference. Instruct
+can be added under its own directory when its MLX runtime is ready.
+
+Install the current runtime from GitHub:
+
+```bash
+pip install "git+https://github.com/appautomaton/mlx-speech.git"
+```
+
+Load `fireredtts3-base` or the explicit `fireredtts3-base-bf16` alias. Both
+select only `base/mlx-bf16/`. A full repository ID requires the subdirectory:
+
+```python
+from mlx_speech import tts
+
+model = tts.load(
+    "appautomaton/fireredtts3-mlx",
+    artifact_subdir="base/mlx-bf16",
+)
+```
+
+The loader downloads the selected bundle and the root model card. Future
+variants in the repository do not become part of a Base download.
+
+## Artifact layout
 
 The runtime loads one flat directory:
 
 ```text
-mlx-bf16/
+base/mlx-bf16/
   config.json
   core.safetensors
   redae.safetensors
@@ -47,7 +75,7 @@ reference in the same language as the target when possible.
 from mlx_speech import tts
 from mlx_speech.audio import write_wav
 
-model = tts.load("models/firered/firered_tts3/mlx-bf16")
+model = tts.load("fireredtts3-base")
 result = model.generate(
     "你好，很高兴认识你。",
     reference_audio="reference.wav",
@@ -66,7 +94,7 @@ The same request is available through the unified CLI:
 
 ```bash
 mlx-speech tts \
-  --model models/firered/firered_tts3/mlx-bf16 \
+  --model fireredtts3-base \
   --text "你好，很高兴认识你。" \
   --reference-audio reference.wav \
   --reference-text "For Timothy was a spoiled cat, and he allowed no one." \
@@ -82,6 +110,11 @@ mlx-speech tts \
 `max_new_tokens` is accepted as an alias for `max_audio_patches`. An in-memory
 waveform defaults to 24 kHz; pass `reference_sample_rate` when it uses another
 rate. File inputs carry their own sample rate and are resampled internally.
+
+Local conversions still load directly from
+`models/firered/firered_tts3/mlx-bf16`. To select the published bundle in the CLI
+by repository ID, use `--model appautomaton/fireredtts3-mlx --artifact-subdir
+base/mlx-bf16`.
 
 ## Inference contract
 

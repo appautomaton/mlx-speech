@@ -64,6 +64,18 @@ _TTS_MODELS: dict[str, _ModelAlias] = {
         "DramaBox: Resemble flow-matching diffusion TTS, 48 kHz stereo",
         "dramabox",
     ),
+    "fireredtts3-base": _ModelAlias(
+        "appautomaton/fireredtts3-mlx",
+        "FireRedTTS3 Base: multilingual voice cloning, 24 kHz, BF16",
+        "fireredtts3",
+        "base/mlx-bf16",
+    ),
+    "fireredtts3-base-bf16": _ModelAlias(
+        "appautomaton/fireredtts3-mlx",
+        "FireRedTTS3 Base BF16: complete voice-cloning bundle",
+        "fireredtts3",
+        "base/mlx-bf16",
+    ),
     "dots-tts-soar": _ModelAlias(
         "appautomaton/dots-tts-mlx",
         "dots.tts SOAR (mlx-int8) — selective-int8 TTS and voice cloning",
