@@ -165,3 +165,36 @@ remain local-machine comparisons rather than portable performance guarantees.
 - Concern: Slice 2 can trigger shape-specific recompilation if variable-length KV tensors enter a compiled function, so only stable tensor regions should remain compiled after the warm-run evidence.
 - Action: Execute serially, reject any window or compile candidate that violates the repeated timing ranges, and preserve the uncompiled path until its replacement passes all gates.
 - Verified: Prior corrections confirmed; RedAE and core data flow, independent-process peak deltas, post-parity attribution, 64 MiB cleanup tolerance, mutable cache boundaries, rollback, and verification commands reviewed.
+
+## Verification
+
+### Summary
+
+**Overall:** PASS
+**Passed:** 18 of 18 criteria
+**Remaining gaps:** none
+
+- **Slice 1 — 6/6 PASS:** focused RedAE/shared-Qwen tests passed 20/20;
+  strict audio checkpoint passed 1/1; fresh isolated attention diagnostics were
+  finite and measured 3.97× peak-delta growth for 512→2048 tokens. Source
+  inspection confirmed encoder/decoder window wiring, full-attention CLS, and
+  bounded query blocks. The frozen pre-optimization JSON was inspected directly:
+  one excluded warmup, three measured 17-patch runs, cache 48→65, 2.6478-second
+  core median, and 6,193,104,023-byte MLX peak median. Regenerating that baseline
+  was skipped because doing so after optimization would overwrite historical
+  evidence rather than verify it.
+- **Slice 2 — 7/7 PASS:** focused core/Qwen tests passed 21/21 and the strict
+  end-to-end three-request cleanup test passed 1/1. The fresh gated profile
+  recorded a 2.0773-second median: 21.55% faster than the parity baseline and
+  18.73% faster than the historical baseline, with effectively unchanged MLX
+  peak and a 0.5705-second median delta above the 0.0229-second run spread.
+  Candidate JSON inspection and current-source inspection confirmed rejected
+  fused-attention/PatchEncoder candidates are absent and only fixed-shape DiT is
+  compiled; Qwen cache mutation, stop synchronization, and cleanup stay eager.
+- **Slice 3 — 5/5 PASS:** the complete unit suite passed 1,103/1,103; strict
+  FireRed checkpoints passed 3/3; runtime and golden integration tests each
+  passed 1/1 with required-checkpoint mode and no skips. The golden test proves
+  bitwise seeded waveform equality, finite non-silent mono 24 kHz output, exact
+  ASR text, and CAM++ cosine ≥0.70. A diff from the pre-optimization runtime
+  showed no public API, artifact config, or converter changes; guide inspection
+  confirmed measured results and Base-only/runtime-only limitations.

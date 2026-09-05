@@ -1,66 +1,28 @@
+<div align="center">
+
 # mlx-speech
 
+**Text-to-speech and speech recognition on Apple Silicon**
+
+Voice cloning, audio editing, sound effects, and transcription. All running locally in MLX.
+
 [![PyPI](https://img.shields.io/pypi/v/mlx-speech)](https://pypi.org/project/mlx-speech/)
-[![Downloads](https://img.shields.io/pypi/dm/mlx-speech)](https://pypi.org/project/mlx-speech/)
-[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20weights-appautomaton-orange)](https://huggingface.co/appautomaton)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/appautomaton/mlx-speech/blob/main/LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Apple%20Silicon-black?logo=apple)](https://developer.apple.com/documentation/apple-silicon)
-[![Project page](https://img.shields.io/badge/project-page-2f7ad9)](https://appautomaton.renocrypt.com/mlx-speech/)
 [![CI](https://github.com/appautomaton/mlx-speech/actions/workflows/ci.yml/badge.svg)](https://github.com/appautomaton/mlx-speech/actions/workflows/ci.yml)
 
-Local speech synthesis, editing, and transcription on Apple Silicon, running
-pure MLX. No cloud, no PyTorch at runtime.
+[Quick start](#quick-start) · [Models](#models) · [Model guides](https://github.com/appautomaton/mlx-speech/tree/main/docs) · [Hugging Face weights](https://huggingface.co/appautomaton) · [Project website](https://appautomaton.renocrypt.com/mlx-speech/)
 
-mlx-speech is an [App Automaton](https://appautomaton.renocrypt.com) project.
-Project page: **[appautomaton.renocrypt.com/mlx-speech](https://appautomaton.renocrypt.com/mlx-speech/)**.
-The `appautomaton` org hosts the [code on GitHub](https://github.com/appautomaton/mlx-speech)
-and the converted [weights on Hugging Face](https://huggingface.co/appautomaton).
+</div>
 
-## Models
+mlx-speech is an open-source Python library for text-to-speech (TTS) and
+automatic speech recognition (ASR) on Apple Silicon Macs. Models share a Python
+API and command-line interface, with inference implemented in
+[Apple's MLX framework](https://github.com/ml-explore/mlx).
 
-Published MLX weights live under the App Automaton Hugging Face org,
-[appautomaton](https://huggingface.co/appautomaton), and download automatically
-when loaded by alias. Flat model repositories load by alias or full repo id —
-`tts.load("fish-s2-pro")` and
-`tts.load("appautomaton/fishaudio-s2-pro-8bit-mlx")` are equivalent. Shared
-multi-artifact repositories use an alias or an explicit `artifact_subdir` so the
-runtime never guesses a variant. Original checkpoint directories can also be
-loaded by path when the model-family guide documents their layout. Each model
-name links to a guide covering behavior, flags, and known limitations.
-
-### Text-to-speech
-
-| Selector | Model | Weights |
-| --- | --- | --- |
-| `fish-s2-pro` | [Fish S2 Pro](https://github.com/appautomaton/mlx-speech/blob/main/docs/fish-s2-pro.md) — dual-AR TTS, voice cloning, emotion tags | [int8](https://huggingface.co/appautomaton/fishaudio-s2-pro-8bit-mlx) |
-| `vibevoice` | [VibeVoice Large](https://github.com/appautomaton/mlx-speech/blob/main/docs/vibevoice.md) — hybrid LLM+diffusion TTS, voice cloning | [int8](https://huggingface.co/appautomaton/vibevoice-mlx) |
-| `longcat` | [LongCat AudioDiT](https://github.com/appautomaton/mlx-speech/blob/main/docs/longcat-audiodit.md) — flow-matching diffusion TTS | [int8](https://huggingface.co/appautomaton/longcat-audiodit-3.5b-8bit-mlx) |
-| `moss-local` | [OpenMOSS TTS Local](https://github.com/appautomaton/mlx-speech/blob/main/docs/moss-local.md) — local-attention multi-VQ TTS | [int8](https://huggingface.co/appautomaton/openmoss-tts-local-mlx) |
-| `moss-ttsd` | [MOSS-TTSD](https://github.com/appautomaton/mlx-speech/blob/main/docs/moss-ttsd.md) — delay-pattern dialogue TTS | [int8](https://huggingface.co/appautomaton/openmoss-ttsd-mlx) |
-| `moss-sound-effect` | [OpenMOSS Sound Effect](https://github.com/appautomaton/mlx-speech/blob/main/docs/moss-sound-effect.md) — text-to-sound-effect generation | [4-bit](https://huggingface.co/appautomaton/openmoss-sound-effect-mlx) |
-| `step-audio` | [Step-Audio-EditX](https://github.com/appautomaton/mlx-speech/blob/main/docs/step-audio-editx.md) — voice cloning, audio editing | [int8](https://huggingface.co/appautomaton/step-audio-editx-8bit-mlx) |
-| `dramabox` | [DramaBox](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md) — Resemble flow-matching diffusion TTS, 48 kHz stereo | [bf16](https://huggingface.co/appautomaton/dramabox-tts-3.3b-bf16-mlx)¹ |
-| `dots-tts-soar` | [dots.tts SOAR](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) — continuous autoregressive flow-matching TTS and voice cloning | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
-| `dots-tts-mf` | [dots.tts MeanFlow](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) — distilled continuous autoregressive TTS and voice cloning | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
-| local path | [FireRedTTS3 Base](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md) — multilingual Qwen3/DiT voice cloning, 24 kHz | local BF16 |
-
-### Speech-to-text
-
-| Selector | Model | Weights |
-| --- | --- | --- |
-| `cohere-asr` | [Cohere Transcribe](https://github.com/appautomaton/mlx-speech/blob/main/docs/cohere-asr.md) — multilingual ASR | [int8](https://huggingface.co/appautomaton/cohere-asr-mlx) |
-| `qwen3-asr-1.7b` | [Qwen3-ASR-1.7B](https://github.com/appautomaton/mlx-speech/blob/main/docs/qwen3-asr.md) — English, Chinese, and mixed Chinese/English ASR | [int8](https://huggingface.co/appautomaton/qwen3-asr-1.7b-int8-mlx) · [bf16](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx) |
-| `nemotron-asr-streaming` | [NVIDIA Nemotron 3.5 ASR Streaming](https://github.com/appautomaton/mlx-speech/blob/main/docs/nemotron-asr.md) — cache-aware multilingual streaming across three stated quality tiers | [int8](https://huggingface.co/appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx) |
-| `granite-speech-4.0-1b` | [IBM Granite Speech 4.0 1B](https://github.com/appautomaton/mlx-speech/blob/main/docs/granite-speech-asr.md) — selective-int8 Granite LM with BF16 acoustic encoder and QFormer | [int8](https://huggingface.co/appautomaton/granite-4.0-1b-speech-int8-mlx) |
-
-¹ `tts.load("dramabox")` also pulls the [Gemma 3 12B backbone](https://huggingface.co/appautomaton/gemma-3-12b-it-backbone-4bit-mlx)
-text encoder automatically. Output is 48 kHz stereo. For advanced controls (cfg,
-steps, voice reference) use `scripts/generate_dramabox.py`. Optional
-`denoise_ref=True` cleans a noisy voice reference with the pure-MLX
-[RE-USE / SEMamba enhancer](https://huggingface.co/appautomaton/re-use-semamba-mlx)
-(off by default; NSCLv1 non-commercial weights). See
-[docs/dramabox.md](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md).
+Audio processing stays on your Mac. Inference needs neither PyTorch nor a cloud
+service. Published weights download on first use, and local checkpoint paths
+support offline loading.
 
 ## Installation
 
@@ -76,34 +38,108 @@ pip install mlx-speech
 
 ```python
 import mlx_speech
-from mlx_speech.audio import load_audio, write_wav
+from mlx_speech.audio import write_wav
 
 # Text-to-speech
 model = mlx_speech.tts.load("fish-s2-pro")
 result = model.generate("Hello from mlx-speech!")
 write_wav("output.wav", result.waveform, sample_rate=result.sample_rate)
 
-# Voice cloning with emotion tags
+# Speech-to-text
+asr = mlx_speech.asr.load("qwen3-asr-1.7b")
+print(asr.generate("audio.wav").text)
+```
+
+**CLI:**
+
+```bash
+mlx-speech tts --model fish-s2-pro --text "Hello!" -o output.wav
+mlx-speech asr --model qwen3-asr-1.7b --audio speech.wav
+```
+
+## Models
+
+Choose a model by task, then use its selector with `tts.load()`, `asr.load()`, or
+the CLI's `--model` flag. Model names link to guides with examples, controls,
+and limitations. Weight links open the corresponding Hugging Face repositories.
+
+### Text-to-speech, voice cloning, and sound effects
+
+| Model | Use it for | Selector | Weights |
+| --- | --- | --- | --- |
+| [Fish S2 Pro](https://github.com/appautomaton/mlx-speech/blob/main/docs/fish-s2-pro.md) | Voice cloning and emotion tags | `fish-s2-pro` | [int8](https://huggingface.co/appautomaton/fishaudio-s2-pro-8bit-mlx) |
+| [VibeVoice Large](https://github.com/appautomaton/mlx-speech/blob/main/docs/vibevoice.md) | Speech synthesis and voice cloning | `vibevoice` | [int8](https://huggingface.co/appautomaton/vibevoice-mlx) |
+| [LongCat AudioDiT](https://github.com/appautomaton/mlx-speech/blob/main/docs/longcat-audiodit.md) | Diffusion speech synthesis | `longcat` | [int8](https://huggingface.co/appautomaton/longcat-audiodit-3.5b-8bit-mlx) |
+| [OpenMOSS TTS Local](https://github.com/appautomaton/mlx-speech/blob/main/docs/moss-local.md) | Speech synthesis and voice cloning | `moss-local` | [int8](https://huggingface.co/appautomaton/openmoss-tts-local-mlx) |
+| [MOSS-TTSD](https://github.com/appautomaton/mlx-speech/blob/main/docs/moss-ttsd.md) | Multi-speaker dialogue | `moss-ttsd` | [int8](https://huggingface.co/appautomaton/openmoss-ttsd-mlx) |
+| [OpenMOSS Sound Effect](https://github.com/appautomaton/mlx-speech/blob/main/docs/moss-sound-effect.md) | Sound effects from text | `moss-sound-effect` | [4-bit](https://huggingface.co/appautomaton/openmoss-sound-effect-mlx) |
+| [Step-Audio-EditX](https://github.com/appautomaton/mlx-speech/blob/main/docs/step-audio-editx.md) | Voice cloning and audio editing | `step-audio` | [int8](https://huggingface.co/appautomaton/step-audio-editx-8bit-mlx) |
+| [DramaBox](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md) | Speech synthesis in 48 kHz stereo | `dramabox` | [BF16](https://huggingface.co/appautomaton/dramabox-tts-3.3b-bf16-mlx)¹ |
+| [dots.tts SOAR](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) | Voice cloning and waveform streaming | `dots-tts-soar` | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
+| [dots.tts MeanFlow](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) | Distilled TTS and waveform streaming | `dots-tts-mf` | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
+| [FireRedTTS3 Base](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md) | Multilingual voice cloning at 24 kHz | Local path | Local BF16 |
+
+### Speech-to-text
+
+| Model | Use it for | Selector | Weights |
+| --- | --- | --- | --- |
+| [Cohere Transcribe](https://github.com/appautomaton/mlx-speech/blob/main/docs/cohere-asr.md) | Multilingual transcription | `cohere-asr` | [int8](https://huggingface.co/appautomaton/cohere-asr-mlx) |
+| [Qwen3-ASR-1.7B](https://github.com/appautomaton/mlx-speech/blob/main/docs/qwen3-asr.md) | English, Chinese, and mixed speech | `qwen3-asr-1.7b` | [int8](https://huggingface.co/appautomaton/qwen3-asr-1.7b-int8-mlx) · [BF16](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx) |
+| [NVIDIA Nemotron 3.5 ASR Streaming](https://github.com/appautomaton/mlx-speech/blob/main/docs/nemotron-asr.md) | Multilingual streaming transcription | `nemotron-asr-streaming` | [int8](https://huggingface.co/appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx) |
+| [IBM Granite Speech 4.0 1B](https://github.com/appautomaton/mlx-speech/blob/main/docs/granite-speech-asr.md) | Speech recognition with a selective-int8 language model | `granite-speech-4.0-1b` | [int8](https://huggingface.co/appautomaton/granite-4.0-1b-speech-int8-mlx) |
+
+FireRedTTS3 Base currently loads from a local BF16 conversion. Its complete
+voice-cloning pipeline produces mono 24 kHz audio. See the
+[FireRedTTS3 guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md)
+for conversion, generation, and measured runtime results.
+
+<details>
+<summary>Loading local weights, shared repositories, and DramaBox components</summary>
+
+Flat model repositories accept an alias or a full repository ID.
+`tts.load("fish-s2-pro")` and
+`tts.load("appautomaton/fishaudio-s2-pro-8bit-mlx")` are equivalent. For a
+repository containing multiple artifacts, use an alias or specify
+`artifact_subdir`. Original checkpoint paths work where the model guide
+documents their layout.
+
+¹ DramaBox also downloads the
+[Gemma 3 12B text encoder](https://huggingface.co/appautomaton/gemma-3-12b-it-backbone-4bit-mlx)
+automatically. Its optional `denoise_ref=True` setting uses the MLX
+[RE-USE / SEMamba enhancer](https://huggingface.co/appautomaton/re-use-semamba-mlx)
+to clean noisy voice references. Denoising is off by default, and the enhancer
+weights carry the NSCLv1 non-commercial license. The
+[DramaBox guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md)
+covers these components and advanced controls.
+
+</details>
+
+## More examples
+
+<details>
+<summary>Python: voice cloning, streaming transcription, and model discovery</summary>
+
+**Voice cloning with emotion tags**
+
+```python
+import mlx_speech
+from mlx_speech.audio import write_wav
+
+model = mlx_speech.tts.load("fish-s2-pro")
 result = model.generate(
     "[excited] This is amazing!",
     reference_audio="reference.wav",
     reference_text="Transcript of the reference audio.",
 )
+write_wav("cloned.wav", result.waveform, sample_rate=result.sample_rate)
+```
 
-# FireRedTTS3 Base from a flat local artifact
-firered = mlx_speech.tts.load("models/firered/firered_tts3/mlx-bf16")
-result = firered.generate(
-    "你好，很高兴认识你。",
-    reference_audio="reference.wav",
-    reference_text="Exact reference transcript.",
-    language="Chinese",
-)
+**Streaming transcription with Nemotron**
 
-# Speech-to-text
-asr = mlx_speech.asr.load("qwen3-asr-1.7b")
-print(asr.generate("audio.wav").text)
+```python
+import mlx_speech
+from mlx_speech.audio import load_audio
 
-# Cache-aware incremental ASR is available on Nemotron
 nemotron = mlx_speech.asr.load("nemotron-asr-streaming")
 session = nemotron.stream_session(language="en-US", att_context_size=(56, 3))
 waveform, _ = load_audio("audio.wav", sample_rate=16_000, mono=True)
@@ -111,6 +147,12 @@ for start in range(0, int(waveform.size), 1_600):
     session.feed(waveform[start : start + 1_600])
 session.finalize()
 print(session.result().text)
+```
+
+**Granite transcription and model discovery**
+
+```python
+import mlx_speech
 
 # Granite defaults to the published selective-int8 artifact
 granite = mlx_speech.asr.load("granite-speech-4.0-1b")
@@ -122,12 +164,12 @@ mlx_speech.tts.list_models(detailed=True)  # includes shared-repo artifact paths
 mlx_speech.asr.list_models()
 ```
 
-**CLI:**
+</details>
+
+<details>
+<summary>CLI: waveform streaming, voice cloning, editing, and sound effects</summary>
 
 ```bash
-# Generate speech
-mlx-speech tts --model fish-s2-pro --text "Hello!" -o output.wav
-
 # Bounded waveform streaming with dots.tts
 mlx-speech tts --model dots-tts-soar --text "Hello!" --stream -o streamed.wav
 
@@ -168,39 +210,20 @@ mlx-speech asr --list-models
 mlx-speech --help
 ```
 
-> **Note:** The `mlx-speech` CLI covers the common generation, voice cloning,
-> editing, waveform streaming, and transcription paths. For advanced controls
-> (sampling temperature, top-p/k, diffusion steps, batch JSONL, duration tuning,
-> etc.) use the family-specific scripts in `scripts/` where provided. Each model
-> guide in `docs/` names its canonical advanced entry point and supported
-> controls.
+</details>
+
+For sampling controls, diffusion steps, batch generation, and other advanced
+options, follow the model's guide. Each guide names the supported controls and
+the script that exposes them.
 
 ## Conversion
 
-Available model-family conversion entry points include:
+Use the published weights to get started. To convert an original checkpoint,
+follow its model guide for source files, precision options, and the matching
+[conversion script](https://github.com/appautomaton/mlx-speech/tree/main/scripts/convert).
 
-```bash
-python scripts/convert/fish_s2_pro.py
-python scripts/convert/longcat_audiodit.py
-python scripts/convert/vibevoice.py
-python scripts/convert/moss_local.py
-python scripts/convert/moss_ttsd.py
-python scripts/convert/moss_sound_effect.py
-python scripts/convert/step_audio_editx.py
-python scripts/convert/cohere_asr.py
-python scripts/convert/qwen3_asr.py
-python scripts/convert/granite_speech_asr.py
-python scripts/convert/dots_tts.py --variant all --precision int8
-python scripts/convert/fireredtts3.py \
-  --input-dir models/firered/firered_tts3/original \
-  --output-dir models/firered/firered_tts3/mlx-bf16
-uv run --with torch python scripts/convert/nemotron_asr.py --quant int8
-```
-
-Conversion is an offline workflow and may require source-format-specific tools;
-those tools are not runtime dependencies. Granite conversion reads the original
-sharded BF16 safetensors directly and writes a self-contained selective-int8 MLX
-artifact without PyTorch or `mlx-audio`.
+Conversion runs separately from inference. Tools needed to read source
+checkpoints are not runtime requirements.
 
 ## Development
 
@@ -212,13 +235,19 @@ uv run pytest
 uv run ruff check .
 ```
 
-The default command runs the fast, artifact-free tier. See
-[`tests/README.md`](tests/README.md) for checkpoint, runtime, integration,
-fixture, and coverage gates.
+The default test suite runs without model checkpoints. FireRedTTS3 includes
+small golden fixtures for numerical regression checks, so those tests keep
+working after large local weight files are removed. A manifest records the
+checkpoint hashes and capture provenance. Real-weight inference and audio
+quality use separate tests. See the
+[testing guide](https://github.com/appautomaton/mlx-speech/blob/main/tests/README.md)
+for test tiers and the
+[FireRedTTS3 fixture guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md#checkpoint-independent-regression-vectors)
+for capture and regeneration.
 
 ```text
 mlx-speech/
-  src/mlx_speech/    library code
+  src/mlx_speech/     library code
   scripts/           conversion, generation, eval, and audit entry points
   models/            local checkpoints (not in git)
   tests/             unit, checkpoint, runtime, integration tests
@@ -227,11 +256,13 @@ mlx-speech/
 
 ## License
 
-MIT — see [LICENSE](https://github.com/appautomaton/mlx-speech/blob/main/LICENSE)
+Library code is released under the
+[MIT license](https://github.com/appautomaton/mlx-speech/blob/main/LICENSE).
+Model weights retain their respective licenses, listed in their model cards.
 
 Built and maintained by [App Automaton](https://appautomaton.renocrypt.com).
 
 ## Acknowledgements
 
-This project wouldn't exist without the inspiration and generous support of the
-incredible community at [linux.do](https://linux.do).
+Thanks to the [linux.do](https://linux.do) community for its inspiration and
+support.
