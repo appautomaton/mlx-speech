@@ -3,24 +3,28 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>mlx-speech · pure-MLX speech for Apple Silicon</title>
-<meta name="description" content="Local text-to-speech, voice cloning, dialogue, sound effects, and ASR on Apple Silicon, running pure MLX. No cloud, no PyTorch." />
-<meta name="keywords" content="mlx, mlx-speech, apple silicon, text to speech, TTS, ASR, voice cloning, on-device, pure mlx, no pytorch, dots.tts, fish audio, vibevoice, openmoss, step-audio, dramabox, qwen3 asr, nemotron asr" />
+<title>mlx-speech | Local Text-to-Speech &amp; ASR for Apple Silicon</title>
+<meta name="description" content="Open-source MLX speech library for Apple Silicon: local text-to-speech, voice cloning, sound effects, and speech recognition. No PyTorch or cloud inference." />
 <meta name="author" content="App Automaton" />
 <link rel="canonical" href="https://appautomaton.renocrypt.com/mlx-speech/" />
 <meta name="theme-color" content="#0d0d0f" media="(prefers-color-scheme: dark)" />
 <meta name="theme-color" content="#faf9f6" media="(prefers-color-scheme: light)" />
 
 <meta property="og:type" content="website" />
-<meta property="og:title" content="mlx-speech · pure-MLX speech for Apple Silicon" />
-<meta property="og:description" content="Local TTS, voice cloning, dialogue, sound effects, and ASR on Apple Silicon, running pure MLX. No cloud, no PyTorch." />
+<meta property="og:site_name" content="mlx-speech" />
+<meta property="og:locale" content="en_US" />
+<meta property="og:title" content="mlx-speech | Local Text-to-Speech &amp; ASR for Apple Silicon" />
+<meta property="og:description" content="Open-source MLX speech library for Apple Silicon: local text-to-speech, voice cloning, sound effects, and speech recognition. No PyTorch or cloud inference." />
 <meta property="og:url" content="https://appautomaton.renocrypt.com/mlx-speech/" />
 <meta property="og:image" content="https://appautomaton.renocrypt.com/mlx-speech/assets/og.png" />
+<meta property="og:image:alt" content="mlx-speech: local TTS, voice cloning, dialogue, sound effects, and ASR for Apple Silicon." />
+<meta property="og:image:type" content="image/png" />
 <meta property="og:image:width" content="1200" /><meta property="og:image:height" content="630" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="mlx-speech · pure-MLX speech for Apple Silicon" />
-<meta name="twitter:description" content="Local TTS, voice cloning, dialogue, sound effects, and ASR on Apple Silicon, running pure MLX." />
+<meta name="twitter:title" content="mlx-speech | Local Text-to-Speech &amp; ASR for Apple Silicon" />
+<meta name="twitter:description" content="Open-source MLX speech library for Apple Silicon: local text-to-speech, voice cloning, sound effects, and speech recognition. No PyTorch or cloud inference." />
 <meta name="twitter:image" content="https://appautomaton.renocrypt.com/mlx-speech/assets/og.png" />
+<meta name="twitter:image:alt" content="mlx-speech: local TTS, voice cloning, dialogue, sound effects, and ASR for Apple Silicon." />
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 
 <!-- set theme before first paint -->
@@ -141,6 +145,7 @@ document.documentElement.setAttribute('data-theme',t);})();
   .section{padding:clamp(64px,11vw,130px) 0}
   .shead{max-width:720px;margin-bottom:clamp(36px,6vw,60px)}
   .shead h2{font-family:var(--display);font-weight:700;font-size:clamp(34px,6.6vw,60px);line-height:.98;letter-spacing:0;margin-top:16px}
+  .shead p a{color:var(--accent);text-decoration:underline;text-underline-offset:3px}
   .shead p{color:var(--ink-2);margin-top:16px;font-size:clamp(15px,1.8vw,17.5px)}
 
   /* principles */
@@ -173,23 +178,24 @@ document.documentElement.setAttribute('data-theme',t);})();
   .mfmt{font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);border:1px solid var(--line-2);border-radius:999px;padding:4px 9px;white-space:nowrap}
   .mdesc{color:var(--ink-2);font-size:13.5px;line-height:1.55;margin:13px 0 14px;flex:1}
   .mdesc code{font-family:var(--mono);font-size:.85em;color:var(--ink)}
-  .mlinks{display:flex;align-items:center;gap:14px;padding-top:13px;border-top:1px solid var(--line)}
+  .mlinks{display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding-top:13px;border-top:1px solid var(--line)}
   .mlinks a{font-family:var(--mono);font-size:12px;display:inline-flex;align-items:center;gap:5px;transition:color .2s,gap .2s}
   .mlinks a:hover{color:var(--accent);gap:8px}.mlinks a svg{width:13px;height:13px}
-  .mlinks .al{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+  .mlinks .al{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-3);overflow-wrap:anywhere}
   .mfoot{margin-top:24px;font-size:13.5px;color:var(--ink-3)}.mfoot a{color:var(--accent)}.mfoot code{font-family:var(--mono);font-size:.85em;color:var(--ink-2)}
 
   /* monitor */
   .monitor{border:1px solid var(--line);border-radius:var(--rad-lg);overflow:hidden;background:var(--bg-2)}
   .mbar{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px solid var(--line);background:var(--panel)}
   .mdots{display:flex;gap:6px}.mdots i{width:10px;height:10px;border-radius:50%;background:var(--line-2)}.mdots i:first-child{background:var(--accent)}
-  .tabs{display:flex;gap:4px}
+  .tabs{display:none;gap:4px}
   .tab{font-family:var(--mono);font-size:12px;color:var(--ink-3);background:none;border:none;cursor:pointer;padding:6px 13px;border-radius:8px;transition:color .2s,background .2s}
   .tab.active{color:var(--ink);background:var(--panel-hi)}
   .mmeta{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.12em;text-transform:uppercase}
   .term{padding:22px 22px;font-family:var(--mono);font-size:12.5px;line-height:1.9;overflow-x:auto;color:var(--ink)}
   .term .pr{color:var(--accent)}.term .ar{color:var(--accent-2)}.term .cm{color:var(--ink-3);font-style:italic}.term .ok{color:var(--accent-2)}
-  .pane{display:none}.pane.active{display:block}
+  .pane{display:block}.tabs-ready .tabs{display:flex}
+  .tabs-ready .pane{display:none}.tabs-ready .pane.active{display:block}
   .qs-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}.qs-actions .btn{flex:1 1 auto;justify-content:center}
 
   /* footer */
@@ -202,9 +208,9 @@ document.documentElement.setAttribute('data-theme',t);})();
   .fbot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-top:clamp(40px,6vw,64px);padding-top:24px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
   .fbot a{color:var(--ink-2)}
 
-  /* reveal */
-  .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s var(--ease),transform .7s var(--ease)}
-  .reveal.in{opacity:1;transform:none}
+  /* Content stays visible before JavaScript runs and if it fails. */
+  .reveal.in{animation:reveal .7s var(--ease)}
+  @keyframes reveal{from{transform:translateY(22px)}to{transform:none}}
 
   /* ── tablet / desktop enhancements (mobile-first) ── */
   @media (min-width:760px){
@@ -228,26 +234,60 @@ document.documentElement.setAttribute('data-theme',t);})();
   }
   @media (prefers-reduced-motion:reduce){
     .ticker-track,.eq span,.dot{animation:none}
-    .reveal{opacity:1;transform:none;transition:none}html{scroll-behavior:auto}
+    .reveal.in{animation:none}html{scroll-behavior:auto}
   }
 </style>
+<noscript><style>
+  #theme,#copy,#menu{display:none}
+  .hdr-in{height:auto;min-height:64px;flex-wrap:wrap;gap:12px;padding-top:12px;padding-bottom:12px}
+  .nav{display:flex;flex-wrap:wrap;gap:16px;font-family:var(--mono);font-size:13px}
+</style></noscript>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "SoftwareSourceCode",
-  "@id": "https://appautomaton.renocrypt.com/mlx-speech/#project",
-  "name": "mlx-speech",
-  "alternateName": ["MLX Speech", "mlx speech"],
-  "description": "Local text-to-speech, voice cloning, dialogue, sound effects, and ASR on Apple Silicon, running pure MLX. No cloud, no PyTorch.",
-  "url": "https://appautomaton.renocrypt.com/mlx-speech/",
-  "codeRepository": "https://github.com/appautomaton/mlx-speech",
-  "programmingLanguage": "Python",
-  "runtimePlatform": "MLX",
-  "operatingSystem": "macOS on Apple silicon",
-  "applicationCategory": "DeveloperApplication",
-  "license": "https://opensource.org/licenses/MIT",
-  "isPartOf": { "@id": "https://appautomaton.renocrypt.com/#website" },
-  "author": { "@id": "https://appautomaton.renocrypt.com/#org" }
+  "@graph": [
+    {
+      "@type": "WebPage",
+      "@id": "https://appautomaton.renocrypt.com/mlx-speech/#webpage",
+      "url": "https://appautomaton.renocrypt.com/mlx-speech/",
+      "name": "mlx-speech | Local Text-to-Speech & ASR for Apple Silicon",
+      "description": "Open-source MLX speech library for Apple Silicon: local text-to-speech, voice cloning, sound effects, and speech recognition. No PyTorch or cloud inference.",
+      "inLanguage": "en",
+      "dateModified": "2026-09-05",
+      "isPartOf": {
+        "@id": "https://appautomaton.renocrypt.com/#website"
+      },
+      "mainEntity": {
+        "@id": "https://appautomaton.renocrypt.com/mlx-speech/#project"
+      }
+    },
+    {
+      "@type": "SoftwareSourceCode",
+      "@id": "https://appautomaton.renocrypt.com/mlx-speech/#project",
+      "name": "mlx-speech",
+      "alternateName": [
+        "MLX Speech",
+        "mlx speech"
+      ],
+      "description": "Open-source MLX speech library for Apple Silicon: local text-to-speech, voice cloning, sound effects, and speech recognition. No PyTorch or cloud inference.",
+      "url": "https://appautomaton.renocrypt.com/mlx-speech/",
+      "codeRepository": "https://github.com/appautomaton/mlx-speech",
+      "programmingLanguage": "Python",
+      "runtimePlatform": "MLX",
+      "license": "https://opensource.org/licenses/MIT",
+      "author": {
+        "@id": "https://appautomaton.renocrypt.com/#org"
+      },
+      "targetProduct": {
+        "@type": "SoftwareApplication",
+        "name": "mlx-speech",
+        "operatingSystem": "macOS on Apple Silicon",
+        "applicationCategory": "DeveloperApplication",
+        "softwareRequirements": "Apple Silicon Mac (M1 or later), Python 3.13+",
+        "installUrl": "https://github.com/appautomaton/mlx-speech#installation"
+      }
+    }
+  ]
 }
 </script>
 </head>
@@ -278,7 +318,7 @@ document.documentElement.setAttribute('data-theme',t);})();
   <div class="wrap">
     <span class="eyebrow"><b>◆</b> Pure MLX · Apple Silicon · No PyTorch</span>
     <h1>Speech, rendered on the <span class="accent">metal.</span></h1>
-    <p class="lede">An open-source, MLX-native speech library for Apple Silicon. Text-to-speech, voice cloning, dialogue, sound effects, and recognition, all running on the Apple GPU. Weights download on first use. Load any model by a short alias.</p>
+    <p class="lede">An open-source, MLX-native speech library for Apple Silicon. Local text-to-speech, voice cloning, dialogue, sound effects, and automatic speech recognition (ASR), with MLX inference on the Apple GPU. Weights download on first use. Load any model by a short alias.</p>
     <div class="ctas">
       <div class="install" id="install">
         <span><span class="pr">$</span> pip install mlx-speech</span>
@@ -291,9 +331,9 @@ document.documentElement.setAttribute('data-theme',t);})();
     </div>
     <div class="eq" id="eq" aria-hidden="true"></div>
     <div class="specs">
-      <div class="spec"><div class="v">14</div><div class="l">Speech models</div></div>
+      <div class="spec"><div class="v">15</div><div class="l">Speech models</div></div>
       <div class="spec"><div class="v">2</div><div class="l">Tasks · TTS &amp; ASR</div></div>
-      <div class="spec"><div class="v">48<span class="u">kHz</span></div><div class="l">Stereo output</div></div>
+      <div class="spec"><div class="v">48<span class="u">kHz</span></div><div class="l">Stereo · DramaBox</div></div>
       <div class="spec"><div class="v">0</div><div class="l">PyTorch at runtime</div></div>
     </div>
   </div>
@@ -308,10 +348,10 @@ document.documentElement.setAttribute('data-theme',t);})();
     <div class="shead reveal">
       <span class="eyebrow"><b>01</b> Why pure MLX</span>
       <h2>The laptop is the whole runtime.</h2>
-      <p>Everything runs on the Apple GPU through MLX. No Python-side Torch, no server, nothing leaves the machine. Every model returns a real waveform, from text to audio.</p>
+      <p>Model inference runs locally through MLX on the Apple GPU, with audio preparation on the CPU where needed. TTS produces playable waveforms. ASR returns text. No PyTorch or cloud inference service is required.</p>
     </div>
     <div class="grid3">
-      <div class="card reveal"><div class="ci"><i data-lucide="cpu"></i></div><h3>Pure MLX runtime</h3><p>No torch-backed inference under an MLX label. Weights ship as <code>.safetensors</code> with explicit remapping. The Apple GPU does the work.</p></div>
+      <div class="card reveal"><div class="ci"><i data-lucide="cpu"></i></div><h3>Pure MLX runtime</h3><p>No torch-backed inference under an MLX label. Weights ship as <code>.safetensors</code> with explicit remapping. Model computation uses the Apple GPU through MLX.</p></div>
       <div class="card reveal"><div class="ci"><i data-lucide="shield-check"></i></div><h3>Local &amp; private</h3><p>Converted weights download once, then run fully offline. Aliases and local checkpoint paths are interchangeable.</p></div>
       <div class="card reveal"><div class="ci"><i data-lucide="terminal"></i></div><h3>One clean interface</h3><p><code>tts.load()</code> / <code>asr.load()</code> in Python, or the <code>mlx-speech</code> CLI. Per-family scripts expose the full surface.</p></div>
     </div>
@@ -322,17 +362,94 @@ document.documentElement.setAttribute('data-theme',t);})();
   <div class="wrap">
     <div class="shead reveal">
       <span class="eyebrow"><b>02</b> The catalog</span>
-      <h2>Fourteen models. One loader.</h2>
+      <h2>Fifteen models. One loader.</h2>
       <p>Synthesis, cloning, dialogue, editing, sound effects, and recognition. Every catalog entry links to its converted weights and model-family guide.</p>
     </div>
 
-    <div class="rack-label reveal"><span class="n">Text-to-speech</span><span class="ln"></span><span class="c">10 modules</span></div>
-    <div class="rack" id="tts"></div>
+    <div class="rack-label reveal"><span class="n">Text-to-speech</span><span class="ln"></span><span class="c">11 modules</span></div>
+    <div class="rack" id="tts">
+      <article class="mod reveal" data-alias="dots-tts-soar">
+        <div class="mtop"><div><div class="midx">T01</div><h3 class="mname">dots.tts SOAR</h3></div><span class="mfmt">int8 · base</span></div>
+        <p class="mdesc">Continuous autoregressive TTS with a 10-step flow-matching solver and classifier-free guidance.</p>
+        <div class="mlinks"><a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md" aria-label="dots.tts SOAR guide">Guide <i data-lucide="arrow-right"></i></a><a href="https://huggingface.co/appautomaton/dots-tts-mlx" aria-label="dots.tts SOAR weights">Weights <i data-lucide="arrow-up-right"></i></a><span class="al">dots-tts-soar</span></div>
+      </article>
+      <article class="mod reveal" data-alias="dots-tts-mf">
+        <div class="mtop"><div><div class="midx">T02</div><h3 class="mname">dots.tts MeanFlow</h3></div><span class="mfmt">int8 · base</span></div>
+        <p class="mdesc">Continuous autoregressive TTS with a four-step distilled acoustic solver.</p>
+        <div class="mlinks"><a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md" aria-label="dots.tts MeanFlow guide">Guide <i data-lucide="arrow-right"></i></a><a href="https://huggingface.co/appautomaton/dots-tts-mlx" aria-label="dots.tts MeanFlow weights">Weights <i data-lucide="arrow-up-right"></i></a><span class="al">dots-tts-mf</span></div>
+      </article>
+      <article class="mod reveal" data-alias="fish-s2-pro">
+        <div class="mtop"><div><div class="midx">T03</div><h3 class="mname">Fish S2 Pro</h3></div><span class="mfmt">int8</span></div>
+        <p class="mdesc">Dual-AR TTS with voice cloning and inline emotion tags like <code>[excited]</code>.</p>
+        <div class="mlinks"><a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/fish-s2-pro.md" aria-label="Fish S2 Pro guide">Guide <i data-lucide="arrow-right"></i></a><a href="https://huggingface.co/appautomaton/fishaudio-s2-pro-8bit-mlx" aria-label="Fish S2 Pro weights">Weights <i data-lucide="arrow-up-right"></i></a><span class="al">fish-s2-pro</span></div>
+      </article>
+      <article class="mod reveal" data-alias="vibevoice">
+        <div class="mtop"><div><div class="midx">T04</div><h3 class="mname">VibeVoice Large</h3></div><span class="mfmt">int8</span></div>
+        <p class="mdesc">Hybrid LLM-plus-diffusion TTS with voice cloning and long-form delivery.</p>
+        <div class="mlinks"><a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/vibevoice.md" aria-label="VibeVoice Large guide">Guide <i data-lucide="arrow-right"></i></a><a href="https://huggingface.co/appautomaton/vibevoice-mlx" aria-label="VibeVoice Large weights">Weights <i data-lucide="arrow-up-right"></i></a><span class="al">vibevoice</span></div>
+      </article>
+      <article class="mod reveal" data-alias="longcat">
+        <div class="mtop"><div><div class="midx">T05</div><h3 class="mname">LongCat AudioDiT</h3></div><span class="mfmt">int8</span></div>
+        <p class="mdesc">Flow-matching diffusion TTS built on a 3.5B audio diffusion transformer.</p>
+        <div class="mlinks"><a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/longcat-audiodit.md" aria-label="LongCat AudioDiT guide">Guide <i data-lucide="arrow-right"></i></a><a href="https://huggingface.co/appautomaton/longcat-audiodit-3.5b-8bit-mlx" aria-label="LongCat AudioDiT weights">Weights <i data-lucide="arrow-up-right"></i></a><span class="al">longcat</span></div>
+      </article>
+      <article class="mod reveal" data-alias="moss-local">
+        <div class="mtop"><div><div class="midx">T06</div><h3 class="mname">OpenMOSS TTS Local</h3></div><span class="mfmt">int8</span></div>
+        <p class="mdesc">Local-attention, multi-VQ TTS with global + local KV cache.</p>
+        <div class="mlinks"><a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/moss-local.md" aria-label="OpenMOSS TTS Local guide">Guide <i data-lucide="arrow-right"></i></a><a href="https://huggingface.co/appautomaton/openmoss-tts-local-mlx" aria-label="OpenMOSS TTS Local weights">Weights <i data-lucide="arrow-up-right"></i></a><span class="al">moss-local</span></div>
+      </article>
+      <article class="mod reveal" data-alias="moss-ttsd">
+        <div class="mtop"><div><div class="midx">T07</div><h3 class="mname">MOSS-TTSD</h3></div><span class="mfmt">int8</span></div>
+        <p class="mdesc">Delay-pattern dialogue TTS for multi-speaker conversation.</p>
+        <div class="mlinks"><a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/moss-ttsd.md" aria-label="MOSS-TTSD guide">Guide <i data-lucide="arrow-right"></i></a><a href="https://huggingface.co/appautomaton/openmoss-ttsd-mlx" aria-label="MOSS-TTSD weights">Weights <i data-lucide="arrow-up-right"></i></a><span class="al">moss-ttsd</span></div>
+      </article>
+      <article class="mod reveal" data-alias="moss-sound-effect">
+        <div class="mtop"><div><div class="midx">T08</div><h3 class="mname">OpenMOSS Sound Effect</h3></div><span class="mfmt">4-bit</span></div>
+        <p class="mdesc">Text-to-sound-effect generation. Turn "rolling thunder with rainfall" into a clip.</p>
+        <div class="mlinks"><a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/moss-sound-effect.md" aria-label="OpenMOSS Sound Effect guide">Guide <i data-lucide="arrow-right"></i></a><a href="https://huggingface.co/appautomaton/openmoss-sound-effect-mlx" aria-label="OpenMOSS Sound Effect weights">Weights <i data-lucide="arrow-up-right"></i></a><span class="al">moss-sound-effect</span></div>
+      </article>
+      <article class="mod reveal" data-alias="step-audio">
+        <div class="mtop"><div><div class="midx">T09</div><h3 class="mname">Step-Audio-EditX</h3></div><span class="mfmt">int8</span></div>
+        <p class="mdesc">Voice cloning plus emotion and style edits on existing speech.</p>
+        <div class="mlinks"><a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/step-audio-editx.md" aria-label="Step-Audio-EditX guide">Guide <i data-lucide="arrow-right"></i></a><a href="https://huggingface.co/appautomaton/step-audio-editx-8bit-mlx" aria-label="Step-Audio-EditX weights">Weights <i data-lucide="arrow-up-right"></i></a><span class="al">step-audio</span></div>
+      </article>
+      <article class="mod reveal" data-alias="dramabox">
+        <div class="mtop"><div><div class="midx">T10</div><h3 class="mname">DramaBox</h3></div><span class="mfmt">bf16</span></div>
+        <p class="mdesc">Resemble flow-matching diffusion TTS at 48&nbsp;kHz stereo.</p>
+        <div class="mlinks"><a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md" aria-label="DramaBox guide">Guide <i data-lucide="arrow-right"></i></a><a href="https://huggingface.co/appautomaton/dramabox-tts-3.3b-bf16-mlx" aria-label="DramaBox weights">Weights <i data-lucide="arrow-up-right"></i></a><span class="al">dramabox</span></div>
+      </article>
+      <article class="mod reveal" data-alias="fireredtts3-base">
+        <div class="mtop"><div><div class="midx">T11</div><h3 class="mname">FireRedTTS3 Base</h3></div><span class="mfmt">BF16</span></div>
+        <p class="mdesc">Multilingual zero-shot voice cloning with mono 24&nbsp;kHz output. Complete BF16 inference bundle. Requires the current GitHub install.</p>
+        <div class="mlinks"><a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md" aria-label="FireRedTTS3 Base guide">Guide <i data-lucide="arrow-right"></i></a><a href="https://huggingface.co/appautomaton/fireredtts3-mlx/tree/main/base/mlx-bf16" aria-label="FireRedTTS3 Base weights">Weights <i data-lucide="arrow-up-right"></i></a><span class="al">fireredtts3-base</span></div>
+      </article>
+    </div>
 
     <div class="rack-label reveal"><span class="n">Speech-to-text</span><span class="ln"></span><span class="c">04 modules</span></div>
-    <div class="rack asr-rack" id="asr"></div>
+    <div class="rack asr-rack" id="asr">
+      <article class="mod reveal asr" data-alias="cohere-asr">
+        <div class="mtop"><div><div class="midx">A01</div><h3 class="mname">Cohere Transcribe</h3></div><span class="mfmt">int8</span></div>
+        <p class="mdesc">Multilingual ASR with strong long-audio behavior.</p>
+        <div class="mlinks"><a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/cohere-asr.md" aria-label="Cohere Transcribe guide">Guide <i data-lucide="arrow-right"></i></a><a href="https://huggingface.co/appautomaton/cohere-asr-mlx" aria-label="Cohere Transcribe weights">Weights <i data-lucide="arrow-up-right"></i></a><span class="al">cohere-asr</span></div>
+      </article>
+      <article class="mod reveal asr" data-alias="qwen3-asr-1.7b">
+        <div class="mtop"><div><div class="midx">A02</div><h3 class="mname">Qwen3-ASR-1.7B</h3></div><span class="mfmt">int8 · bf16</span></div>
+        <p class="mdesc">English, Chinese, and mixed Chinese/English recognition.</p>
+        <div class="mlinks"><a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/qwen3-asr.md" aria-label="Qwen3-ASR-1.7B guide">Guide <i data-lucide="arrow-right"></i></a><a href="https://huggingface.co/appautomaton/qwen3-asr-1.7b-int8-mlx" aria-label="Qwen3-ASR-1.7B weights">Weights <i data-lucide="arrow-up-right"></i></a><span class="al">qwen3-asr-1.7b</span></div>
+      </article>
+      <article class="mod reveal asr" data-alias="nemotron-asr-streaming">
+        <div class="mtop"><div><div class="midx">A03</div><h3 class="mname">Nemotron 3.5 ASR Streaming</h3></div><span class="mfmt">int8</span></div>
+        <p class="mdesc">Cache-aware multilingual streaming ASR with bounded encoder and decoder state.</p>
+        <div class="mlinks"><a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/nemotron-asr.md" aria-label="Nemotron 3.5 ASR Streaming guide">Guide <i data-lucide="arrow-right"></i></a><a href="https://huggingface.co/appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx" aria-label="Nemotron 3.5 ASR Streaming weights">Weights <i data-lucide="arrow-up-right"></i></a><span class="al">nemotron-asr-streaming</span></div>
+      </article>
+      <article class="mod reveal asr" data-alias="granite-speech-4.0-1b">
+        <div class="mtop"><div><div class="midx">A04</div><h3 class="mname">IBM Granite Speech 4.0 1B</h3></div><span class="mfmt">int8 · BF16</span></div>
+        <p class="mdesc">Selective-int8 Granite LM with the acoustic encoder and QFormer retained in BF16.</p>
+        <div class="mlinks"><a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/granite-speech-asr.md" aria-label="IBM Granite Speech 4.0 1B guide">Guide <i data-lucide="arrow-right"></i></a><a href="https://huggingface.co/appautomaton/granite-4.0-1b-speech-int8-mlx" aria-label="IBM Granite Speech 4.0 1B weights">Weights <i data-lucide="arrow-up-right"></i></a><span class="al">granite-speech-4.0-1b</span></div>
+      </article>
+    </div>
 
-    <p class="mfoot reveal">Published weights live under <a href="https://huggingface.co/appautomaton">appautomaton</a> on Hugging Face and load by alias or full repo id. Original checkpoints can also be loaded from local paths when a family guide documents that path.</p>
+    <p class="mfoot reveal">Published weights live under <a href="https://huggingface.co/appautomaton">appautomaton</a> on Hugging Face and load by alias or full repo id, with an artifact subdirectory where required. Original checkpoints can also be loaded from local paths when a family guide documents that path.</p>
   </div>
 </section>
 
@@ -341,7 +458,7 @@ document.documentElement.setAttribute('data-theme',t);})();
     <div class="shead reveal">
       <span class="eyebrow"><b>03</b> Quickstart</span>
       <h2>Install. Load. Generate.</h2>
-      <p>Requires an Apple Silicon Mac (M1 or later) and Python 3.13+. Weights download on first use.</p>
+      <p>Requires an Apple Silicon Mac (M1 or later) and Python 3.13+. Weights download on first use. FireRedTTS3 Base currently requires the <a href="https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md#model-repository">GitHub installation</a>.</p>
     </div>
     <div class="monitor reveal">
       <div class="mbar">
@@ -353,6 +470,8 @@ document.documentElement.setAttribute('data-theme',t);})();
         <span class="mmeta">mlx-speech</span>
       </div>
       <div class="term pane active" id="pane-py">
+<div>import mlx_speech</div>
+<div>&nbsp;</div>
 <div><span class="cm"># Text-to-speech</span></div>
 <div>model = mlx_speech.tts.load(<span class="ar">"fish-s2-pro"</span>)</div>
 <div>result = model.generate(<span class="ar">"Hello from mlx-speech!"</span>)</div>
@@ -457,46 +576,18 @@ document.documentElement.setAttribute('data-theme',t);})();
     t.classList.add('active');document.getElementById('pane-'+t.dataset.pane).classList.add('active');
   })});
 
+  document.querySelector('.monitor').classList.add('tabs-ready');
+
   // equalizer bars
   var eq=document.getElementById('eq');
   if(eq){var H=[.5,.7,.4,.9,.55,1,.45,.75,.35,.85,.6,.95,.5,.7,.4,.8,.6,.5,.9,.45,.7,.55,.85,.4,.65,.5,.75,.6,.45,.8,.55,.7];
     for(var i=0;i<H.length;i++){var s=document.createElement('span');s.style.setProperty('--h',H[i]);s.style.setProperty('--d',(-(i%9)*0.13)+'s');eq.appendChild(s)}}
 
   // ticker
-  var T=[['dots.tts','SOAR · MeanFlow'],['fish-s2-pro','dual-AR · cloning'],['vibevoice','LLM + diffusion'],['longcat','flow-matching DiT'],['moss-local','multi-VQ'],['moss-ttsd','dialogue'],['moss-sound-effect','text → SFX'],['step-audio','clone + edit'],['dramabox','48kHz stereo'],['cohere-asr','multilingual'],['qwen3-asr-1.7b','EN · ZH'],['nemotron-asr-streaming','cache-aware'],['granite-speech-4.0-1b','selective int8']];
+  var T=[['dots.tts','SOAR · MeanFlow'],['fish-s2-pro','dual-AR · cloning'],['vibevoice','LLM + diffusion'],['longcat','flow-matching DiT'],['moss-local','multi-VQ'],['moss-ttsd','dialogue'],['moss-sound-effect','text → SFX'],['step-audio','clone + edit'],['dramabox','48kHz stereo'],['fireredtts3-base','BF16 · voice cloning'],['cohere-asr','multilingual'],['qwen3-asr-1.7b','EN · ZH'],['nemotron-asr-streaming','cache-aware'],['granite-speech-4.0-1b','selective int8']];
   var tk=document.getElementById('ticker'),html='';
   function row(){var r='';T.forEach(function(m){r+='<span class="ticker-item">'+m[0]+' <span class="k">'+m[1]+'</span><span class="s">/</span></span>'});return r}
   tk.innerHTML=row()+row();
-
-  // models
-  var TTS=[
-    ['dots.tts SOAR','int8 · base','dots-tts-soar','dots-tts.md','dots-tts-mlx','Continuous autoregressive TTS with a 10-step flow-matching solver and classifier-free guidance.'],
-    ['dots.tts MeanFlow','int8 · base','dots-tts-mf','dots-tts.md','dots-tts-mlx','Continuous autoregressive TTS with a four-step distilled acoustic solver.'],
-    ['Fish S2 Pro','int8','fish-s2-pro','fish-s2-pro.md','fishaudio-s2-pro-8bit-mlx','Dual-AR TTS with voice cloning and inline emotion tags like <code>[excited]</code>.'],
-    ['VibeVoice Large','int8','vibevoice','vibevoice.md','vibevoice-mlx','Hybrid LLM-plus-diffusion TTS with voice cloning and long-form delivery.'],
-    ['LongCat AudioDiT','int8','longcat','longcat-audiodit.md','longcat-audiodit-3.5b-8bit-mlx','Flow-matching diffusion TTS built on a 3.5B audio diffusion transformer.'],
-    ['OpenMOSS TTS Local','int8','moss-local','moss-local.md','openmoss-tts-local-mlx','Local-attention, multi-VQ TTS with global + local KV cache.'],
-    ['MOSS-TTSD','int8','moss-ttsd','moss-ttsd.md','openmoss-ttsd-mlx','Delay-pattern dialogue TTS for multi-speaker conversation.'],
-    ['OpenMOSS Sound Effect','4-bit','moss-sound-effect','moss-sound-effect.md','openmoss-sound-effect-mlx','Text-to-sound-effect generation. Turn "rolling thunder with rainfall" into a clip.'],
-    ['Step-Audio-EditX','int8','step-audio','step-audio-editx.md','step-audio-editx-8bit-mlx','Voice cloning plus emotion and style edits on existing speech.'],
-    ['DramaBox','bf16','dramabox','dramabox.md','dramabox-tts-3.3b-bf16-mlx','Resemble flow-matching diffusion TTS at 48&nbsp;kHz stereo.']
-  ];
-  var ASR=[
-    ['Cohere Transcribe','int8','cohere-asr','cohere-asr.md','cohere-asr-mlx','Multilingual ASR with strong long-audio behavior.'],
-    ['Qwen3-ASR-1.7B','int8 · bf16','qwen3-asr-1.7b','qwen3-asr.md','qwen3-asr-1.7b-int8-mlx','English, Chinese, and mixed Chinese/English recognition.'],
-    ['Nemotron 3.5 ASR Streaming','int8','nemotron-asr-streaming','nemotron-asr.md','nemotron-3.5-asr-streaming-0.6b-int8-mlx','Cache-aware multilingual streaming ASR with bounded encoder and decoder state.'],
-    ['IBM Granite Speech 4.0 1B','int8 · BF16','granite-speech-4.0-1b','granite-speech-asr.md','granite-4.0-1b-speech-int8-mlx','Selective-int8 Granite LM with the acoustic encoder and QFormer retained in BF16.']
-  ];
-  var GH='https://github.com/appautomaton/mlx-speech/blob/main/docs/',HF='https://huggingface.co/appautomaton/';
-  function mod(m,i,asr){
-    var wl=m[4]?'<a href="'+HF+m[4]+'">Weights <i data-lucide="arrow-up-right"></i></a>':'<a href="'+GH.replace('/blob/main/docs/','/tree/main/docs/benchmarks')+'">Benchmarks <i data-lucide="arrow-up-right"></i></a>';
-    return '<div class="mod reveal'+(asr?' asr':'')+'">'+
-      '<div class="mtop"><div><div class="midx">'+(asr?'A':'T')+String(i+1).padStart(2,'0')+'</div><div class="mname">'+m[0]+'</div></div><span class="mfmt">'+m[1]+'</span></div>'+
-      '<p class="mdesc">'+m[5]+'</p>'+
-      '<div class="mlinks"><a href="'+GH+m[3]+'">Guide <i data-lucide="arrow-right"></i></a>'+wl+'<span class="al">'+m[2]+'</span></div></div>';
-  }
-  document.getElementById('tts').innerHTML=TTS.map(function(m,i){return mod(m,i,false)}).join('');
-  document.getElementById('asr').innerHTML=ASR.map(function(m,i){return mod(m,i,true)}).join('');
 
   if(window.lucide)lucide.createIcons();
 
