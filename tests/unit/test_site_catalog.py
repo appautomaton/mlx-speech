@@ -46,6 +46,13 @@ def test_readme_and_site_publish_granite_int8_consistently() -> None:
     ) in page
     assert "session.feed(" in readme
     assert "session.finalize()" in readme
-    assert "scripts/convert/dots_tts.py --variant all --precision int8" in readme
-    assert "scripts/convert/nemotron_asr.py --quant int8" in readme
-    assert "scripts/convert/granite_speech_asr.py" in readme
+    for guide_name, converter, precision_flag in (
+        ("dots-tts.md", "dots_tts.py", "--precision int8"),
+        ("nemotron-asr.md", "nemotron_asr.py", "--quant int8"),
+        ("granite-speech-asr.md", "granite_speech_asr.py", None),
+    ):
+        assert f"/docs/{guide_name}" in readme
+        guide = (ROOT / "docs" / guide_name).read_text(encoding="utf-8")
+        assert f"scripts/convert/{converter}" in guide
+        if precision_flag is not None:
+            assert precision_flag in guide

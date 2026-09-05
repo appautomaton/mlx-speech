@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import mlx.core as mx
 from mlx.utils import tree_flatten
+import numpy as np
 import pytest
 
 from mlx_speech.models.qwen3_asr.config import Qwen3ASRTextConfig
@@ -12,6 +13,9 @@ from mlx_speech.models.qwen3_asr.text_decoder import (
     Qwen3ASRTextModel,
     Qwen3ASRTextRMSNorm,
     Qwen3ASRTextRotaryEmbedding,
+    _make_additive_attention_mask,
+    _repeat_kv,
+    _sliding_window_attention,
 )
 
 
@@ -52,6 +56,42 @@ def test_qwen3_asr_text_attention_shape_and_qk_norm():
     assert attention.q_norm.weight.shape == (4,)
     assert attention.k_norm.weight.shape == (4,)
     assert mx.all(mx.isfinite(output)).item()
+
+
+def test_window_bounded_attention_matches_dense_reference_across_boundary():
+    mx.random.seed(71)
+    query = mx.random.normal((1, 4, 70, 4))
+    key = mx.random.normal((1, 2, 70, 4))
+    value = mx.random.normal((1, 2, 70, 4))
+    scale = 0.5
+    actual = _sliding_window_attention(
+        query,
+        key,
+        value,
+        scale=scale,
+        sliding_window=64,
+        query_block_size=32,
+    )
+
+    repeated_key = _repeat_kv(key, 2)
+    repeated_value = _repeat_kv(value, 2)
+    scores = mx.matmul(query, repeated_key.transpose(0, 1, 3, 2)) * scale
+    mask = _make_additive_attention_mask(
+        query_len=70,
+        key_len=70,
+        query_offset=0,
+        dtype=mx.float32,
+        use_causal_mask=True,
+        sliding_window=64,
+    )
+    expected = mx.matmul(mx.softmax(scores + mask, axis=-1), repeated_value)
+    mx.eval(actual, expected)
+    np.testing.assert_allclose(
+        np.asarray(actual)[:, :, [0, 63, 64, 69]],
+        np.asarray(expected)[:, :, [0, 63, 64, 69]],
+        atol=2e-5,
+        rtol=2e-5,
+    )
 
 
 def test_qwen3_asr_text_kv_cache_prefill_and_decode_append():

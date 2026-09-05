@@ -41,6 +41,12 @@ As of March 29, 2026:
   (v0.7.0, 2026-06-10) — Pure-MLX, inference-only dots.tts reference supporting
   SOAR and MeanFlow checkpoints, voice cloning, waveform generation, conversion,
   and quantization. Read-only; not a runtime dependency.
+- `.references/FireRedTTS3`: `main` at `1d32ba780da6af37a71bdfd9c68c12003e908a46`
+  (2026-08-24) — Official PyTorch source for FireRedTTS3 Base and Instruct,
+  RedAE, CAM++, conditioning, sampling, and waveform inference. Very shallow,
+  blob-filtered checkout; read-only and never imported by the MLX runtime.
+  Original weights live separately at
+  `models/firered/firered_tts3/original/` (gitignored).
 - `.references/transformers`: `main` at `8213e0d920d52cb00dcade16b6d1f6e952ac0a8c` (sparse: `src/transformers/models/cohere_asr`, `src/transformers/models/moonshine`, `src/transformers/models/parakeet`)
 - `.references/Step-Audio-EditX`: `main` at `8fa0a3e96979d3c47f6e6b531d234ff98acac878`
 - `.references/DramaBox`: `main` at `a70a5818e103c1c9fef22409c1e0c707ebf4f8a7` (2026-05-23)

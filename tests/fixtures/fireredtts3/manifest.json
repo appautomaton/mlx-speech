@@ -1,0 +1,284 @@
+{
+  "arrays": {
+    "core_latents": {
+      "bytes": 192,
+      "dtype": "float32",
+      "shape": [
+        1,
+        12,
+        4
+      ]
+    },
+    "core_metadata": {
+      "bytes": 12,
+      "dtype": "int32",
+      "shape": [
+        3
+      ]
+    },
+    "core_prompt": {
+      "bytes": 128,
+      "dtype": "float32",
+      "shape": [
+        1,
+        8,
+        4
+      ]
+    },
+    "core_speaker": {
+      "bytes": 24,
+      "dtype": "float32",
+      "shape": [
+        1,
+        6
+      ]
+    },
+    "core_stop_scores": {
+      "bytes": 8,
+      "dtype": "float32",
+      "shape": [
+        2
+      ]
+    },
+    "core_tokens": {
+      "bytes": 12,
+      "dtype": "int32",
+      "shape": [
+        1,
+        3
+      ]
+    },
+    "cosine_schedule": {
+      "bytes": 12,
+      "dtype": "float32",
+      "shape": [
+        3
+      ]
+    },
+    "dit_input": {
+      "bytes": 864,
+      "dtype": "float32",
+      "shape": [
+        2,
+        6,
+        18
+      ]
+    },
+    "dit_output": {
+      "bytes": 192,
+      "dtype": "float32",
+      "shape": [
+        2,
+        6,
+        4
+      ]
+    },
+    "dit_timestep": {
+      "bytes": 8,
+      "dtype": "float32",
+      "shape": [
+        2
+      ]
+    },
+    "redae_audio": {
+      "bytes": 128,
+      "dtype": "float32",
+      "shape": [
+        1,
+        32
+      ]
+    },
+    "redae_decoded": {
+      "bytes": 128,
+      "dtype": "float32",
+      "shape": [
+        1,
+        32
+      ]
+    },
+    "redae_latents": {
+      "bytes": 64,
+      "dtype": "float32",
+      "shape": [
+        1,
+        4,
+        4
+      ]
+    },
+    "speaker_audio": {
+      "bytes": 64000,
+      "dtype": "float32",
+      "shape": [
+        16000
+      ]
+    },
+    "speaker_embedding": {
+      "bytes": 48,
+      "dtype": "float32",
+      "shape": [
+        1,
+        12
+      ]
+    },
+    "speaker_sample_rate": {
+      "bytes": 4,
+      "dtype": "int32",
+      "shape": [
+        1
+      ]
+    }
+  },
+  "capture": {
+    "command": "python scripts/audit/fireredtts3_golden_vectors.py capture --model-dir models/firered/firered_tts3/mlx-bf16 --output-dir tests/fixtures/fireredtts3",
+    "device": "cpu",
+    "git_commit": "91d60d545ebf167542fb123823e39173631b01db",
+    "mlx": "0.31.1",
+    "numpy": "2.4.4",
+    "python": "3.13.12",
+    "script_sha256": "45edc22f5190cbbd4aa8d84565a5d98849b255d09413924328398af1764d4255"
+  },
+  "description": "Self-contained deterministic micro-model inputs and expected outputs for regression testing without production model weights.",
+  "files": {
+    "vectors.npz": {
+      "bytes": 63613,
+      "sha256": "05e6dd4a514f32b0800a34b28b6865a71f7bec81070c8552cea33dd9f2a20a38"
+    }
+  },
+  "generation": {
+    "flow_steps": 2,
+    "guidance_scale": 1.0,
+    "max_generated_patches": 2,
+    "seed": 17,
+    "stop_threshold": 2.0
+  },
+  "micro_configs": {
+    "core": {
+      "dit_depth": 1,
+      "dit_hidden_size": 8,
+      "dit_mlp_ratio": 2,
+      "dit_num_heads": 2,
+      "num_history_patches": 2,
+      "patch_encoder_depth": 1,
+      "patch_encoder_hidden_size": 8,
+      "patch_encoder_mlp_ratio": 2,
+      "patch_encoder_num_heads": 2,
+      "patch_size": 2,
+      "qwen_head_dim": 4,
+      "qwen_hidden_size": 8,
+      "qwen_intermediate_size": 16,
+      "qwen_max_position_embeddings": 64,
+      "qwen_num_attention_heads": 2,
+      "qwen_num_hidden_layers": 1,
+      "qwen_num_key_value_heads": 1,
+      "qwen_rms_norm_eps": 1e-06,
+      "qwen_rope_theta": 10000.0,
+      "qwen_vocab_size": 32,
+      "redae_dim": 4,
+      "spk_in_dim": 6
+    },
+    "redae": {
+      "audio_patch_size": 4,
+      "audio_sample_rate": 24,
+      "bottleneck_dim": 4,
+      "dec_hidden_size": 8,
+      "dec_intermediate_size": 16,
+      "dec_max_position_embeddings": 64,
+      "dec_max_window_layers": 0,
+      "dec_num_attention_heads": 2,
+      "dec_num_hidden_layers": 1,
+      "dec_num_key_value_heads": 1,
+      "dec_sliding_window": 64,
+      "enc_downsample_num_hidden_layers": 1,
+      "enc_extra_downsample_rate": 2,
+      "enc_hidden_size": 8,
+      "enc_intermediate_size": 16,
+      "enc_max_position_embeddings": 64,
+      "enc_max_window_layers": 0,
+      "enc_num_attention_heads": 2,
+      "enc_num_hidden_layers": 1,
+      "enc_num_key_value_heads": 1,
+      "enc_sliding_window": 64,
+      "head_dim": 4,
+      "rope_theta": 10000.0,
+      "vocab_size": 32
+    },
+    "speaker": {
+      "block_layers": [
+        1,
+        1,
+        1
+      ],
+      "bottleneck_size": 2,
+      "embedding_size": 12,
+      "feature_dim": 80,
+      "growth_rate": 2,
+      "initial_channels": 4
+    }
+  },
+  "name": "FireRedTTS3 checkpoint-independent golden test vectors",
+  "schema_version": 1,
+  "source_checkpoint": {
+    "contract": {
+      "patch_size": 4,
+      "redae_dim": 64,
+      "sample_rate": 24000,
+      "speaker_embedding_size": 512
+    },
+    "files": {
+      "config.json": {
+        "bytes": 2827,
+        "sha256": "cec5d97dfa61927f6d4c15123ddb056fcb8441b50cf5c5f93c681aabddf8091a"
+      },
+      "core.safetensors": {
+        "bytes": 4241343356,
+        "sha256": "8f4bdc77907046cd74e687156e951dc6a776d139a0bf2ea7c2bee9dad9cb7c23"
+      },
+      "redae.safetensors": {
+        "bytes": 1887612163,
+        "sha256": "a6615e4d3c4d62767aa636ecb5f6b6f9454d693f44e1d1bd46fb43ddc6885c3d"
+      },
+      "speaker.safetensors": {
+        "bytes": 14770567,
+        "sha256": "041802be4a49897a9be86570cf9f36b783f975774b57a265215d93c0d7fb99a6"
+      },
+      "tokenizer.json": {
+        "bytes": 11422654,
+        "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+      },
+      "tokenizer_config.json": {
+        "bytes": 9732,
+        "sha256": "d5d09f07b48c3086c508b30d1c9114bd1189145b74e982a265350c923acd8101"
+      },
+      "vocab.json": {
+        "bytes": 2776833,
+        "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+      }
+    }
+  },
+  "tolerances": {
+    "core_latents": {
+      "atol": 2e-05,
+      "rtol": 2e-05
+    },
+    "core_stop_scores": {
+      "atol": 2e-05,
+      "rtol": 2e-05
+    },
+    "dit_output": {
+      "atol": 2e-05,
+      "rtol": 2e-05
+    },
+    "redae_decoded": {
+      "atol": 2e-05,
+      "rtol": 2e-05
+    },
+    "redae_latents": {
+      "atol": 2e-05,
+      "rtol": 2e-05
+    },
+    "speaker_embedding": {
+      "atol": 0.0002,
+      "rtol": 0.0002
+    }
+  }
+}
