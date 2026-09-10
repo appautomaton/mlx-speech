@@ -216,7 +216,7 @@ appropriate to their users and jurisdiction.
 ## Links
 
 - Source code: [`appautomaton/mlx-speech`](https://github.com/appautomaton/mlx-speech)
-- Project page: [appautomaton.renocrypt.com/mlx-speech](https://appautomaton.renocrypt.com/mlx-speech/)
+- Project page: [appautomaton.com/mlx-speech](https://appautomaton.com/mlx-speech/)
 
 ## License and attribution
 

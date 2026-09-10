@@ -47,7 +47,7 @@ tags:
 
 Base BF16 · Pure MLX inference · Mono 24 kHz audio
 
-[Runtime guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md) · [Source code](https://github.com/appautomaton/mlx-speech) · [Upstream model](https://huggingface.co/FireRedTeam/FireRedTTS3) · [Project website](https://appautomaton.renocrypt.com/mlx-speech/)
+[Runtime guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md) · [Source code](https://github.com/appautomaton/mlx-speech) · [Upstream model](https://huggingface.co/FireRedTeam/FireRedTTS3) · [Project website](https://appautomaton.com/mlx-speech/)
 
 </div>
 
@@ -57,7 +57,7 @@ This repository brings
 voice-cloning pipeline. Give it a reference recording, its transcript, and the
 text you want spoken. It returns a waveform in the reference speaker's voice.
 
-[App Automaton](https://appautomaton.renocrypt.com/) maintains the MLX conversion
+[App Automaton](https://appautomaton.com/) maintains the MLX conversion
 and runtime. Speech generation runs locally on your Mac, including speaker
 conditioning and waveform reconstruction.
 

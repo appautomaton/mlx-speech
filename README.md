@@ -11,7 +11,7 @@ Voice cloning, audio editing, sound effects, and transcription. All running loca
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/appautomaton/mlx-speech/blob/main/LICENSE)
 [![CI](https://github.com/appautomaton/mlx-speech/actions/workflows/ci.yml/badge.svg)](https://github.com/appautomaton/mlx-speech/actions/workflows/ci.yml)
 
-[Quick start](#quick-start) · [Models](#models) · [Model guides](https://github.com/appautomaton/mlx-speech/tree/main/docs) · [Hugging Face weights](https://huggingface.co/appautomaton) · [Project website](https://appautomaton.renocrypt.com/mlx-speech/)
+[Quick start](#quick-start) · [Models](#models) · [Model guides](https://github.com/appautomaton/mlx-speech/tree/main/docs) · [Hugging Face weights](https://huggingface.co/appautomaton) · [Project website](https://appautomaton.com/mlx-speech/)
 
 </div>
 
@@ -261,7 +261,7 @@ Library code is released under the
 [MIT license](https://github.com/appautomaton/mlx-speech/blob/main/LICENSE).
 Model weights retain their respective licenses, listed in their model cards.
 
-Built and maintained by [App Automaton](https://appautomaton.renocrypt.com).
+Built and maintained by [App Automaton](https://appautomaton.com).
 
 ## Acknowledgements
 

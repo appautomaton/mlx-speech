@@ -65,7 +65,7 @@ python scripts/generate/moss_local.py \
 ## Links
 
 - Source code: [mlx-speech](https://github.com/appautomaton/mlx-speech)
-- Project page: [appautomaton.renocrypt.com/mlx-speech](https://appautomaton.renocrypt.com/mlx-speech/)
+- Project page: [appautomaton.com/mlx-speech](https://appautomaton.com/mlx-speech/)
 - More examples: [AppAutomaton](https://github.com/appautomaton)
 
 ## License

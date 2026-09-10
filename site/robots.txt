@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://appautomaton.renocrypt.com/mlx-speech/sitemap.xml
+Sitemap: https://appautomaton.com/mlx-speech/sitemap.xml

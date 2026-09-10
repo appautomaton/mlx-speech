@@ -23,14 +23,14 @@ tags:
 # DramaBox TTS (MLX, bf16)
 
 [![GitHub](https://img.shields.io/badge/GitHub-mlx--speech-181717?logo=github&logoColor=white)](https://github.com/appautomaton/mlx-speech)
-[![App Automaton](https://img.shields.io/badge/App%20Automaton-project-1f6feb)](https://appautomaton.renocrypt.com)
+[![App Automaton](https://img.shields.io/badge/App%20Automaton-project-1f6feb)](https://appautomaton.com)
 [![Gemma backbone](https://img.shields.io/badge/%F0%9F%A4%97%20backbone-Gemma%203%2012B-yellow)](https://huggingface.co/appautomaton/gemma-3-12b-it-backbone-4bit-mlx)
 
 Pure-MLX conversion of [Resemble AI's DramaBox](https://huggingface.co/ResembleAI/Dramabox), an expressive flow-matching diffusion text-to-speech model. It renders 48 kHz stereo speech on Apple Silicon with no PyTorch at inference time. Weights ship as plain `.safetensors` for the [mlx-speech](https://github.com/appautomaton/mlx-speech) runtime.
 
 ## Model Details
 
-- Developed by: [App Automaton](https://appautomaton.renocrypt.com)
+- Developed by: [App Automaton](https://appautomaton.com)
 - Upstream model: [`ResembleAI/Dramabox`](https://huggingface.co/ResembleAI/Dramabox), built on [`Lightricks/LTX-2.3`](https://huggingface.co/Lightricks/LTX-2.3)
 - Task: English text-to-speech at 48 kHz stereo
 - Architecture: Gemma 3 12B text encoder, flow-matching audio DiT (3.3B), audio VAE, BigVGAN + BWE vocoder
@@ -97,7 +97,7 @@ python scripts/generate_dramabox.py \
 ## Links
 
 - Source code: [`appautomaton/mlx-speech`](https://github.com/appautomaton/mlx-speech)
-- Project page: [appautomaton.renocrypt.com/mlx-speech](https://appautomaton.renocrypt.com/mlx-speech/)
+- Project page: [appautomaton.com/mlx-speech](https://appautomaton.com/mlx-speech/)
 - Paired text encoder: [`appautomaton/gemma-3-12b-it-backbone-4bit-mlx`](https://huggingface.co/appautomaton/gemma-3-12b-it-backbone-4bit-mlx)
 - Optional voice-ref denoiser: [`appautomaton/re-use-semamba-mlx`](https://huggingface.co/appautomaton/re-use-semamba-mlx)
 - More from App Automaton: [GitHub](https://github.com/appautomaton) · [Hugging Face](https://huggingface.co/appautomaton)

@@ -151,7 +151,7 @@ The 755,732,373-byte int8 weight file is 40.8% smaller than the local 1,276,192,
 ## Links
 
 - Source code: [`appautomaton/mlx-speech`](https://github.com/appautomaton/mlx-speech)
-- Project page: [appautomaton.renocrypt.com/mlx-speech](https://appautomaton.renocrypt.com/mlx-speech/)
+- Project page: [appautomaton.com/mlx-speech](https://appautomaton.com/mlx-speech/)
 
 ## License and attribution
 
