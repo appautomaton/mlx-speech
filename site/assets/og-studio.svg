@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+<title id="title">mlx-speech. Your voice. Your Mac.</title>
+<desc id="desc">Local speech tools for Apple Silicon, with a waveform from a VibeVoice recording.</desc>
+<style>
+@font-face{font-family:Bricolage;src:url("fonts/bricolage-grotesque-latin.woff2") format("woff2");font-weight:200 800}
+@font-face{font-family:Instrument;src:url("fonts/instrument-sans-latin.woff2") format("woff2");font-weight:400 700}
+@font-face{font-family:Plex;src:url("fonts/ibm-plex-mono-latin.woff2") format("woff2")}
+text{font-family:Instrument,Arial,sans-serif;fill:#edf3ff}.display{font-family:Bricolage,Arial,sans-serif;font-optical-sizing:auto}.mono{font-family:Plex,monospace}
+</style>
+<rect width="1200" height="630" fill="#131925"/>
+<rect x="60" y="48" width="38" height="38" rx="8" fill="#90b5ff"/>
+<path d="M69 63v9m7-16v23m7-20v17m7-11v6" stroke="#122344" stroke-width="2" stroke-linecap="round"/>
+<text x="112" y="77" class="display" font-size="32" font-weight="650" letter-spacing="-1">mlx-speech</text>
+<text class="mono" x="1138" y="71" font-size="12" text-anchor="end" style="fill:#afbbd1">OPEN-SOURCE AUDIO / APPLE SILICON</text>
+<path d="M60 110H1140" stroke="#303d52"/>
+<text x="57" y="273" class="display" font-size="91" font-weight="620" letter-spacing="-3.5">Your voice.</text>
+<text x="57" y="367" class="display" font-size="91" font-weight="620" letter-spacing="-3.5" style="fill:#9dbdff">Your Mac.</text>
+<text x="63" y="427" font-size="20" style="fill:#afbbd1">Speech synthesis, voice cloning, and transcription.</text>
+<text x="63" y="459" font-size="20" style="fill:#afbbd1">Fifteen model variants. One pure-MLX library.</text>
+<rect x="660" y="171" width="479" height="317" rx="13" fill="#273244" stroke="#596b88"/>
+<text x="684" y="203" font-size="15" font-weight="650">mlx / audio</text>
+<text class="mono" x="1115" y="202" font-size="9" text-anchor="end" style="fill:#b8c6de">ELECTRIC EDITION</text>
+<rect x="676" y="218" width="447" height="198" rx="5" fill="#111927"/>
+<circle cx="696" cy="239" r="3" fill="#90b5ff"/>
+<text class="mono" x="708" y="242" font-size="8" style="fill:#adbcd2">VIBEVOICE / FOUR SPEAKERS</text>
+<g transform="translate(695 263) scale(.68 .79)" fill="#90b5ff"><rect x="1" y="77.56" width="2.5" height="4.87" rx="1.25"/>
+<rect x="6" y="77.01" width="2.5" height="5.98" rx="1.25"/>
+<rect x="11" y="69.31" width="2.5" height="21.38" rx="1.25"/>
+<rect x="16" y="48.44" width="2.5" height="63.12" rx="1.25"/>
+<rect x="21" y="51.31" width="2.5" height="57.37" rx="1.25"/>
+<rect x="26" y="62.89" width="2.5" height="34.22" rx="1.25"/>
+<rect x="31" y="55.33" width="2.5" height="49.35" rx="1.25"/>
+<rect x="36" y="54.20" width="2.5" height="51.59" rx="1.25"/>
+<rect x="41" y="60.84" width="2.5" height="38.31" rx="1.25"/>
+<rect x="46" y="72.73" width="2.5" height="14.53" rx="1.25"/>
+<rect x="51" y="77.83" width="2.5" height="4.34" rx="1.25"/>
+<rect x="56" y="65.42" width="2.5" height="29.15" rx="1.25"/>
+<rect x="61" y="54.64" width="2.5" height="50.71" rx="1.25"/>
+<rect x="66" y="61.70" width="2.5" height="36.59" rx="1.25"/>
+<rect x="71" y="53.89" width="2.5" height="52.22" rx="1.25"/>
+<rect x="76" y="55.75" width="2.5" height="48.49" rx="1.25"/>
+<rect x="81" y="53.65" width="2.5" height="52.7" rx="1.25"/>
+<rect x="86" y="63.70" width="2.5" height="32.6" rx="1.25"/>
+<rect x="91" y="55.14" width="2.5" height="49.72" rx="1.25"/>
+<rect x="96" y="50.06" width="2.5" height="59.88" rx="1.25"/>
+<rect x="101" y="57.22" width="2.5" height="45.57" rx="1.25"/>
+<rect x="106" y="75.54" width="2.5" height="8.92" rx="1.25"/>
+<rect x="111" y="54.05" width="2.5" height="51.91" rx="1.25"/>
+<rect x="116" y="52.34" width="2.5" height="55.33" rx="1.25"/>
+<rect x="121" y="59.16" width="2.5" height="41.67" rx="1.25"/>
+<rect x="126" y="57.96" width="2.5" height="44.08" rx="1.25"/>
+<rect x="131" y="59.56" width="2.5" height="40.88" rx="1.25"/>
+<rect x="136" y="57.91" width="2.5" height="44.18" rx="1.25"/>
+<rect x="141" y="77.84" width="2.5" height="4.31" rx="1.25"/>
+<rect x="146" y="77.83" width="2.5" height="4.34" rx="1.25"/>
+<rect x="151" y="77.81" width="2.5" height="4.37" rx="1.25"/>
+<rect x="156" y="77.80" width="2.5" height="4.4" rx="1.25"/>
+<rect x="161" y="77.80" width="2.5" height="4.4" rx="1.25"/>
+<rect x="166" y="77.81" width="2.5" height="4.39" rx="1.25"/>
+<rect x="171" y="77.69" width="2.5" height="4.61" rx="1.25"/>
+<rect x="176" y="50.61" width="2.5" height="58.79" rx="1.25"/>
+<rect x="181" y="54.33" width="2.5" height="51.34" rx="1.25"/>
+<rect x="186" y="62.89" width="2.5" height="34.21" rx="1.25"/>
+<rect x="191" y="54.19" width="2.5" height="51.63" rx="1.25"/>
+<rect x="196" y="51.64" width="2.5" height="56.72" rx="1.25"/>
+<rect x="201" y="58.52" width="2.5" height="42.95" rx="1.25"/>
+<rect x="206" y="47.27" width="2.5" height="65.45" rx="1.25"/>
+<rect x="211" y="53.64" width="2.5" height="52.73" rx="1.25"/>
+<rect x="216" y="54.66" width="2.5" height="50.68" rx="1.25"/>
+<rect x="221" y="77.56" width="2.5" height="4.87" rx="1.25"/>
+<rect x="226" y="77.83" width="2.5" height="4.33" rx="1.25"/>
+<rect x="231" y="77.81" width="2.5" height="4.37" rx="1.25"/>
+<rect x="236" y="77.81" width="2.5" height="4.39" rx="1.25"/>
+<rect x="241" y="77.81" width="2.5" height="4.38" rx="1.25"/>
+<rect x="246" y="77.81" width="2.5" height="4.38" rx="1.25"/>
+<rect x="251" y="77.81" width="2.5" height="4.38" rx="1.25"/>
+<rect x="256" y="77.81" width="2.5" height="4.37" rx="1.25"/>
+<rect x="261" y="64.50" width="2.5" height="31.0" rx="1.25"/>
+<rect x="266" y="37.31" width="2.5" height="85.38" rx="1.25"/>
+<rect x="271" y="30.94" width="2.5" height="98.12" rx="1.25"/>
+<rect x="276" y="49.42" width="2.5" height="61.15" rx="1.25"/>
+<rect x="281" y="77.83" width="2.5" height="4.33" rx="1.25"/>
+<rect x="286" y="41.55" width="2.5" height="76.89" rx="1.25"/>
+<rect x="291" y="26.82" width="2.5" height="106.36" rx="1.25"/>
+<rect x="296" y="25.49" width="2.5" height="109.01" rx="1.25"/>
+<rect x="301" y="37.16" width="2.5" height="85.69" rx="1.25"/>
+<rect x="306" y="40.22" width="2.5" height="79.57" rx="1.25"/>
+<rect x="311" y="36.45" width="2.5" height="87.11" rx="1.25"/>
+<rect x="316" y="77.80" width="2.5" height="4.4" rx="1.25"/>
+<rect x="321" y="77.83" width="2.5" height="4.34" rx="1.25"/>
+<rect x="326" y="77.81" width="2.5" height="4.38" rx="1.25"/>
+<rect x="331" y="77.82" width="2.5" height="4.36" rx="1.25"/>
+<rect x="336" y="48.62" width="2.5" height="62.75" rx="1.25"/>
+<rect x="341" y="48.76" width="2.5" height="62.48" rx="1.25"/>
+<rect x="346" y="57.35" width="2.5" height="45.3" rx="1.25"/>
+<rect x="351" y="57.15" width="2.5" height="45.7" rx="1.25"/>
+<rect x="356" y="52.84" width="2.5" height="54.33" rx="1.25"/>
+<rect x="361" y="46.54" width="2.5" height="66.92" rx="1.25"/>
+<rect x="366" y="62.45" width="2.5" height="35.09" rx="1.25"/>
+<rect x="371" y="77.86" width="2.5" height="4.29" rx="1.25"/>
+<rect x="376" y="77.83" width="2.5" height="4.35" rx="1.25"/>
+<rect x="381" y="77.82" width="2.5" height="4.36" rx="1.25"/>
+<rect x="386" y="54.64" width="2.5" height="50.71" rx="1.25"/>
+<rect x="391" y="48.29" width="2.5" height="63.42" rx="1.25"/>
+<rect x="396" y="52.48" width="2.5" height="55.05" rx="1.25"/>
+<rect x="401" y="55.80" width="2.5" height="48.4" rx="1.25"/>
+<rect x="406" y="53.01" width="2.5" height="53.98" rx="1.25"/>
+<rect x="411" y="52.99" width="2.5" height="54.02" rx="1.25"/>
+<rect x="416" y="69.06" width="2.5" height="21.88" rx="1.25"/>
+<rect x="421" y="50.70" width="2.5" height="58.59" rx="1.25"/>
+<rect x="426" y="51.44" width="2.5" height="57.12" rx="1.25"/>
+<rect x="431" y="53.00" width="2.5" height="54.0" rx="1.25"/>
+<rect x="436" y="58.38" width="2.5" height="43.25" rx="1.25"/>
+<rect x="441" y="51.49" width="2.5" height="57.02" rx="1.25"/>
+<rect x="446" y="58.13" width="2.5" height="43.74" rx="1.25"/>
+<rect x="451" y="57.03" width="2.5" height="45.94" rx="1.25"/>
+<rect x="456" y="77.86" width="2.5" height="4.29" rx="1.25"/>
+<rect x="461" y="77.83" width="2.5" height="4.35" rx="1.25"/>
+<rect x="466" y="77.82" width="2.5" height="4.36" rx="1.25"/>
+<rect x="471" y="31.09" width="2.5" height="97.82" rx="1.25"/>
+<rect x="476" y="64.24" width="2.5" height="31.52" rx="1.25"/>
+<rect x="481" y="25.05" width="2.5" height="109.91" rx="1.25"/>
+<rect x="486" y="28.66" width="2.5" height="102.67" rx="1.25"/>
+<rect x="491" y="50.25" width="2.5" height="59.49" rx="1.25"/>
+<rect x="496" y="25.77" width="2.5" height="108.45" rx="1.25"/>
+<rect x="501" y="29.68" width="2.5" height="100.64" rx="1.25"/>
+<rect x="506" y="40.66" width="2.5" height="78.67" rx="1.25"/>
+<rect x="511" y="39.13" width="2.5" height="81.73" rx="1.25"/>
+<rect x="516" y="32.73" width="2.5" height="94.55" rx="1.25"/>
+<rect x="521" y="57.25" width="2.5" height="45.51" rx="1.25"/>
+<rect x="526" y="77.84" width="2.5" height="4.31" rx="1.25"/>
+<rect x="531" y="77.83" width="2.5" height="4.35" rx="1.25"/>
+<rect x="536" y="41.60" width="2.5" height="76.79" rx="1.25"/>
+<rect x="541" y="39.67" width="2.5" height="80.66" rx="1.25"/>
+<rect x="546" y="52.83" width="2.5" height="54.35" rx="1.25"/>
+<rect x="551" y="9.00" width="2.5" height="142.0" rx="1.25"/>
+<rect x="556" y="22.15" width="2.5" height="115.71" rx="1.25"/>
+<rect x="561" y="27.87" width="2.5" height="104.26" rx="1.25"/>
+<rect x="566" y="20.20" width="2.5" height="119.6" rx="1.25"/>
+<rect x="571" y="11.78" width="2.5" height="136.45" rx="1.25"/>
+<rect x="576" y="18.08" width="2.5" height="123.84" rx="1.25"/>
+<rect x="581" y="10.79" width="2.5" height="138.42" rx="1.25"/>
+<rect x="586" y="28.52" width="2.5" height="102.95" rx="1.25"/>
+<rect x="591" y="22.84" width="2.5" height="114.31" rx="1.25"/>
+<rect x="596" y="39.17" width="2.5" height="81.65" rx="1.25"/></g>
+<path d="M696 391H1102" stroke="#38475d"/>
+<text class="mono" x="696" y="406" font-size="7" style="fill:#adbcd2">00:00</text>
+<text class="mono" x="1102" y="406" font-size="7" text-anchor="end" style="fill:#adbcd2">00:43</text>
+<circle cx="699" cy="450" r="19" fill="#90b5ff"/>
+<path d="M694 442l12 8-12 8Z" fill="#122344"/>
+<path d="M739 450H1105" stroke="#526483" stroke-width="3"/>
+<path d="M740 443v14" stroke="#edf3ff" stroke-width="7"/>
+<path d="M60 545H1140" stroke="#303d52"/>
+<text class="mono" x="63" y="585" font-size="12" style="fill:#afbbd1">LOCAL INFERENCE. FULL CONTROL.</text>
+<text class="mono" x="1138" y="585" font-size="13" text-anchor="end" style="fill:#9dbdff">appautomaton.com/mlx-speech</text>
+</svg>

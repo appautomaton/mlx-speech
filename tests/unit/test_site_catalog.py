@@ -11,26 +11,30 @@ class _CatalogParser(HTMLParser):
         self.cards: dict[str, dict] = {}
         self.card: dict | None = None
         self.in_heading = False
+        self.link: dict | None = None
 
     def handle_starttag(self, tag: str, attrs: list) -> None:
         attrs = dict(attrs)
-        if tag == "article" and "mod" in attrs.get("class", "").split():
+        if tag == "article" and "data-alias" in attrs:
             alias = attrs["data-alias"]
             assert alias not in self.cards
             self.card = {
                 "heading": "",
                 "text": "",
                 "links": [],
-                "asr": "asr" in attrs["class"].split(),
+                "asr": attrs["data-task"] == "asr",
             }
             self.cards[alias] = self.card
         if self.card is not None:
             if tag == "h3":
                 self.in_heading = True
             if tag == "a":
-                self.card["links"].append(attrs)
+                self.link = {**attrs, "text": ""}
+                self.card["links"].append(self.link)
 
     def handle_endtag(self, tag: str) -> None:
+        if tag == "a":
+            self.link = None
         if tag == "h3":
             self.in_heading = False
         if tag == "article":
@@ -41,12 +45,23 @@ class _CatalogParser(HTMLParser):
             self.card["text"] += data
             if self.in_heading:
                 self.card["heading"] += data
+            if self.link is not None:
+                self.link["text"] += data
 
 
 def _catalog() -> dict[str, dict]:
     parser = _CatalogParser()
     parser.feed((ROOT / "site/index.html").read_text(encoding="utf-8"))
     return parser.cards
+
+
+def _weights(card: dict) -> str:
+    links = [
+        link["href"] for link in card["links"]
+        if link["href"].startswith("https://huggingface.co/appautomaton/")
+    ]
+    assert len(links) == 1
+    return links[0]
 
 
 def test_site_catalog_has_crawlable_model_headings_and_links() -> None:
@@ -56,44 +71,44 @@ def test_site_catalog_has_crawlable_model_headings_and_links() -> None:
     for alias, card in cards.items():
         assert card["heading"], alias
         assert alias in card["text"]
-        guide, weights = card["links"]
-        assert guide["href"].startswith(
-            "https://github.com/appautomaton/mlx-speech/blob/main/docs/"
-        )
-        assert (ROOT / "docs" / guide["href"].rsplit("/", 1)[-1]).is_file()
-        assert weights["href"].startswith("https://huggingface.co/appautomaton/")
+        guides = {
+            link["href"] for link in card["links"]
+            if link["href"].startswith(
+                "https://github.com/appautomaton/mlx-speech/blob/main/docs/"
+            )
+        }
+        assert len(guides) == 1
+        assert (ROOT / "docs" / next(iter(guides)).rsplit("/", 1)[-1]).is_file()
+        assert _weights(card)
         for link in card["links"]:
             assert "nofollow" not in link.get("rel", "").split()
-            assert card["heading"] in link["aria-label"]
+            assert card["heading"] in link.get("aria-label", link["text"])
 
 
 def test_site_catalog_includes_both_dots_tts_solvers() -> None:
-    page = (ROOT / "site/index.html").read_text(encoding="utf-8")
     cards = _catalog()
 
-    assert "Fifteen models. One loader." in page
-    assert "11 modules" in page
-    assert "['dots.tts','SOAR · MeanFlow']" in page
+    assert sum(not card["asr"] for card in cards.values()) == 11
+    assert "10-step flow-matching solver" in cards["dots-tts-soar"]["text"]
+    assert "four-step distilled acoustic solver" in cards["dots-tts-mf"]["text"]
     for alias, heading in (
         ("dots-tts-soar", "dots.tts SOAR"),
         ("dots-tts-mf", "dots.tts MeanFlow"),
     ):
         assert cards[alias]["heading"] == heading
         assert (
-            cards[alias]["links"][1]["href"]
+            _weights(cards[alias])
             == "https://huggingface.co/appautomaton/dots-tts-mlx"
         )
 
 
 def test_site_catalog_includes_published_nemotron_asr() -> None:
-    page = (ROOT / "site/index.html").read_text(encoding="utf-8")
-
-    assert "04 modules" in page
-    assert "['nemotron-asr-streaming','cache-aware']" in page
     card = _catalog()["nemotron-asr-streaming"]
+    assert card["asr"]
+    assert "Cache-aware multilingual streaming ASR" in card["text"]
     assert card["heading"] == "Nemotron 3.5 ASR Streaming"
     assert (
-        card["links"][1]["href"]
+        _weights(card)
         == "https://huggingface.co/appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx"
     )
 
@@ -104,26 +119,26 @@ def test_site_fireredtts3_points_to_base_bf16_with_install_requirement() -> None
     assert "mono 24\N{NO-BREAK SPACE}kHz" in card["text"]
     assert "Requires the current GitHub install" in card["text"]
     assert (
-        card["links"][1]["href"]
+        _weights(card)
         == "https://huggingface.co/appautomaton/fireredtts3-mlx/tree/main/base/mlx-bf16"
     )
 
 
 def test_readme_and_site_publish_granite_int8_consistently() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    page = (ROOT / "site/index.html").read_text(encoding="utf-8")
 
     assert "appautomaton/granite-4.0-1b-speech-int8-mlx" in readme
     assert "`granite-speech-4.0-1b`" in readme
     assert "actions/workflows/ci.yml/badge.svg" in readme
     assert 'write_wav("output.wav", result.waveform' in readme
     assert "local-only adapters" not in readme
-    assert "['granite-speech-4.0-1b','selective int8']" in page
     card = _catalog()["granite-speech-4.0-1b"]
+    assert card["asr"]
+    assert "Selective-int8 Granite LM" in card["text"]
     assert card["heading"] == "IBM Granite Speech 4.0 1B"
     assert "int8 · BF16" in card["text"]
     assert (
-        card["links"][1]["href"]
+        _weights(card)
         == "https://huggingface.co/appautomaton/granite-4.0-1b-speech-int8-mlx"
     )
     assert "session.feed(" in readme
