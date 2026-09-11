@@ -11,6 +11,12 @@ examples. `assets/studio.css` defines the responsive audio-studio layout.
 Without scripts, the native player, all 15 model variants, and all examples remain
 available. The recording is never autoplayed and uses `preload="none"`.
 
+Native CSS view timelines add parallax to the hero console and entry movement
+to section headings and the quickstart console. Text stays visible throughout;
+scrolling is never intercepted. Stacked layouts use smaller movements, keyboard
+focus holds console controls still, and reduced-motion preferences disable the
+effects. Browsers without view timelines keep the static presentation.
+
 Three curated editions each support light and dark themes: Electric (blue),
 Ember (orange), and Ultraviolet (violet). `assets/appearance.js` selects the
 edition before the stylesheet loads. It excludes the previous edition stored

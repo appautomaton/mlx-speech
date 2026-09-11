@@ -292,6 +292,32 @@ input[type=range]::-moz-range-thumb{width:9px;height:14px;background:var(--ink);
  .quickstart{padding-block:40px}.quickstart .eyebrow{font-size:9px;margin-bottom:19px}.quickstart h2{font-size:42px;letter-spacing:-1.9px}.quickstart-copy>p:not(.eyebrow){font-size:12px;margin-top:17px}.setup-steps{margin-top:25px;gap:18px}.setup-steps strong{font-size:12px}.setup-steps p{font-size:11px}.setup-steps li{gap:15px}.quickstart-copy .button{font-size:11px;gap:22px;padding:14px 17px}.code-header{font-size:8px;padding:15px}.code-tabs{padding-inline:5px}.code-tabs button{font-size:10px;padding-inline:10px}.code-panel{padding:16px 14px 0}.code-panel-top h3,.code-panel-top button{font-size:9px}.code-panel pre{font-size:10px;margin-top:13px;min-height:292px;line-height:1.9}.code-result{font-size:8px}.code-console-foot{font-size:9px;padding:14px;gap:12px;flex-wrap:wrap}
  .closing{padding-block:40px}.closing .eyebrow{font-size:9px;margin-bottom:20px}.closing h2{font-size:clamp(50px,14.8vw,72px);letter-spacing:-.045em}.closing-wave{width:95px;margin-left:15px}.closing-bottom{flex-direction:column;gap:25px;margin-top:24px}.closing-bottom p{font-size:12px}.closing-bottom .button{font-size:11px;gap:30px}.footer-brand{font-size:20px}.site-footer{gap:17px}.site-footer nav{font-size:10px;gap:12px 23px}.site-footer>p{font-size:8px}
 }
+/* Scroll supplies the progress; text stays visible even without timeline support. */
+@keyframes studio-drift{from{transform:translateY(0)}to{transform:translateY(var(--console-drift))}}
+@keyframes studio-enter{from{transform:translateY(var(--entry-rise))}to{transform:translateY(0)}}
+@supports(animation-timeline:view()){
+ @media(prefers-reduced-motion:no-preference){
+  :root{--console-drift:64px;--entry-rise:36px}
+  .hero{view-timeline-name:--hero-scroll;view-timeline-axis:block}
+  .listen-column{
+   animation:studio-drift 1ms linear both;
+   animation-timeline:--hero-scroll;
+   animation-range:exit 0% exit 100%;
+  }
+  .principles h2,.section-heading h2,.quickstart h2,.closing h2,.code-console{
+   animation:studio-enter 1ms linear both;
+   animation-timeline:view(block);
+   animation-range:entry 0% entry 100%;
+  }
+  .code-console{--entry-rise:48px}
+  /* Hold keyboard targets still while the visitor operates either console. */
+  .listen-column:has(:focus-visible),.code-console:has(:focus-visible){animation:none}
+  @media(max-width:800px){
+   :root{--console-drift:16px;--entry-rise:18px}
+   .code-console{--entry-rise:24px}
+  }
+ }
+}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition:none!important;animation:none!important}}
 
 .theme-toggle{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border:1px solid var(--line);border-radius:4px;background:transparent;padding:9px 12px;font:10px var(--mono);white-space:nowrap}
