@@ -1,52 +1,75 @@
 # mlx-speech landing page
 
 Static GitHub Pages site for [mlx-speech](https://github.com/appautomaton/mlx-speech),
-published at <https://appautomaton.com/mlx-speech/>.
+published at <https://appautomaton.com/mlx-speech/>. No framework or build step.
 
-## Stack
+## Presentation
 
-A single self-contained `index.html` with no build step or framework. Model
-cards, headings, and links are static HTML. Styles and the small bit of JS
-(theme toggle, mobile menu, copy, tabs, scroll animation, equalizer) live inline.
-Content remains visible without JavaScript, including both quickstart examples.
+`index.html` contains the full model catalog, transcript, and all three Python
+examples. `assets/studio.css` defines the responsive audio-studio layout.
+`assets/studio.js` enhances native audio playback, filters, code tabs, and copying.
+Without scripts, the native player, all 15 model variants, and all examples remain
+available. The recording is never autoplayed and uses `preload="none"`.
 
-- **Type:** Big Shoulders Display (display), IBM Plex Sans (body), IBM Plex Mono
-  (data) — loaded from Google Fonts via `<link>`.
-- **Icons:** [Lucide](https://lucide.dev) via CDN.
-- **Theme:** simplistic neutral palette + one vermilion accent. Light/dark via
-  `data-theme` on `<html>`, persisted in localStorage, defaulting to the OS
-  scheme. Deep-link with `?theme=light` / `?theme=dark`.
-- **Responsive:** authored mobile-first; breakpoints at 760px and 900px.
+Three curated editions each support light and dark themes: Electric (blue),
+Ember (orange), and Ultraviolet (violet). `assets/appearance.js` selects the
+edition before the stylesheet loads. It excludes the previous edition stored
+in `sessionStorage`, so reloads change the palette when storage is available.
+The theme follows the OS until the visitor uses Night mode; an explicit choice
+is remembered in `localStorage`. Storage failures leave controls usable, with
+an independently random palette on each load. Without scripts, Ember follows
+the system color scheme. No account, cookie, or network service is involved.
 
-Total page weight is just `index.html` + `favicon.svg` + `assets/og.png`.
+Archivo and IBM Plex Mono are self-hosted Latin WOFF2 files, totaling 44,992
+bytes. Their SIL Open Font License notices are in `assets/fonts/`. Sources:
+[Archivo](https://github.com/google/fonts/tree/main/ofl/archivo) and
+[IBM Plex Mono](https://github.com/google/fonts/tree/main/ofl/ibmplexmono).
 
-## Deploy
+## Audio provenance
 
-Published by `.github/workflows/pages.yml` on every push to `main` that touches
-`site/`. GitHub Pages source must be set to **GitHub Actions** (Settings → Pages).
-`.nojekyll` keeps Jekyll out of the way.
+`assets/audio/vibevoice-conversation.mp3` is a compressed copy of the repository's
+[`examples/audio/vibevoice_4speaker_convo.wav`](../examples/audio/README.md):
+four speakers generated locally on Apple Silicon using VibeVoice. The page calls
+it a prerecorded output; playback does not run a model in the browser.
 
-## Local preview
+The MP3 is 516,140 bytes (504 KiB), approximately 43 seconds, 24 kHz mono at
+96 kb/s. Recreate it from the repository root with:
+
+```bash
+ffmpeg -i examples/audio/vibevoice_4speaker_convo.wav \
+  -map_metadata -1 -codec:a libmp3lame -b:a 96k -ac 1 \
+  site/assets/audio/vibevoice-conversation.mp3
+```
+
+The waveform uses 120 equal windows of the source WAV, with each bar proportional
+to window RMS amplitude normalized to the recording's loudest window. The
+transcript was generated locally with the `qwen3-asr-1.7b` adapter and is labeled
+as an ASR transcription. Source precision and generation speed are not claimed.
+
+Keep only a small curated set of web samples here. Use external asset hosting
+for a large or frequently replaced audio catalog rather than accumulating
+recording revisions in Git.
+
+## Social preview
+
+`assets/og-studio.png` is the 1200 × 630 social card, using Electric's night theme.
+Its editable source is `assets/og-studio.svg`, with the same fonts and sampled
+waveform as the site. Open the SVG through the local server, wait for its fonts
+to load, and capture it at 1200 × 630 with device pixel ratio 1 to recreate the PNG.
+
+## Local preview and deployment
 
 ```bash
 python3 -m http.server -d site 8000
-# open http://localhost:8000/
+# http://localhost:8000/
 ```
 
-## Updating the page
+`.github/workflows/pages.yml` publishes on pushes to `main` touching `site/`.
+GitHub Pages uses GitHub Actions; `.nojekyll` bypasses Jekyll.
 
-Keep the model counts and decorative ticker in sync with the static cards.
-Each card needs a model heading, loader alias, guide, and published weight link.
-Mention a GitHub installation requirement when a model is ahead of PyPI.
-Update `sitemap.xml` and the WebPage `dateModified` on substantive page changes.
-
-`assets/og.png` is the 1200×630 social preview. The current revision was edited
-with the built-in imagegen tool and resized for Open Graph. Preserve the dark
-background, condensed headline, vermilion accent, and equalizer motif.
-Keep the two supporting lines above the bars with a clear gap:
-
-> Local TTS · voice cloning · dialogue · sound effects · ASR
-> MLX-native speech for Apple Silicon.
-
-Validate desktop and mobile layouts with JavaScript enabled and disabled.
-Run `pytest tests/unit/` before publishing.
+When updating models, keep the static headings, aliases, task counts, guides,
+and published weight links consistent. Identify models requiring a GitHub
+installation ahead of PyPI. Update the sitemap and WebPage `dateModified` on
+substantive changes. Check all six color/theme combinations, narrow screens,
+keyboard operation, and rendering without scripts. Run `pytest tests/unit/`
+before publishing. Private account measurements belong outside this repository.

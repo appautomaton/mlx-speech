@@ -1,8 +1,7 @@
 {
-  "active_change": "2026-09-03-fireredtts3-mlx-runtime-optimization",
-  "stage": "verified",
-  "canonical_spec": ".agent/work/2026-09-03-fireredtts3-mlx-runtime-optimization/SPEC.md",
-  "canonical_plan": ".agent/work/2026-09-03-fireredtts3-mlx-runtime-optimization/PLAN.md",
-  "engineering_review": "approved_with_risks",
-  "disengaged": true
+  "active_change": "2026-09-10-audio-studio-site",
+  "stage": "verify",
+  "canonical_spec": ".agent/work/2026-09-10-audio-studio-site/SPEC.md",
+  "canonical_design": ".agent/work/2026-09-10-audio-studio-site/DESIGN.md",
+  "canonical_plan": ".agent/work/2026-09-10-audio-studio-site/PLAN.md"
 }
