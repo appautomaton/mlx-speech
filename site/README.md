@@ -20,9 +20,12 @@ is remembered in `localStorage`. Storage failures leave controls usable, with
 an independently random palette on each load. Without scripts, Ember follows
 the system color scheme. No account, cookie, or network service is involved.
 
-Archivo and IBM Plex Mono are self-hosted Latin WOFF2 files, totaling 44,992
-bytes. Their SIL Open Font License notices are in `assets/fonts/`. Sources:
-[Archivo](https://github.com/google/fonts/tree/main/ofl/archivo) and
+Bricolage Grotesque gives display headings their character at a moderate weight;
+Instrument Sans handles body text, model names, and navigation. IBM Plex Mono
+is reserved for code and control labels. All three are self-hosted Latin WOFF2
+files, totaling 117,032 bytes. SIL Open Font License notices are in `assets/fonts/`.
+Sources: [Bricolage Grotesque](https://github.com/ateliertriay/bricolage),
+[Instrument Sans](https://github.com/Instrument/instrument-sans), and
 [IBM Plex Mono](https://github.com/google/fonts/tree/main/ofl/ibmplexmono).
 
 ## Audio provenance

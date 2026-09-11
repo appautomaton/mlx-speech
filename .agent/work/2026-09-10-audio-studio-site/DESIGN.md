@@ -3,9 +3,10 @@
 Three independent color editions frame the studio: Ember (signal orange),
 Electric (cobalt blue), and Ultraviolet (violet). Each has a fully designed light
 and dark theme. They are specific to MLX Speech and do not inherit the parent
-site's green palette. A tightly spaced, oversized Archivo headline provides
-the main identity; IBM Plex Mono labels controls and code. Both fonts are
-hosted with the site and differ from the parent site's font families. Thin
+site's green palette. Bricolage Grotesque provides distinctive display headings at moderate weights
+and relaxed spacing. Instrument Sans handles reading text and navigation;
+IBM Plex Mono labels controls and code. All three fonts are hosted with the site
+and differ from the parent site's font families. Thin
 rules, physical controls, and visible timing marks reference audio equipment
 without pretending to be an inference app.
 

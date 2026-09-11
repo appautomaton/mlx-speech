@@ -32,7 +32,7 @@ does not break the page. Inspect all six combinations and check contrast.
 **Verification:** Browser screenshots and interaction checks at the stated sizes,
 including playback progress, end/reset, task filters, copy actions, and no-script rendering.
 
-Status: implemented; core interactions verified. Narrow-screen visual review remains.
+Status: complete.
 
 ### Slice 3: Verify search checks and deliver the reviewed change
 
@@ -45,7 +45,7 @@ JavaScript syntax/diff, and passing `pytest tests/unit/`.
 **Verification:** Fresh Lighthouse audit, source and link review, unit suite,
 final desktop/mobile screenshot review, and recorded publication status.
 
-Status: implemented and prepared for draft review.
+Status: complete.
 
 ## Verification
 
@@ -63,15 +63,30 @@ Status: implemented and prepared for draft review.
   not part of these audits. Public account measurements remain outside the repo.
 - Appearance logic passed 300 non-repeating selections, OS defaults/changes,
   remembered explicit choice, invalid values, and unavailable storage checks.
-- Desktop 1440px and mobile 390px visual review passed, without horizontal overflow.
+- Visual review at 320, 390, 768, and 1440 CSS pixels passed without horizontal overflow.
   No-script source retains 15 models, three examples, and native audio controls.
   Reduced-motion CSS removes smooth scrolling, transitions, and animations.
 - Required unit suite: 1,121 passed in 5.63 seconds, with one pre-existing regex
   escape warning. JavaScript syntax, internal links, local assets, and diff checks pass.
 
-## Remaining review
+## Typography refinement and completion
 
-Visual checks at 320px and 768px, plus rendered no-script/reduced-motion review,
-remain for final review.
-The state stays at verify until those checks are completed. The implementation
-is ready as a draft pull request; production publication is a separate action.
+Bricolage Grotesque replaces Archivo for display headings and the wordmark.
+Instrument Sans handles reading text and navigation; IBM Plex Mono remains
+for code and control labels. Display weights and letter spacing are more open.
+The obsolete Archivo files were removed. Three licensed Latin WOFF2 files total
+117,032 bytes, and the 1200 × 630 social preview was regenerated from its SVG.
+
+New fonts were confirmed loaded in the existing browser tab. At 320, 390, 768,
+and 1440 CSS pixels, the document and body widths matched the viewport. A fresh
+Lighthouse snapshot with the new typography scored accessibility 100, technical
+SEO 100, and best practices 100. The unit suite passed again: 1,121 tests in 5.73s.
+
+The no-script source was rendered in the same tab with external styles inlined
+and the site's reduced-motion rules applied. All 15 models, three examples,
+and native audio controls remained visible; scrolling was immediate and button
+transitions were disabled. There was no horizontal overflow or audio download.
+No audio was played during the typography refinement.
+
+Implementation and verification are complete. The change remains in draft PR
+#39 for design review and has not been deployed to production.

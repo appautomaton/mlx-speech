@@ -2,18 +2,19 @@
 <title id="title">mlx-speech. Your voice. Your Mac.</title>
 <desc id="desc">Local speech tools for Apple Silicon, with a waveform from a VibeVoice recording.</desc>
 <style>
-@font-face{font-family:Archivo;src:url("fonts/archivo-latin.woff2") format("woff2");font-weight:100 900}
+@font-face{font-family:Bricolage;src:url("fonts/bricolage-grotesque-latin.woff2") format("woff2");font-weight:200 800}
+@font-face{font-family:Instrument;src:url("fonts/instrument-sans-latin.woff2") format("woff2");font-weight:400 700}
 @font-face{font-family:Plex;src:url("fonts/ibm-plex-mono-latin.woff2") format("woff2")}
-text{font-family:Archivo,Arial,sans-serif;fill:#edf3ff}.mono{font-family:Plex,monospace}
+text{font-family:Instrument,Arial,sans-serif;fill:#edf3ff}.display{font-family:Bricolage,Arial,sans-serif;font-optical-sizing:auto}.mono{font-family:Plex,monospace}
 </style>
 <rect width="1200" height="630" fill="#131925"/>
 <rect x="60" y="48" width="38" height="38" rx="8" fill="#90b5ff"/>
 <path d="M69 63v9m7-16v23m7-20v17m7-11v6" stroke="#122344" stroke-width="2" stroke-linecap="round"/>
-<text x="112" y="77" font-size="32" font-weight="750" letter-spacing="-1.5">mlx-speech</text>
+<text x="112" y="77" class="display" font-size="32" font-weight="650" letter-spacing="-1">mlx-speech</text>
 <text class="mono" x="1138" y="71" font-size="12" text-anchor="end" style="fill:#afbbd1">OPEN-SOURCE AUDIO / APPLE SILICON</text>
 <path d="M60 110H1140" stroke="#303d52"/>
-<text x="57" y="273" font-size="91" font-weight="800" letter-spacing="-5" word-spacing="6">Your voice.</text>
-<text x="57" y="367" font-size="91" font-weight="800" letter-spacing="-5" word-spacing="6" style="fill:#9dbdff">Your Mac.</text>
+<text x="57" y="273" class="display" font-size="91" font-weight="620" letter-spacing="-3.5">Your voice.</text>
+<text x="57" y="367" class="display" font-size="91" font-weight="620" letter-spacing="-3.5" style="fill:#9dbdff">Your Mac.</text>
 <text x="63" y="427" font-size="20" style="fill:#afbbd1">Speech synthesis, voice cloning, and transcription.</text>
 <text x="63" y="459" font-size="20" style="fill:#afbbd1">Fifteen model variants. One pure-MLX library.</text>
 <rect x="660" y="171" width="479" height="317" rx="13" fill="#273244" stroke="#596b88"/>
