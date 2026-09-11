@@ -77,6 +77,7 @@
 }
   </script>
   <script src="assets/studio.js" defer></script>
+  <script src="assets/motion.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -98,7 +99,23 @@
     <section class="hero wrap" id="top" aria-labelledby="hero-title">
       <div class="hero-copy">
         <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Open-source audio. Apple Silicon.</p>
-        <h1 id="hero-title">Your voice.<br><span>Your Mac.</span></h1>
+        <div class="hero-heading">
+          <h1 id="hero-title"><span class="hero-line">Your voice.</span><br><span class="hero-line">Your Mac.</span></h1>
+          <svg class="hero-signal" viewBox="0 0 460 90" fill="none" aria-hidden="true">
+            <defs>
+              <path id="studio-signal" d="M0 45H35C55 45 60 34 75 34S95 58 110 58S127 13 145 13S165 78 183 78S206 5 225 5S245 84 265 84S285 19 303 19S324 65 342 65S362 36 378 36S397 45 419 45H460" pathLength="460"/>
+              <linearGradient id="signal-fade"><stop stop-color="white" stop-opacity="0"/><stop offset=".13" stop-color="white"/><stop offset=".87" stop-color="white"/><stop offset="1" stop-color="white" stop-opacity="0"/></linearGradient>
+              <mask id="signal-mask"><rect width="460" height="90" fill="url(#signal-fade)"/></mask>
+            </defs>
+            <g mask="url(#signal-mask)">
+              <path class="signal-axis" d="M0 45H460M46 40V50M92 40V50M138 40V50M184 40V50M230 40V50M276 40V50M322 40V50M368 40V50M414 40V50"/>
+              <g class="signal-trace signal-trace-back"><use href="#studio-signal"/></g>
+              <g class="signal-trace signal-trace-mid"><use href="#studio-signal"/></g>
+              <g class="signal-trace signal-trace-front"><use href="#studio-signal"/><use class="signal-traveler" href="#studio-signal"/></g>
+            </g>
+          </svg>
+        </div>
+        <div class="hero-details">
         <p class="hero-description">Speech synthesis, voice cloning, and transcription, running right here on Apple Silicon. Fifteen model variants. One pure-MLX library.</p>
         <div class="hero-actions">
           <a class="button button-dark" href="#quickstart">Start building <span aria-hidden="true">↗</span></a>
@@ -110,6 +127,8 @@
           <button class="copy-install" type="button" data-copy="install-command" hidden><svg class="copy-glyph" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 7h10v10H7zM13 7V3H3v10h4"/></svg><span data-copy-label>Copy</span><span class="sr-only"> installation command</span></button>
         </div>
         <p class="hero-footnote">Python 3.13+ <span aria-hidden="true">/</span> M1 or later <span aria-hidden="true">/</span> No PyTorch</p>
+        </div>
+        <button class="motion-toggle" id="motion-toggle" type="button" hidden><span class="motion-symbol" aria-hidden="true">Ⅱ</span><span data-motion-label>Pause animation</span></button>
       </div>
 
       <div class="listen-column" id="listen">

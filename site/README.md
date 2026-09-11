@@ -11,11 +11,20 @@ examples. `assets/studio.css` defines the responsive audio-studio layout.
 Without scripts, the native player, all 15 model variants, and all examples remain
 available. The recording is never autoplayed and uses `preload="none"`.
 
-Native CSS view timelines add parallax to the hero console and entry movement
-to section headings and the quickstart console. Text stays visible throughout;
-scrolling is never intercepted. Stacked layouts use smaller movements, keyboard
-focus holds console controls still, and reduced-motion preferences disable the
-effects. Browsers without view timelines keep the static presentation.
+The hero's decorative SVG signal changes amplitude and carries a traveling
+highlight. It is independent of the sampled waveform and audio playback.
+`assets/motion.js` maps ordinary scrolling to a CSS variable: the title rises
+and separates, the supporting copy moves more slowly, and the console recedes
+with a slight rotation. Native CSS view timelines handle section entrances.
+Navigation uses the display font at 700 weight; the theme button uses the
+reading font at 650 weight instead of the fine monospace control labels.
+
+Text stays visible throughout and scrolling is never intercepted. Stacked
+layouts use smaller movements. The animation button disables decorative motion
+and parallax, remembers the choice when local storage is available, and respects
+system reduced-motion preferences. The signal pauses offscreen and in hidden
+tabs. Keyboard focus holds console controls still. Without scripts, the SVG and
+hero stay static; without view timelines, section headings stay in place.
 
 Three curated editions each support light and dark themes: Electric (blue),
 Ember (orange), and Ultraviolet (violet). `assets/appearance.js` selects the

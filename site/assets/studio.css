@@ -292,18 +292,57 @@ input[type=range]::-moz-range-thumb{width:9px;height:14px;background:var(--ink);
  .quickstart{padding-block:40px}.quickstart .eyebrow{font-size:9px;margin-bottom:19px}.quickstart h2{font-size:42px;letter-spacing:-1.9px}.quickstart-copy>p:not(.eyebrow){font-size:12px;margin-top:17px}.setup-steps{margin-top:25px;gap:18px}.setup-steps strong{font-size:12px}.setup-steps p{font-size:11px}.setup-steps li{gap:15px}.quickstart-copy .button{font-size:11px;gap:22px;padding:14px 17px}.code-header{font-size:8px;padding:15px}.code-tabs{padding-inline:5px}.code-tabs button{font-size:10px;padding-inline:10px}.code-panel{padding:16px 14px 0}.code-panel-top h3,.code-panel-top button{font-size:9px}.code-panel pre{font-size:10px;margin-top:13px;min-height:292px;line-height:1.9}.code-result{font-size:8px}.code-console-foot{font-size:9px;padding:14px;gap:12px;flex-wrap:wrap}
  .closing{padding-block:40px}.closing .eyebrow{font-size:9px;margin-bottom:20px}.closing h2{font-size:clamp(50px,14.8vw,72px);letter-spacing:-.045em}.closing-wave{width:95px;margin-left:15px}.closing-bottom{flex-direction:column;gap:25px;margin-top:24px}.closing-bottom p{font-size:12px}.closing-bottom .button{font-size:11px;gap:30px}.footer-brand{font-size:20px}.site-footer{gap:17px}.site-footer nav{font-size:10px;gap:12px 23px}.site-footer>p{font-size:8px}
 }
-/* Scroll supplies the progress; text stays visible even without timeline support. */
-@keyframes studio-drift{from{transform:translateY(0)}to{transform:translateY(var(--console-drift))}}
+/* A living signal belongs to the page; the recording's waveform stays truthful. */
+.hero{--hero-progress:0;--title-rise:-110px;--details-rise:-42px;--console-travel:170px;--line-one-travel:64px;--line-two-travel:-20px;padding-top:50px;padding-bottom:190px}
+.hero-heading{transform-origin:left center}
+.hero-line{display:inline-block}
+h1>.hero-line:first-child{color:var(--ink)}
+.hero-signal{display:block;width:min(100%,430px);height:84px;margin:8px 0 -6px;overflow:visible;color:var(--accent-ink)}
+.hero-details .hero-description{margin-top:15px}
+.signal-axis{stroke:var(--accent-ink);stroke-width:.65;opacity:.25}
+.signal-trace{stroke:currentColor;stroke-width:1.5;transform-origin:230px 45px}
+.signal-trace-back{opacity:.24;transform:scaleY(-.85)}
+.signal-trace-mid{opacity:.45;transform:scaleY(.5)}
+.signal-trace-front{opacity:.95;stroke-width:2}
+.signal-traveler{stroke:var(--ink);stroke-width:3;stroke-dasharray:32 428;stroke-dashoffset:460}
+.motion-toggle{display:inline-flex;align-items:center;gap:9px;min-height:44px;margin-top:8px;padding:0;border:0;background:transparent;font:600 11px var(--body-font);color:var(--muted)}
+.motion-toggle:hover{color:var(--ink)}
+.motion-toggle:disabled{cursor:default}
+.motion-symbol{font:600 17px var(--body-font);width:14px;text-align:center;color:var(--accent-ink)}
+@keyframes signal-front{0%,100%{transform:scaleY(.55)}45%{transform:scaleY(1)}75%{transform:scaleY(.75)}}
+@keyframes signal-mid{0%,100%{transform:scaleY(.9)}50%{transform:scaleY(-.65)}}
+@keyframes signal-back{0%,100%{transform:scaleY(-.85)}50%{transform:scaleY(.45)}}
+@keyframes signal-flow{to{stroke-dashoffset:-460}}
+@media(prefers-reduced-motion:no-preference){
+ :root[data-motion="on"] .hero-heading{transform:translate3d(0,calc(var(--title-rise) * var(--hero-progress)),0)}
+ :root[data-motion="on"] .hero-line:first-child{transform:translate3d(calc(var(--line-one-travel) * var(--hero-progress)),0,0)}
+ :root[data-motion="on"] .hero-line:last-child{transform:translate3d(calc(var(--line-two-travel) * var(--hero-progress)),0,0)}
+ :root[data-motion="on"] .hero-copy>.eyebrow{transform:translate3d(0,calc(-65px * var(--hero-progress)),0)}
+ :root[data-motion="on"] .hero-details{transform:translate3d(0,calc(var(--details-rise) * var(--hero-progress)),0)}
+ :root[data-motion="on"] .listen-column{transform:translate3d(0,calc(var(--console-travel) * var(--hero-progress)),0) rotate(calc(2deg * var(--hero-progress))) scale(calc(1 - .08 * var(--hero-progress)));transform-origin:center top}
+ :root[data-motion="on"] .signal-trace-front{animation:signal-front 3.2s ease-in-out infinite}
+ :root[data-motion="on"] .signal-trace-mid{animation:signal-mid 4.1s ease-in-out infinite}
+ :root[data-motion="on"] .signal-trace-back{animation:signal-back 3.7s ease-in-out infinite}
+ :root[data-motion="on"] .signal-traveler{animation:signal-flow 3s linear infinite}
+ .hero[data-signal-active="false"] .signal-trace,.hero[data-signal-active="false"] .signal-traveler{animation-play-state:paused}
+ /* Keep controls at their resting positions for keyboard interaction. */
+ :root[data-motion="on"] .listen-column:has(:focus-visible),:root[data-motion="on"] .hero-details:has(:focus-visible){transform:none}
+}
+@media(max-width:800px){
+ .hero{--title-rise:-60px;--details-rise:-24px;--console-travel:44px;--line-one-travel:24px;--line-two-travel:-8px;padding-top:45px;padding-bottom:76px}
+ .hero-signal{height:75px;width:400px;max-width:100%;margin-top:5px}
+}
+@media(max-width:480px){
+ .hero{padding-top:36px;padding-bottom:66px}
+ .hero-signal{height:64px;margin-bottom:0}
+ .hero-details .hero-description{margin-top:10px}
+ .motion-toggle{margin-top:3px;font-size:10px}
+}
+/* Section entrances keep their native view timelines. */
 @keyframes studio-enter{from{transform:translateY(var(--entry-rise))}to{transform:translateY(0)}}
 @supports(animation-timeline:view()){
  @media(prefers-reduced-motion:no-preference){
-  :root{--console-drift:64px;--entry-rise:36px}
-  .hero{view-timeline-name:--hero-scroll;view-timeline-axis:block}
-  .listen-column{
-   animation:studio-drift 1ms linear both;
-   animation-timeline:--hero-scroll;
-   animation-range:exit 0% exit 100%;
-  }
+  :root{--entry-rise:36px}
   .principles h2,.section-heading h2,.quickstart h2,.closing h2,.code-console{
    animation:studio-enter 1ms linear both;
    animation-timeline:view(block);
@@ -311,13 +350,14 @@ input[type=range]::-moz-range-thumb{width:9px;height:14px;background:var(--ink);
   }
   .code-console{--entry-rise:48px}
   /* Hold keyboard targets still while the visitor operates either console. */
-  .listen-column:has(:focus-visible),.code-console:has(:focus-visible){animation:none}
+  .code-console:has(:focus-visible){animation:none}
   @media(max-width:800px){
-   :root{--console-drift:16px;--entry-rise:18px}
+   :root{--entry-rise:18px}
    .code-console{--entry-rise:24px}
   }
  }
 }
+:root[data-motion="off"] .principles h2,:root[data-motion="off"] .section-heading h2,:root[data-motion="off"] .quickstart h2,:root[data-motion="off"] .closing h2,:root[data-motion="off"] .code-console{animation:none}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition:none!important;animation:none!important}}
 
 .theme-toggle{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border:1px solid var(--line);border-radius:4px;background:transparent;padding:9px 12px;font:10px var(--mono);white-space:nowrap}
@@ -331,3 +371,13 @@ input[type=range]::-moz-range-thumb{width:9px;height:14px;background:var(--ink);
 @media(max-width:480px){.site-header{gap:0 12px}.theme-toggle{order:1;margin-left:auto;width:36px;border:0}.header-source{margin-left:0}.main-nav{gap:20px}}
 
 @media(max-width:360px){.brand{font-size:20px}.header-source{font-size:11px;gap:10px}.site-header{gap:0 8px}}
+
+/* Strong navigation carries the studio's display typography into the masthead. */
+.main-nav{font-family:var(--display-font);font-size:15px;font-weight:700;letter-spacing:-.015em}
+.nav-count{font-family:var(--body-font);font-size:10px;font-weight:700;border-color:var(--muted)}
+.theme-toggle{font:650 12px var(--body-font);border-width:1.5px;padding-inline:14px}
+.header-source{font-family:var(--display-font);font-size:15px;font-weight:700}
+@media(max-width:1100px){.main-nav,.header-source{font-size:13px}.theme-toggle{font-size:11px;padding-inline:10px}}
+@media(max-width:800px){.main-nav,.header-source{font-size:12px}.theme-toggle{padding-inline:8px}}
+@media(max-width:480px){.main-nav{font-size:13px}.header-source{font-size:12px}.nav-count{font-size:10px}}
+@media(max-width:360px){.header-source{font-size:11px}}

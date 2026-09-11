@@ -5,7 +5,12 @@ audio-studio preview and draft PR #39.
 
 ## Acceptance criteria
 
-- The hero console moves at a different speed from the surrounding copy.
+- The hero has an immediately visible animated SVG signal. Its title lines,
+  supporting copy, and console have clearly different scroll speeds.
+- Provide a pause control for decorative animation and parallax. Remember the
+  visitor's preference and honor the system reduced-motion setting.
+- Give navigation and the theme control stronger typography. Preserve this
+  project's independent audio-studio identity rather than the parent site's style.
 - Section headings and the quickstart console move into their resting positions
   as they enter the viewport, without hiding text or requiring interaction.
 - Native scrolling and controls remain usable. Reduced-motion preferences
