@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://appautomaton.com/mlx-speech/sitemap.xml

@@ -13,6 +13,8 @@ Voice cloning, audio editing, sound effects, and transcription. All running loca
 
 [Quick start](#quick-start) · [Models](#models) · [Model guides](https://github.com/appautomaton/mlx-speech/tree/main/docs) · [Hugging Face weights](https://huggingface.co/appautomaton) · [Project website](https://appautomaton.com/mlx-speech/)
 
+Website contributions belong in the [frontend repository](https://github.com/appautomaton/appautomaton.github.io/tree/main/sites/mlx-speech). See [website ownership](WEBSITE.md).
+
 </div>
 
 mlx-speech is an open-source Python library for text-to-speech (TTS) and

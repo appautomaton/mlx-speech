@@ -103,3 +103,9 @@ RUN_LOCAL_INTEGRATION=1 pytest tests/integration/
 ## Validation
 
 Add focused tests for weight mapping, checkpoint loading, and generation behavior as pieces land. Each stage must be independently testable before moving forward.
+
+## Website
+
+The public website is maintained in `sites/mlx-speech/` in
+`appautomaton/appautomaton.github.io`. See `WEBSITE.md`; do not recreate a local
+website copy or Pages publisher. Model guides remain in `docs/` here.
