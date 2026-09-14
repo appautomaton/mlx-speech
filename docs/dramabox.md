@@ -187,7 +187,6 @@ phases). v5 ships for 32 GB+ Macs.
 
 ## References
 
-- DramaBox upstream: `.references/DramaBox/` pinned at
-  `a70a5818e103c1c9fef22409c1e0c707ebf4f8a7` (see `docs/references.md`).
+- DramaBox upstream: `.references/DramaBox/` (see `docs/references.md`).
 - Plan: `plans/v5-dramabox.md` (locked at rev4, marked Done after the v5
   smoke test landed).

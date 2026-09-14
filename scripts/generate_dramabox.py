@@ -16,7 +16,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import mlx.core as mx
 import numpy as np
 import soundfile as sf
 

@@ -6,9 +6,8 @@ Stage 5 — snake_beta, anti-aliased activation, AMP block, vocoder shape.
 from __future__ import annotations
 
 import mlx.core as mx
-import pytest
 
-from mlx_speech.models.dramabox.vocoder import Vocoder, VocoderWithBWE, MelSTFT
+from mlx_speech.models.dramabox.vocoder import Vocoder, MelSTFT
 from mlx_speech.models.dramabox.vocoder.anti_aliased import Activation1d
 from mlx_speech.models.dramabox.vocoder.snake import SnakeBeta
 from mlx_speech.models.dramabox.vocoder.vocoder import AMPBlock1, VocoderArgs

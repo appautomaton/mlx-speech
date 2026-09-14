@@ -12,10 +12,6 @@ import pytest
 
 from mlx_speech.models.dramabox.audio_vae import AudioVAE, AudioVAEConfig
 from mlx_speech.models.dramabox.audio_vae.causal_conv_2d import CausalConv2d
-from mlx_speech.models.dramabox.audio_vae.encoder_decoder import (
-    AudioDecoder,
-    AudioEncoder,
-)
 from mlx_speech.models.dramabox.audio_vae.per_channel_statistics import (
     PerChannelStatistics,
 )

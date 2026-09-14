@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import mlx.core as mx
 
 from .._adapter import TTSOutput
 

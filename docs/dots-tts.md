@@ -299,14 +299,10 @@ additional safeguards their context requires.
 
 ## Sources
 
-- Official implementation: `studio-dots-ai/dots.tts`, pinned locally at commit
-  `5ed719e3d36f5a3f6d8037ca9a7009d4fd0520ba` (`v0.2.1`)
-- Community MLX comparison: `sb1992/dots-tts-mlx`, pinned at
-  `f64479f51a2a9d7093533732cae86e765d8fb96e` (`v0.7.0`)
-- SOAR weights: revision
-  `e3520f75254d0020a0406db31c51a79d00d22d55`
-- MeanFlow weights: revision
-  `25c53fb462e57087e52237daa5ea30df1c5cc328`
+- Official implementation: `studio-dots-ai/dots.tts` (`v0.2.1`)
+- Community MLX comparison: `sb1992/dots-tts-mlx` (`v0.7.0`)
+- SOAR and MeanFlow weights: published in the
+  [dots-tts-mlx repository](https://huggingface.co/appautomaton/dots-tts-mlx)
 
 See [reference provenance](references.md) for the local checkout paths and
 roles.

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import mlx.core as mx
 import numpy as np
-import pytest
 
 from mlx_speech.models.dramabox.dit import DiTConfig, LTXModel
 from mlx_speech.models.dramabox.dit.block import LTXBlock

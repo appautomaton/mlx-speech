@@ -10,7 +10,6 @@ import json
 from pathlib import Path
 
 import mlx.core as mx
-import pytest
 
 from mlx_speech.models.gemma3_text import (
     Gemma3Model,
@@ -194,7 +193,7 @@ def test_apply_rope_preserves_dtype_and_shape():
 
 
 def test_apply_rope_position_zero_is_identity():
-    B, H, D = 1, 1, 8
+    D = 8
     q = mx.array([[[[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]]]], dtype=mx.float32)
     k = mx.array([[[[8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0]]]], dtype=mx.float32)
     cos, sin = _rope_cos_sin(seq_len=1, head_dim=D, base=10_000.0)
