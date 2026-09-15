@@ -20,13 +20,12 @@ Saved keys mirror this layout exactly; we use Python lists for `ups` and
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import mlx.core as mx
 import mlx.nn as nn
 
 from .anti_aliased import Activation1d
-from .snake import SnakeBeta
 
 
 @dataclass(frozen=True)

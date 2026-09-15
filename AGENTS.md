@@ -40,9 +40,10 @@ Add only when the implementation proves it necessary.
 
 | Package | Stance |
 | --- | --- |
-| `mlx`, `numpy`, `safetensors` | yes |
-| `torch`, `torchaudio` | no |
-| `huggingface_hub`, `hf` CLI | avoid |
+| `mlx`, `numpy`, `safetensors`, `soundfile`, `tokenizers` | yes |
+| `huggingface_hub` | yes, but lazy — imported only on the weight-download path (`_hub.py`), never for local-path loading |
+| `torch`, `torchaudio` | no — conversion and audit scripts only, never the runtime |
+| `hf` CLI | avoid |
 | `mlx-audio` | reference only |
 
 ## Architecture
@@ -63,7 +64,7 @@ docs/               # Model-family behavior guides
 .references/        # Read-only upstream checkouts
 ```
 
-`.references/` is for reading and comparison only — not vendored runtime code. Document pinned commits in `docs/references.md`. **Read upstream source before implementing.**
+`.references/` is for reading and comparison only — not vendored runtime code. **Read upstream source before implementing.**
 
 ## Working Rules
 

@@ -23,6 +23,10 @@ Current guides:
 - [Granite Speech ASR](./granite-speech-asr.md)
 - [Qwen3-ASR](./qwen3-asr.md)
 - [Nemotron 3.5 ASR Streaming](./nemotron-asr.md)
+- [Fish S2 Pro](./fish-s2-pro.md)
+- [dots.tts](./dots-tts.md)
+- [DramaBox](./dramabox.md)
+- [LongCat AudioDiT](./longcat-audiodit.md)
 
 Benchmarks:
 
@@ -30,6 +34,7 @@ Benchmarks:
 - [Granite Speech int8 quantization gate, 2026-08-03](./benchmarks/granite-speech-int8-quant-gate-2026-08-03.md)
 - [Cohere ASR long-audio benchmark, 2026-05-29](./benchmarks/cohere-asr-long-audio-2026-05-29.md)
 - [Nemotron 3.5 ASR streaming benchmark, 2026-07-27](./benchmarks/nemotron-asr-streaming-2026-07-27.md)
+- [dots.tts quantization gate, 2026-07-30](./benchmarks/dots-tts-quant-gate-2026-07-30.md)
 
 Guide scope:
 

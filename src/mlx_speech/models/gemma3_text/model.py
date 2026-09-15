@@ -259,11 +259,9 @@ class Gemma3Model(nn.Module):
         causal = q_idx >= k_idx  # bool
 
         if attention_mask is not None:
-            B = attention_mask.shape[0]
             keep = attention_mask.astype(mx.bool_)[:, None, :]  # [B, 1, L]
             full = causal[None, :, :] & keep  # [B, L, L]
         else:
-            B = 1
             full = mx.broadcast_to(causal[None, :, :], (1, seq_len, seq_len))
 
         large_neg = mx.array(mx.finfo(dtype).min, dtype=dtype)

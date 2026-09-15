@@ -6,7 +6,6 @@ velocity/denoised conversions. No checkpoints required.
 
 from __future__ import annotations
 
-import math
 
 import mlx.core as mx
 import pytest

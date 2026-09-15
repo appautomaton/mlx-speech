@@ -1,4 +1,3 @@
-import mlx.core as mx
 import pytest
 
 from mlx_speech.models.fish_s2_pro.prompt import (

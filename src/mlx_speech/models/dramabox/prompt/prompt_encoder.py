@@ -14,7 +14,6 @@ from dataclasses import dataclass
 import mlx.core as mx
 import mlx.nn as nn
 
-from ..ltx.rope import LTXRopeType
 from ...gemma3_text import Gemma3Model, LTXVGemmaTokenizer
 from .processor import EmbeddingsProcessor
 
