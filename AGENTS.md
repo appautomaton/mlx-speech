@@ -6,21 +6,12 @@ Always address the user as **My Love** at the beginning of your responses.
 
 ## Planning
 
-Planning runs through **Automaton**, the stage-gated workflow under `.agent/`.
-It is authoritative. Read `.agent/.automaton/references/FRAMEWORK.md` once per
-session.
+Do the work in the tree. There is no stage-gated harness.
 
-- **Machine state:** `.agent/.automaton/state/current.json` — names the active
-  change and stage. Update it only via `.agent/.automaton/scripts/sync-status.mjs`,
-  never by hand.
-- **Work artifacts:** `.agent/work/<change>/{SPEC,DESIGN,PLAN}.md`
-- **Stages:** `frame → plan → execute → verify → verified`
+`.agents/work/` keeps finished change records for bookkeeping. Do not treat
+them as an active process, and do not add new ones.
 
-Read the active change's `PLAN.md` before starting implementation work.
-
-`plans/v0`–`v5*.md` are the **historical** planning format, kept as a record of
-work shipped before Automaton. All are complete. Do not add to them and do not
-treat them as current.
+`plans/v0`–`v5*.md` are historical records of shipped work. Do not add to them.
 
 ## Mission
 
@@ -68,10 +59,10 @@ docs/               # Model-family behavior guides
 
 ## Working Rules
 
-- Finish one clear slice, validate it, update the active plan, then move to the next.
+- Finish one clear slice, validate it, then move to the next.
 - Surface design choices that affect long-term API, packaging, or dependency weight.
 - Comments and docs: short, explicit, high-signal.
-- Scope is defined in the active plan. Do not broaden beyond it.
+- Stay inside the requested change. Do not broaden it.
 - No `Co-Authored-By` lines in git commits.
 
 ## Testing
@@ -103,7 +94,7 @@ RUN_LOCAL_INTEGRATION=1 pytest tests/integration/
 
 ## Validation
 
-Add focused tests for weight mapping, checkpoint loading, and generation behavior as pieces land. Each stage must be independently testable before moving forward.
+Add focused tests for weight mapping, checkpoint loading, and generation behavior as pieces land. Each slice must be testable before moving on.
 
 ## Website
 
