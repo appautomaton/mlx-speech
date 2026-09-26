@@ -1,4 +1,4 @@
-"""Generation utilities for mlx-voice.
+"""Generation utilities for mlx-speech.
 
 Imports are lazy so each model family only loads when accessed,
 avoiding cross-family dependency pollution (e.g. fish_s2_pro

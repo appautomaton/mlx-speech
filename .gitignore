@@ -32,9 +32,9 @@ outputs/*
 # Local model and reference assets
 models/*
 !models/README.md
-# No trailing slash: also ignores a symlink to a shared checkout, which is how
-# worktrees reuse `.references/` without duplicating it.
-.references
+# Local checkouts. The README is the tracked note; everything else stays local.
+.references/*
+!.references/README.md
 
 # Git worktrees for parallel agent sessions
 .worktrees/

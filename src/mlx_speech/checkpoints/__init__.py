@@ -1,4 +1,4 @@
-"""Checkpoint loading and remapping helpers for mlx-voice."""
+"""Checkpoint loading and remapping helpers for mlx-speech."""
 
 from .layout import (
     ModelArtifactLayout,

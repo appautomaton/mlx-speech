@@ -1,1 +1,1 @@
-"""Model adapters for mlx-voice."""
+"""Model adapters for mlx-speech."""

@@ -1,4 +1,4 @@
-"""Audio utilities for mlx-voice."""
+"""Audio utilities for mlx-speech."""
 
 from .io import (
     load_audio,

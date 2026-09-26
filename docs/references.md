@@ -8,6 +8,8 @@ story. They exist so implementation work can refer to upstream code locally
 without turning those projects into vendored dependencies. Read-only; never
 imported by the MLX runtime.
 
+See `.references/README.md` before updating a checkout.
+
 ## Current Checkouts
 
 - `.references/mlx`: Apple MLX. A real dependency of the published package; the
@@ -41,6 +43,10 @@ imported by the MLX runtime.
 - `.references/Qwen3-ASR`: Qwen3-ASR source repo. Reference for the
   transformers/vLLM implementation, processor, prompt handling, streaming
   wrapper, and forced aligner. Code only; no weights.
+- `.references/Confucius4-R2T2`: NetEase Youdao streaming ASR, a subclass of
+  Qwen3-ASR. Reference for the append-only chunk pipeline
+  (`r2t2/r2t2_asr.py`) and the llama.cpp decode routes. Code and demo
+  assets only; no model weights.
 - `.references/granite-4.0-1b-speech`: Hugging Face model repo for IBM Granite
   Speech 4.0 1B. Shallow clone with Git LFS smudge disabled; large model files
   remain as LFS pointers.

@@ -1,4 +1,4 @@
-"""CohereAsr model family for mlx-voice."""
+"""CohereAsr model family for mlx-speech."""
 
 from .checkpoint import (
     AlignmentReport,
