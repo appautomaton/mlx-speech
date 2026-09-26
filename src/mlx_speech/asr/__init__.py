@@ -67,5 +67,9 @@ def load(
         from ._adapters.nemotron import NemotronASRAdapter
 
         return NemotronASRAdapter.from_dir(model_dir)
+    if family == "r2t2":
+        from ._adapters.confucius4_r2t2 import Confucius4R2T2Adapter
+
+        return Confucius4R2T2Adapter.from_dir(model_dir)
 
     raise ValueError(f"Unsupported ASR family: {family!r}")

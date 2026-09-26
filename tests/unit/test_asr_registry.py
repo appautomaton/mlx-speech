@@ -42,3 +42,38 @@ def test_asr_registry_error_names_supported_families(tmp_path):
 
     with pytest.raises(ValueError, match="cohere_asr, granite_speech, qwen3_asr"):
         _resolve_asr_family(tmp_path)
+
+
+def test_asr_registry_marker_selects_r2t2_before_model_type(tmp_path):
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "model_type": "qwen3_asr",
+                "mlx_speech": {"family": "confucius4_r2t2"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert _resolve_asr_family(tmp_path) == "r2t2"
+
+
+def test_asr_registry_ignores_unrelated_or_malformed_markers(tmp_path):
+    for marker in ({"family": "qwen3"}, "confucius4_r2t2", ["confucius4_r2t2"], {}):
+        (tmp_path / "config.json").write_text(
+            json.dumps({"model_type": "qwen3_asr", "mlx_speech": marker}),
+            encoding="utf-8",
+        )
+        assert _resolve_asr_family(tmp_path) == "qwen3"
+
+
+def test_asr_registry_keeps_the_unknown_model_type_message(tmp_path):
+    (tmp_path / "config.json").write_text(
+        json.dumps({"model_type": "unknown"}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        _resolve_asr_family(tmp_path)
+
+    assert "cohere_asr, granite_speech, qwen3_asr, nemotron_asr." in str(excinfo.value)

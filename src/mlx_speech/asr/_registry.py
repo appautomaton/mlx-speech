@@ -20,6 +20,10 @@ def _resolve_asr_family(model_dir: Path) -> str:
 
     model_type = payload.get("model_type", "")
 
+    mlx_speech = payload.get("mlx_speech")
+    if isinstance(mlx_speech, dict) and mlx_speech.get("family") == "confucius4_r2t2":
+        return "r2t2"
+
     if model_type == "cohere_asr":
         return "cohere"
     if model_type == "granite_speech":
