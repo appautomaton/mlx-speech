@@ -51,9 +51,9 @@ def _metadata(*, variant: str = "soar", artifact_class: str = "base") -> dict:
 
 
 def _rewrite_safetensors(path: Path, arrays: dict) -> None:
-    # MLX 0.32.2 truncates the destination before it evaluates a lazy load of
-    # that same file. The error sticks on the stream and fails a later read.
-    # Materialize first. Fixed upstream after the 0.32.2 tag (mlx#4434).
+    # MLX 0.32.2 keeps a read error on the stream when a lazy load is saved
+    # back onto the same path. A later read in that process then fails.
+    # Materialize first. Upstream fix is mlx#4434, after the 0.32.2 tag.
     mx.eval(*arrays.values())
     mx.save_safetensors(str(path), arrays)
 
