@@ -8,7 +8,7 @@ urls = { Homepage = "https://appautomaton.com/mlx-speech/", Repository = "https:
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "mlx>=0.31.1",
+    "mlx>=0.32.2",
     "numpy",
     "safetensors",
     "soundfile>=0.13.1",

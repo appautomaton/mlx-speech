@@ -549,10 +549,11 @@ def test_streaming_holds_samples_inside_the_decoder_lookahead() -> None:
     mx.eval(prefix, full)
 
     stable_samples = (prefix_frames - model.decoder.stream_lookahead) * model.hop_size
+    # MLX 0.32 conv is not bit-identical across the two decode lengths.
     np.testing.assert_allclose(
         prefix[:, :, stable_samples - 2 : stable_samples],
         full[:, :, stable_samples - 2 : stable_samples],
-        atol=0.0,
+        atol=1e-6,
         rtol=0.0,
     )
     unsafe_frame_error = np.max(

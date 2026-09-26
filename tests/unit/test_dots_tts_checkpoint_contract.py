@@ -50,6 +50,14 @@ def _metadata(*, variant: str = "soar", artifact_class: str = "base") -> dict:
     }
 
 
+def _rewrite_safetensors(path: Path, arrays: dict) -> None:
+    # MLX 0.32.2 truncates the destination before it evaluates a lazy load of
+    # that same file. The error sticks on the stream and fails a later read.
+    # Materialize first. Fixed upstream after the 0.32.2 tag (mlx#4434).
+    mx.eval(*arrays.values())
+    mx.save_safetensors(str(path), arrays)
+
+
 def _write_artifact(
     root: Path, *, variant: str = "soar", artifact_class: str = "base"
 ) -> Path:
@@ -170,7 +178,7 @@ def test_int8_contract_rejects_incomplete_quantization_and_base_dtype_drift(
     )
     core = mx.load(str(artifact / "core.safetensors"))
     del core["qwen.model.embed_tokens.scales"]
-    mx.save_safetensors(str(artifact / "core.safetensors"), core)
+    _rewrite_safetensors(artifact / "core.safetensors", core)
     with pytest.raises(ValueError, match="missing quantized tensors"):
         validate_artifact_dir(artifact)
 
@@ -182,7 +190,7 @@ def test_int8_contract_rejects_incomplete_quantization_and_base_dtype_drift(
     vocoder["audio_encoder.weight"] = vocoder["audio_encoder.weight"].astype(
         mx.bfloat16
     )
-    mx.save_safetensors(str(artifact / "vocoder.safetensors"), vocoder)
+    _rewrite_safetensors(artifact / "vocoder.safetensors", vocoder)
     with pytest.raises(ValueError, match="must be float32"):
         validate_artifact_dir(artifact)
 
@@ -248,7 +256,7 @@ def test_contract_rejects_each_mixed_policy_violation(
         )
         wrong_dtype = mx.bfloat16 if case == "vocoder-encoder" else mx.float32
         weights[key] = weights[key].astype(wrong_dtype)
-        mx.save_safetensors(str(artifact / "vocoder.safetensors"), weights)
+        _rewrite_safetensors(artifact / "vocoder.safetensors", weights)
     elif case == "speaker":
         mx.save_safetensors(
             str(artifact / "speaker.safetensors"),
