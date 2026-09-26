@@ -10,6 +10,7 @@ from mlx.utils import tree_flatten
 from mlx_speech.models.qwen3_asr.checkpoint import (
     QuantizationConfig,
     get_quantization_config,
+    is_loadable_match,
     load_checkpoint_into_model,
     load_qwen3_asr_checkpoint,
     quantize_qwen3_asr_model,
@@ -143,7 +144,7 @@ def test_get_quantization_config_returns_none_without_block():
 def test_affine_int8_round_trip(tmp_path):
     model, report = _quantize_save_reload(tmp_path, mode="affine", group_size=64)
 
-    assert report.is_loadable_match
+    assert is_loadable_match(report, model.config)
     assert any(isinstance(m, nn.QuantizedLinear) for m in model.modules())
     assert any(isinstance(m, nn.QuantizedEmbedding) for m in model.modules())
     # affine quantization carries a bias term
@@ -160,7 +161,7 @@ def test_affine_int8_round_trip(tmp_path):
 def test_mxfp8_round_trip_has_no_bias(tmp_path):
     model, report = _quantize_save_reload(tmp_path, mode="mxfp8", group_size=32)
 
-    assert report.is_loadable_match
+    assert is_loadable_match(report, model.config)
     assert any(isinstance(m, nn.QuantizedLinear) for m in model.modules())
     # mxfp8 (microscaling FP8) has a shared scale per group but no bias term
     keys = _param_keys(_first_quantized_linear(model))

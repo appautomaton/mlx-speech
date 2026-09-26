@@ -11,11 +11,14 @@ from scripts.convert.qwen3_asr import convert_qwen3_asr
 from mlx_speech.models.qwen3_asr.config import Qwen3ASRConfig
 from mlx_speech.models.qwen3_asr.checkpoint import (
     Qwen3ASRCheckpoint,
+    apply_tied_word_embeddings,
     build_alignment_report,
+    is_loadable_match,
     load_checkpoint_into_model,
     load_qwen3_asr_checkpoint,
     sanitize_key,
     sanitize_state_dict,
+    unexpected_model_only_keys,
 )
 
 
@@ -63,7 +66,10 @@ def _write_minimal_config(path: Path) -> None:
 
 
 def test_qwen3_asr_sanitize_key_maps_upstream_namespaces():
-    assert sanitize_key("thinker.audio_tower.conv2d1.weight") == "audio_tower.conv2d1.weight"
+    assert (
+        sanitize_key("thinker.audio_tower.conv2d1.weight")
+        == "audio_tower.conv2d1.weight"
+    )
     assert (
         sanitize_key("thinker.model.layers.0.self_attn.q_norm.weight")
         == "text_decoder.model.layers.0.self_attn.q_norm.weight"
@@ -85,7 +91,10 @@ def test_qwen3_asr_sanitizer_renames_and_transposes_conv2d_weights():
     )
 
     assert skipped == ("unused.weight",)
-    assert ("thinker.audio_tower.conv2d1.weight", "audio_tower.conv2d1.weight") in renamed
+    assert (
+        "thinker.audio_tower.conv2d1.weight",
+        "audio_tower.conv2d1.weight",
+    ) in renamed
     assert transposed == ("audio_tower.conv2d1.weight",)
     assert state["audio_tower.conv2d1.weight"].shape == (4, 3, 3, 1)
     assert state["text_decoder.model.embed_tokens.weight"].dtype == mx.bfloat16
@@ -155,7 +164,9 @@ def test_qwen3_asr_conversion_writes_bf16_safetensors_and_supporting_files(tmp_p
     mx.save_safetensors(
         input_dir / "model.safetensors",
         {
-            "thinker.audio_tower.conv2d1.weight": mx.ones((4, 1, 3, 3), dtype=mx.bfloat16),
+            "thinker.audio_tower.conv2d1.weight": mx.ones(
+                (4, 1, 3, 3), dtype=mx.bfloat16
+            ),
             "thinker.model.embed_tokens.weight": mx.ones((8, 4), dtype=mx.bfloat16),
             "thinker.lm_head.weight": mx.ones((8, 4), dtype=mx.bfloat16),
         },
@@ -227,12 +238,98 @@ def test_qwen3_asr_strict_load_allows_generated_audio_positions():
 
     report = load_checkpoint_into_model(model, checkpoint, strict=True)
 
-    assert report.model_only == ("audio_tower.positional_embedding.positional_embedding",)
-    assert report.unexpected_model_only == ()
+    assert report.model_only == (
+        "audio_tower.positional_embedding.positional_embedding",
+    )
+    assert unexpected_model_only_keys(report, checkpoint.config) == ()
     assert not report.is_exact_match
-    assert report.is_loadable_match
+    assert is_loadable_match(report, checkpoint.config)
     assert model.loaded is not None
     assert model.loaded[1] is False
+
+
+def test_tied_lm_head_is_not_required_in_the_checkpoint():
+    class FakeModel:
+        def parameters(self):
+            embed = mx.ones((2, 2))
+            return {
+                "text_decoder": {
+                    "model": {"embed_tokens": {"weight": embed}},
+                    "lm_head": {"weight": embed},
+                },
+            }
+
+        def load_weights(self, weights, *, strict: bool = True):
+            self.loaded = (tuple(key for key, _ in weights), strict)
+
+    checkpoint = Qwen3ASRCheckpoint(
+        model_dir=Path("."),
+        config=Qwen3ASRConfig.from_dict(_config_payload()),
+        state_dict={"text_decoder.model.embed_tokens.weight": mx.ones((2, 2))},
+        source_files=(),
+        skipped_keys=(),
+        renamed_keys=(),
+        transposed_keys=(),
+    )
+    model = FakeModel()
+    report = load_checkpoint_into_model(model, checkpoint, strict=True)
+    assert "text_decoder.lm_head.weight" in report.model_only
+    assert unexpected_model_only_keys(report, checkpoint.config) == ()
+    assert is_loadable_match(report, checkpoint.config)
+    assert model.loaded[0] == ("text_decoder.model.embed_tokens.weight",)
+
+    untied = json.loads(json.dumps(_config_payload()))
+    untied["thinker_config"]["text_config"]["tie_word_embeddings"] = False
+    checkpoint = Qwen3ASRCheckpoint(
+        model_dir=Path("."),
+        config=Qwen3ASRConfig.from_dict(untied),
+        state_dict={"text_decoder.model.embed_tokens.weight": mx.ones((2, 2))},
+        source_files=(),
+        skipped_keys=(),
+        renamed_keys=(),
+        transposed_keys=(),
+    )
+    with pytest.raises(ValueError, match="1 unexpected model-only"):
+        load_checkpoint_into_model(FakeModel(), checkpoint, strict=True)
+
+
+def test_stored_lm_head_is_not_replaced_by_the_tied_embedding():
+    class Head:
+        def __init__(self, weight):
+            self.weight = weight
+
+    class Decoder:
+        def __init__(self):
+            self.tie_word_embeddings = True
+            self.model = type("Embed", (), {})()
+            self.model.embed_tokens = Head(mx.ones((2, 2)))
+            self.lm_head = Head(mx.zeros((2, 2)))
+
+    class Model:
+        def __init__(self):
+            self.text_decoder = Decoder()
+
+    config = Qwen3ASRConfig.from_dict(_config_payload())
+    stored = Model()
+    assert (
+        apply_tied_word_embeddings(
+            stored,
+            config,
+            checkpoint_keys={"text_decoder.lm_head.weight"},
+        )
+        is False
+    )
+    assert (
+        stored.text_decoder.lm_head.weight
+        is not stored.text_decoder.model.embed_tokens.weight
+    )
+
+    missing = Model()
+    assert apply_tied_word_embeddings(missing, config, checkpoint_keys=set()) is True
+    assert (
+        missing.text_decoder.lm_head.weight
+        is missing.text_decoder.model.embed_tokens.weight
+    )
 
 
 def test_qwen3_asr_strict_load_rejects_unexpected_model_only_key():

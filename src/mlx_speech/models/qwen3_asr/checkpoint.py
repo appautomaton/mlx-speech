@@ -21,6 +21,15 @@ GENERATED_MODEL_ONLY_KEYS = frozenset(
         "audio_tower.positional_embedding.positional_embedding",
     }
 )
+TIED_LM_HEAD_KEY = "text_decoder.lm_head.weight"
+
+
+def allowed_model_only_keys(config: Qwen3ASRConfig) -> frozenset[str]:
+    """Parameters the module creates and a tied checkpoint does not store."""
+    allowed = set(GENERATED_MODEL_ONLY_KEYS)
+    if config.text_config.extra.get("tie_word_embeddings"):
+        allowed.add(TIED_LM_HEAD_KEY)
+    return frozenset(allowed)
 
 
 @dataclass(frozen=True)
@@ -49,17 +58,9 @@ class AlignmentReport:
 
     @property
     def is_exact_match(self) -> bool:
-        return not self.checkpoint_only and not self.model_only and not self.shape_mismatches
-
-    @property
-    def unexpected_model_only(self) -> tuple[str, ...]:
-        return tuple(key for key in self.model_only if key not in GENERATED_MODEL_ONLY_KEYS)
-
-    @property
-    def is_loadable_match(self) -> bool:
         return (
             not self.checkpoint_only
-            and not self.unexpected_model_only
+            and not self.model_only
             and not self.shape_mismatches
         )
 
@@ -102,7 +103,9 @@ def sanitize_key(key: str) -> str | None:
 
 def sanitize_state_dict(
     weights: dict[str, mx.array],
-) -> tuple[dict[str, mx.array], tuple[str, ...], tuple[tuple[str, str], ...], tuple[str, ...]]:
+) -> tuple[
+    dict[str, mx.array], tuple[str, ...], tuple[tuple[str, str], ...], tuple[str, ...]
+]:
     sanitized: dict[str, mx.array] = {}
     skipped: list[str] = []
     renamed: list[tuple[str, str]] = []
@@ -169,6 +172,58 @@ def validate_checkpoint_against_model(
     return build_alignment_report(model_params, checkpoint.state_dict)
 
 
+def unexpected_model_only_keys(
+    report: AlignmentReport,
+    config: Qwen3ASRConfig,
+) -> tuple[str, ...]:
+    """Model keys strict load rejects for this config.
+
+    This is the only unexpected-key gate. It allows generated audio positions
+    and, when ``tie_word_embeddings`` is set, a missing ``lm_head``.
+    """
+    allowed = allowed_model_only_keys(config)
+    return tuple(key for key in report.model_only if key not in allowed)
+
+
+def is_loadable_match(report: AlignmentReport, config: Qwen3ASRConfig) -> bool:
+    """True when strict load would accept this alignment for ``config``."""
+    return (
+        not report.checkpoint_only
+        and not unexpected_model_only_keys(report, config)
+        and not report.shape_mismatches
+    )
+
+
+def apply_tied_word_embeddings(
+    model: nn.Module,
+    config: Qwen3ASRConfig,
+    *,
+    checkpoint_keys: set[str] | None = None,
+) -> bool:
+    """Restore the ``tie_word_embeddings`` alias that weight loading drops.
+
+    ``Qwen3ASRTextForCausalLM`` aliases ``lm_head.weight`` to
+    ``embed_tokens.weight`` at construction. ``load_weights`` writes each
+    checkpoint leaf onto the module, which replaces the embedding array and
+    leaves the head on its random initialization when the checkpoint stores no
+    ``lm_head`` (the R2T2 package stores none). Re-apply the declared tie
+    only in that case. A checkpoint that stores ``lm_head`` keeps the loaded
+    tensor.
+    """
+
+    if not config.text_config.extra.get("tie_word_embeddings"):
+        return False
+    if checkpoint_keys is not None and TIED_LM_HEAD_KEY in checkpoint_keys:
+        return False
+    decoder = getattr(model, "text_decoder", None)
+    if decoder is None or not getattr(decoder, "tie_word_embeddings", False):
+        return False
+    if getattr(getattr(decoder, "lm_head", None), "weight", None) is None:
+        return False
+    decoder.lm_head.weight = decoder.model.embed_tokens.weight
+    return True
+
+
 def load_checkpoint_into_model(
     model: nn.Module,
     checkpoint: Qwen3ASRCheckpoint,
@@ -176,15 +231,21 @@ def load_checkpoint_into_model(
     strict: bool = True,
 ) -> AlignmentReport:
     report = validate_checkpoint_against_model(model, checkpoint)
-    if strict and not report.is_loadable_match:
+    unexpected = unexpected_model_only_keys(report, checkpoint.config)
+    if strict and (report.checkpoint_only or unexpected or report.shape_mismatches):
         raise ValueError(
             f"Qwen3-ASR checkpoint alignment failed: "
             f"{len(report.checkpoint_only)} checkpoint-only, "
-            f"{len(report.unexpected_model_only)} unexpected model-only, "
+            f"{len(unexpected)} unexpected model-only, "
             f"{len(report.shape_mismatches)} shape mismatches."
         )
     effective_strict = strict and not report.model_only
     model.load_weights(list(checkpoint.state_dict.items()), strict=effective_strict)
+    apply_tied_word_embeddings(
+        model,
+        checkpoint.config,
+        checkpoint_keys=set(checkpoint.state_dict),
+    )
     return report
 
 
@@ -197,7 +258,9 @@ def save_qwen3_asr_bf16_checkpoint(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / "model.safetensors"
-    mx.save_safetensors(str(output_file), checkpoint.state_dict, metadata={"format": "mlx"})
+    mx.save_safetensors(
+        str(output_file), checkpoint.state_dict, metadata={"format": "mlx"}
+    )
 
     copied_files: list[Path] = []
     if copy_supporting_files:
