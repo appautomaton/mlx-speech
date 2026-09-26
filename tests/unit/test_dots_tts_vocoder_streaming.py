@@ -504,10 +504,11 @@ def test_compiled_recurrent_observes_same_dtype_weight_replacement() -> None:
         atol=1e-6,
         rtol=1e-6,
     )
+    # CI Metal differs from the eager path by about 1.5e-8.
     np.testing.assert_allclose(
         updated_recurrent.astype(mx.float32),
         eager_recurrent.astype(mx.float32),
-        atol=0.0,
+        atol=1e-7,
         rtol=0.0,
     )
 

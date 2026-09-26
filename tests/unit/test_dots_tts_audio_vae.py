@@ -127,14 +127,15 @@ def test_padded_recurrent_tile_does_not_advance_state_past_valid_length() -> Non
     projected = model.post_proj(latent.transpose(0, 2, 1))
     expected, expected_state = model.dec_mi_layer.execute_chunk(projected, initial)
     mx.eval(tiled, tiled_state, expected, expected_state)
-    np.testing.assert_allclose(tiled, expected, atol=0.0, rtol=0.0)
+    # CI Metal differs from the eager path by about 4e-8.
+    np.testing.assert_allclose(tiled, expected, atol=1e-7, rtol=0.0)
     for (actual_h, actual_c), (expected_h, expected_c) in zip(
         tiled_state,
         expected_state,
         strict=True,
     ):
-        np.testing.assert_allclose(actual_h, expected_h, atol=0.0, rtol=0.0)
-        np.testing.assert_allclose(actual_c, expected_c, atol=0.0, rtol=0.0)
+        np.testing.assert_allclose(actual_h, expected_h, atol=1e-7, rtol=0.0)
+        np.testing.assert_allclose(actual_c, expected_c, atol=1e-7, rtol=0.0)
     recurrent_keys = [
         key for key in model._compiled_vocoder_functions if key.operation == "recurrent"
     ]
