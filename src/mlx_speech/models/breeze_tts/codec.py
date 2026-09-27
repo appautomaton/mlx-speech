@@ -6,8 +6,12 @@ Convolutions stay in MLX layout, channels last. Codebooks are recovered from
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 import mlx.core as mx
 import mlx.nn as nn
+
+from mlx_speech.models._cache import BoundedKVCache
 
 from .audio_encoder import CodecEncoder
 
@@ -148,7 +152,11 @@ class DecoderAttention(nn.Module):
         self.o_proj = nn.Linear(self.heads * self.head_dim, 512, bias=False)
 
     def __call__(
-        self, x: mx.array, rope: tuple[mx.array, mx.array], mask: mx.array | None
+        self,
+        x: mx.array,
+        rope: tuple[mx.array, mx.array],
+        mask: mx.array | None,
+        cache: BoundedKVCache | None = None,
     ) -> mx.array:
         batch, length, _ = x.shape
         query = (
@@ -171,6 +179,11 @@ class DecoderAttention(nn.Module):
         sin = sin[:, None, :, :]
         query = query * cos + _rotate_half(query) * sin
         key = key * cos + _rotate_half(key) * sin
+        if cache is not None:
+            cache.append(key.transpose(0, 2, 1, 3), value.transpose(0, 2, 1, 3))
+            key = cache.keys[:, : cache.offset].transpose(0, 2, 1, 3)
+            value = cache.values[:, : cache.offset].transpose(0, 2, 1, 3)
+            mask = _causal_mask(length, cache.offset, x.dtype)
         output = mx.fast.scaled_dot_product_attention(
             query, key, value, scale=self.scale, mask=mask
         )
@@ -214,10 +227,14 @@ class TransformerLayer(nn.Module):
         self.mlp = _MLP()
 
     def __call__(
-        self, x: mx.array, rope: tuple[mx.array, mx.array], mask: mx.array | None
+        self,
+        x: mx.array,
+        rope: tuple[mx.array, mx.array],
+        mask: mx.array | None,
+        cache: BoundedKVCache | None = None,
     ) -> mx.array:
         x = x + self.self_attn_layer_scale(
-            self.self_attn(self.input_layernorm(x), rope, mask)
+            self.self_attn(self.input_layernorm(x), rope, mask, cache)
         )
         return x + self.mlp_layer_scale(self.mlp(self.post_attention_layernorm(x)))
 
@@ -258,6 +275,23 @@ class PreTransformer(nn.Module):
         mask = _causal_mask(length, length, hidden.dtype)
         for layer in self.layers:
             hidden = layer(hidden, rope, mask)
+        return self.output_proj(self.norm(hidden))
+
+    def step(
+        self, x: mx.array, caches: list[BoundedKVCache], position: int
+    ) -> mx.array:
+        hidden = self.input_proj(x)
+        length = int(hidden.shape[1])
+        positions = mx.arange(position, position + length)[None, :]
+        inv_freq = mx.array(self._inv_freq, dtype=mx.float32)
+        freqs = positions.astype(mx.float32)[..., None] * inv_freq
+        angles = mx.concatenate([freqs, freqs], axis=-1)
+        rope = (
+            mx.cos(angles).astype(hidden.dtype),
+            mx.sin(angles).astype(hidden.dtype),
+        )
+        for layer, cache in zip(self.layers, caches, strict=True):
+            hidden = layer(hidden, rope, None, cache)
         return self.output_proj(self.norm(hidden))
 
 
@@ -352,6 +386,164 @@ class CodecDecoder(nn.Module):
         for layer in self.decoder:
             hidden = layer(hidden)
         return mx.clip(mx.transpose(hidden, (0, 2, 1)), -1.0, 1.0)
+
+
+def _causal_conv_step(
+    conv: CausalConv1d, hidden: mx.array, buffer: mx.array | None
+) -> tuple[mx.array, mx.array | None]:
+    if conv.padding == 0:
+        return conv.conv(hidden), buffer
+    if buffer is None:
+        buffer = mx.zeros(
+            (hidden.shape[0], conv.padding, hidden.shape[-1]), dtype=hidden.dtype
+        )
+    window = mx.concatenate([buffer, hidden], axis=1)
+    return conv.conv(window), window[:, -conv.padding :, :]
+
+
+def _upsample_step(
+    layer: UpsampleConv, hidden: mx.array, tail: mx.array | None
+) -> tuple[mx.array, mx.array | None]:
+    """Overlap-add transposed-convolution tails without counting bias twice."""
+
+    raw = layer.conv(hidden)
+    bias = layer.conv.bias
+    if bias is not None:
+        raw = raw - bias
+    if layer.trim == 0:
+        return raw if bias is None else raw + bias, None
+    if tail is not None:
+        raw = mx.concatenate(
+            [raw[:, : layer.trim, :] + tail, raw[:, layer.trim :, :]], axis=1
+        )
+    emitted = raw[:, : -layer.trim, :]
+    if bias is not None:
+        emitted = emitted + bias
+    return emitted, raw[:, -layer.trim :, :]
+
+
+def _convnext_step(
+    block: ConvNeXtBlock, hidden: mx.array, buffer: mx.array | None
+) -> tuple[mx.array, mx.array | None]:
+    residual = hidden
+    hidden, buffer = _causal_conv_step(block.dwconv, hidden, buffer)
+    hidden = block.pwconv2(nn.gelu(block.pwconv1(block.norm(hidden))))
+    return residual + block.gamma * hidden, buffer
+
+
+def _residual_step(
+    unit: ResidualUnit,
+    hidden: mx.array,
+    buffers: tuple[mx.array | None, mx.array | None],
+) -> tuple[mx.array, tuple[mx.array | None, mx.array | None]]:
+    first, second = buffers
+    hidden_conv, first = _causal_conv_step(unit.conv1, unit.act1(hidden), first)
+    hidden_conv, second = _causal_conv_step(unit.conv2, unit.act2(hidden_conv), second)
+    return hidden + hidden_conv, (first, second)
+
+
+@dataclass
+class CodecDecodeStream:
+    """Incremental decoder state for one utterance. It is not kept on the module."""
+
+    decoder: CodecDecoder
+    conv_buffers: dict[int, mx.array | None] = field(default_factory=dict)
+    residual_buffers: dict[int, tuple[mx.array | None, mx.array | None]] = field(
+        default_factory=dict
+    )
+    tails: dict[int, mx.array | None] = field(default_factory=dict)
+    caches: list[BoundedKVCache] | None = None
+    position: int = 0
+
+    def push(self, codes: mx.array) -> mx.array:
+        """Decode new codes of shape ``(batch, 16, frames)`` and return finalized audio."""
+
+        if codes.ndim != 3 or int(codes.shape[1]) != 16 or int(codes.shape[2]) <= 0:
+            raise ValueError(
+                f"Expected new codes (batch, 16, frames), got {tuple(codes.shape)}."
+            )
+        decoder = self.decoder
+        hidden = mx.transpose(decoder.quantizer.decode(codes), (0, 2, 1))
+        hidden, buffer = _causal_conv_step(
+            decoder.pre_conv, hidden, self.conv_buffers.get(id(decoder.pre_conv))
+        )
+        self.conv_buffers[id(decoder.pre_conv)] = buffer
+        if self.caches is None:
+            self.caches = [
+                BoundedKVCache.allocate(
+                    batch_size=int(hidden.shape[0]),
+                    capacity=64,
+                    num_heads=16,
+                    head_dim=64,
+                    key_dtype=hidden.dtype,
+                    value_dtype=hidden.dtype,
+                    max_capacity=4096,
+                    growth_step=64,
+                )
+                for _ in range(8)
+            ]
+        hidden = decoder.pre_transformer.step(hidden, self.caches, self.position)
+        self.position += int(hidden.shape[1])
+        for transpose, block in decoder.upsample:
+            hidden = transpose(hidden)
+            hidden, buffer = _convnext_step(
+                block, hidden, self.conv_buffers.get(id(block))
+            )
+            self.conv_buffers[id(block)] = buffer
+        for layer in decoder.decoder:
+            hidden = self._layer(layer, hidden)
+        audio = mx.clip(mx.transpose(hidden, (0, 2, 1)), -1.0, 1.0)
+        self._realize(audio)
+        return audio
+
+    def _layer(self, layer: nn.Module, hidden: mx.array) -> mx.array:
+        if isinstance(layer, CausalConv1d):
+            hidden, buffer = _causal_conv_step(
+                layer, hidden, self.conv_buffers.get(id(layer))
+            )
+            self.conv_buffers[id(layer)] = buffer
+            return hidden
+        if isinstance(layer, SnakeBeta):
+            return layer(hidden)
+        if not isinstance(layer, DecoderBlock):
+            raise TypeError(f"Unsupported decoder layer {type(layer).__name__}.")
+        for part in layer.block:
+            if isinstance(part, SnakeBeta):
+                hidden = part(hidden)
+            elif isinstance(part, UpsampleConv):
+                hidden, tail = _upsample_step(part, hidden, self.tails.get(id(part)))
+                self.tails[id(part)] = tail
+            elif isinstance(part, ResidualUnit):
+                hidden, buffers = _residual_step(
+                    part, hidden, self.residual_buffers.get(id(part), (None, None))
+                )
+                self.residual_buffers[id(part)] = buffers
+            else:
+                raise TypeError(f"Unsupported decoder block {type(part).__name__}.")
+        return hidden
+
+    def _realize(self, audio: mx.array) -> None:
+        pending = [audio]
+        pending.extend(
+            value for value in self.conv_buffers.values() if value is not None
+        )
+        pending.extend(value for value in self.tails.values() if value is not None)
+        for buffers in self.residual_buffers.values():
+            pending.extend(value for value in buffers if value is not None)
+        if self.caches is not None:
+            for cache in self.caches:
+                pending.append(cache.keys)
+                pending.append(cache.values)
+        mx.eval(*pending)
+
+    def close(self) -> None:
+        """Drop this utterance's buffers. A later request allocates its own."""
+
+        self.conv_buffers.clear()
+        self.residual_buffers.clear()
+        self.tails.clear()
+        self.caches = None
+        self.position = 0
 
 
 def codec_parameter_key(checkpoint_key: str) -> str:

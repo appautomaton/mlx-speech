@@ -112,3 +112,37 @@ def test_cli_rejects_streaming_for_non_streaming_model(monkeypatch, tmp_path) ->
                 str(tmp_path / "unused.wav"),
             )
         )
+
+
+def test_cli_forwards_instruction_and_guidance(monkeypatch, tmp_path) -> None:
+    model = _StreamingModel()
+    monkeypatch.setattr(tts, "load", lambda *args, **kwargs: model)
+    output = tmp_path / "directed.wav"
+    tts_main(
+        _args(
+            "--model",
+            "local-breeze",
+            "--text",
+            "hello",
+            "--stream",
+            "--instruction",
+            "speak brightly",
+            "--guidance-scale",
+            "4",
+            "--seed",
+            "0",
+            "--output",
+            str(output),
+        )
+    )
+    assert model.stream_calls == [
+        (
+            "hello",
+            {
+                "stream_chunk_patches": 4,
+                "instruction": "speak brightly",
+                "guidance_scale": 4.0,
+                "seed": 0,
+            },
+        )
+    ]

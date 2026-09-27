@@ -1,11 +1,9 @@
 # Breeze TTS 2 — MLX inference
 
-Status: plain voice design, instruction voice design at CFG scale 4, and
-Peggy Hill voice cloning into Chinese were listened to and accepted.
-Reference voice direction at CFG scale 4 has written
-`/tmp/breeze-tts-2-mlx/wav/peggy-en-direction-cfg4-seed0.wav` and
-`peggy-zh-direction-cfg4.wav`. Those two still need listening. Seed 42 on
-the English direction can miss EOS and continue into silence.
+Status: phases 1–3 accepted by listening, including Peggy Chinese cloning
+and voice direction. Phase 4 streams waveform chunks through the shared TTS
+API. Phase 5 has not started. Seed 42 on the English direction can miss EOS
+and trail into silence; seed 0 was the accepted English clip.
 This is the single implementation plan for this model.
 
 Generated audio, probes, and one-off dumps go in `/tmp/breeze-tts-2-mlx/`.
@@ -140,6 +138,11 @@ utterance before the first yield, or silently split/truncate long input.
 Listen to chunk joins and the final tail. A focused same-codes comparison of
 streamed versus offline codec output is useful for boundary bugs; full-model
 parity infrastructure is not required. Check cancellation and a second request.
+
+Transposed-convolution overlap carries the kernel tail only. Bias is applied
+once to the emitted samples; adding the raw chunks double-counts it. Stream
+state stays on the decode stream and is dropped when the iterator finishes
+or closes. A new request must not reuse it.
 
 ## 5. Measure and finish
 

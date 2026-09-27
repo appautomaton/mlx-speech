@@ -1,4 +1,7 @@
-"""Offline Breeze TTS 2 generation.
+"""Breeze TTS 2 generation.
+
+Offline and streaming output share one code-frame loop. Streaming decodes
+those frames through codec state instead of waiting for the full utterance.
 
 Voice design is ``[speaker]text``. An instruction uses the official
 ``<ins_bos>...<ins_eos>`` span. Single-branch CFG is
@@ -8,6 +11,7 @@ Scale 1 keeps the conditional branch only.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,7 +21,11 @@ from mlx.utils import tree_flatten
 from tokenizers import Tokenizer
 
 from mlx_speech.models.breeze_tts.backbone import BreezeBackbone, EmbeddingTable
-from mlx_speech.models.breeze_tts.codec import SpeechCodec, codec_parameter_key
+from mlx_speech.models.breeze_tts.codec import (
+    CodecDecodeStream,
+    SpeechCodec,
+    codec_parameter_key,
+)
 from mlx_speech.models.breeze_tts.config import BreezeRuntimeConfig, load_runtime_config
 from mlx_speech.models.breeze_tts.depth import BreezeDepthDecoder
 from mlx_speech.models.breeze_tts.text_encoder import BreezeTextEncoder
@@ -68,7 +76,7 @@ def load_breeze_speech(model_dir: Path) -> tuple[BreezeSpeech, SpeechCodec, Toke
     return speech, codec, tokenizer
 
 
-def generate_breeze(
+def _iter_code_frames(
     speech: BreezeSpeech,
     codec: SpeechCodec,
     tokenizer: Tokenizer,
@@ -84,8 +92,8 @@ def generate_breeze(
     seed: int = 0,
     ref_audio: mx.array | None = None,
     ref_text: str | None = None,
-) -> BreezeAudio:
-    """Generate one utterance. ``cfg_scale`` other than 1 requires an instruction."""
+) -> Iterator[mx.array]:
+    """Yield one ``(num_codebooks,)`` frame at a time, stopping before EOS."""
 
     if max_frames <= 0:
         raise ValueError("max_frames must be positive.")
@@ -123,7 +131,6 @@ def generate_breeze(
         uncond_cache = speech.backbone_model.make_cache(batch_size=1, dtype=plain.dtype)
         uncond_hidden = speech.backbone_model(plain, uncond_cache)[:, -1, :]
     _realize([hidden, uncond_hidden], [cache, uncond_cache])
-    frames: list[mx.array] = []
     first_codes: list[int] = []
     for _ in range(max_frames):
         logits = _backbone_scores(
@@ -145,13 +152,52 @@ def generate_breeze(
             uncond_hidden=uncond_hidden,
             cfg_scale=cfg_scale,
         )
-        frames.append(frame)
         first_codes.append(int(first.item()))
+        yield frame
         audio = speech.backbone_model.embed_audio(frame.reshape(1, 1, -1))
         hidden = speech.backbone_model(audio, cache)[:, -1, :]
         if uncond_cache is not None:
             uncond_hidden = speech.backbone_model(audio, uncond_cache)[:, -1, :]
         _realize([frame, hidden, uncond_hidden], [cache, uncond_cache])
+
+
+def generate_breeze(
+    speech: BreezeSpeech,
+    codec: SpeechCodec,
+    tokenizer: Tokenizer,
+    text: str,
+    *,
+    speaker: str = "S0",
+    instruction: str | None = None,
+    cfg_scale: float = 1.0,
+    max_frames: int = 80,
+    temperature: float = 0.9,
+    top_k: int = 50,
+    repetition_penalty: float = 1.1,
+    seed: int = 0,
+    ref_audio: mx.array | None = None,
+    ref_text: str | None = None,
+) -> BreezeAudio:
+    """Generate one utterance. ``cfg_scale`` other than 1 requires an instruction."""
+
+    frames = list(
+        _iter_code_frames(
+            speech,
+            codec,
+            tokenizer,
+            text,
+            speaker=speaker,
+            instruction=instruction,
+            cfg_scale=cfg_scale,
+            max_frames=max_frames,
+            temperature=temperature,
+            top_k=top_k,
+            repetition_penalty=repetition_penalty,
+            seed=seed,
+            ref_audio=ref_audio,
+            ref_text=ref_text,
+        )
+    )
     if not frames:
         return BreezeAudio(mx.zeros((0,), dtype=mx.float32), SAMPLE_RATE, 0)
     codes = mx.stack(frames, axis=0)[None, :, :]
@@ -159,6 +205,68 @@ def generate_breeze(
     waveform = audio[0, 0].astype(mx.float32)
     mx.eval(waveform)
     return BreezeAudio(waveform, SAMPLE_RATE, len(frames))
+
+
+def generate_breeze_stream(
+    speech: BreezeSpeech,
+    codec: SpeechCodec,
+    tokenizer: Tokenizer,
+    text: str,
+    *,
+    speaker: str = "S0",
+    instruction: str | None = None,
+    cfg_scale: float = 1.0,
+    max_frames: int = 80,
+    temperature: float = 0.9,
+    top_k: int = 50,
+    repetition_penalty: float = 1.1,
+    seed: int = 0,
+    ref_audio: mx.array | None = None,
+    ref_text: str | None = None,
+    chunk_frames: int = 4,
+) -> Iterator[mx.array]:
+    """Yield mono PCM chunks. Each chunk is decoded before later frames exist."""
+
+    if (
+        isinstance(chunk_frames, bool)
+        or not isinstance(chunk_frames, int)
+        or chunk_frames <= 0
+    ):
+        raise ValueError("chunk_frames must be a positive integer.")
+    stream = CodecDecodeStream(codec.decoder)
+    pending: list[mx.array] = []
+    try:
+        for frame in _iter_code_frames(
+            speech,
+            codec,
+            tokenizer,
+            text,
+            speaker=speaker,
+            instruction=instruction,
+            cfg_scale=cfg_scale,
+            max_frames=max_frames,
+            temperature=temperature,
+            top_k=top_k,
+            repetition_penalty=repetition_penalty,
+            seed=seed,
+            ref_audio=ref_audio,
+            ref_text=ref_text,
+        ):
+            pending.append(frame)
+            if len(pending) == chunk_frames:
+                yield _emit_stream_chunk(stream, pending)
+                pending = []
+        if pending:
+            yield _emit_stream_chunk(stream, pending)
+    finally:
+        stream.close()
+
+
+def _emit_stream_chunk(stream: CodecDecodeStream, frames: list[mx.array]) -> mx.array:
+    codes = mx.transpose(mx.stack(frames, axis=0), (1, 0))[None, :, :]
+    waveform = stream.push(codes)[0, 0].astype(mx.float32)
+    mx.eval(waveform)
+    return waveform
 
 
 def _prompt_text(speaker: str, text: str, instruction: str | None) -> str:
