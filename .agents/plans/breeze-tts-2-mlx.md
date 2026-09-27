@@ -1,7 +1,7 @@
 # Breeze TTS 2 — MLX inference
 
-Status: weight package committed on `breeze-tts-2-mlx`. The text encoder
-is in the library. Backbone, depth decoder, codec, and the first WAV are not.
+Status: weight package, text encoder, Qwen3 backbone, and depth decoder
+are on `breeze-tts-2-mlx`. Codec decode and the first WAV are not.
 Official weights and source are local. No Breeze synthesis has run yet.
 This is the single implementation plan for this model.
 
