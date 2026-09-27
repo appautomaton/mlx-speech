@@ -47,6 +47,19 @@ See `.references/README.md` before updating a checkout.
   Qwen3-ASR. Reference for the append-only chunk pipeline
   (`r2t2/r2t2_asr.py`) and the llama.cpp decode routes. Code and demo
   assets only; no model weights.
+- `.references/breeze-tts`: Official Breeze TTS 2 inference source, pinned at
+  `008f769016b0a24711becd7a4925030bc93f608c`. Read-only source for a pure-MLX
+  port; do not install or execute its PyTorch pipeline, including for parity.
+- `.references/qwen-tts-0.1.1` and `.references/transformers-4.57.3`: Verified
+  PyPI source distributions matching Breeze's pinned inference dependencies.
+  Source inspection only, not installed packages. They supply the external
+  Qwen3-TTS codec and Qwen3 backbone definitions. See [Breeze TTS 2 source
+  preparation](breeze-tts-2.md) for provenance and the no-PyTorch requirement.
+- `.references/mlx-audio-breeze/`, `.references/mlx-breeze-tts2/`,
+  `.references/BreezeTTS2_Mac_Streaming/`, and `.references/breeze-tts-mlx/`:
+  Selected community MLX source files for the Breeze port. Each `SOURCE.md`
+  records its revision and known limitations. No dependencies installed or
+  code executed; the last project's PyTorch codec is deliberately omitted.
 - `.references/granite-4.0-1b-speech`: Hugging Face model repo for IBM Granite
   Speech 4.0 1B. Shallow clone with Git LFS smudge disabled; large model files
   remain as LFS pointers.
@@ -81,4 +94,8 @@ Not in `.references/`, but referenced alongside them (all gitignored):
   `models/stepfun/step_audio_tokenizer/original/`: Step-Audio assets for
   runtime bring-up, conversion, and source inspection.
 - `models/firered/firered_tts3/original/`: FireRedTTS3 original weights.
+- `models/breezeblue/breeze_tts_2/original/`: Complete official Breeze TTS 2
+  snapshot, including its nested `audio_tokenizer/`. Original BF16 main
+  weights and FP32 audio tokenizer stay unchanged. The converted runtime
+  package is the gitignored sibling `mlx-bf16/`.
 - `models/reuse/original/`: RE-USE / SEMamba weights (NSCLv1, non-commercial).

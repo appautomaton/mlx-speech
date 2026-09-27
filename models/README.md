@@ -15,6 +15,12 @@ Illustrative current layout:
 
 ```text
 models/
+  breezeblue/
+    breeze_tts_2/
+      original/    # Complete upstream snapshot; not MLX-converted
+        audio_tokenizer/  # Bundled codec, kept in its upstream location
+      mlx-bf16/    # Converted package: main BF16, codec FP32 in MLX layout
+        audio_tokenizer/
   openmoss/
     moss_tts_local/
       original/    # Upstream Hugging Face files
