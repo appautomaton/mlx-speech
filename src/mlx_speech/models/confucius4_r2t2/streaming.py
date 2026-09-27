@@ -8,16 +8,19 @@ from __future__ import annotations
 
 import re
 import string
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import numpy as np
 
 from ..qwen3_asr.processor import resolve_language
+from .metrics import R2T2StepMetrics, R2T2StreamTrace
 
 
 SAMPLE_RATE = 16000
 _BUDGET_SAMPLES = 1280
+_PCM_ITEMSIZE = np.dtype(np.float32).itemsize
 _ASR_TEXT_TAG = "<asr_text>"
 _LANG_PREFIX = "language "
 _PREFIX_PUNCT = "，。！？、；：.!?;:"
@@ -280,7 +283,11 @@ def _detokenize_prefix(
 
 
 class R2T2StreamSession:
-    """Published R2T2 chunk loop, lookahead, budget, and append-only commit."""
+    """Published R2T2 chunk loop, lookahead, budget, and append-only commit.
+
+    ``trace`` is opt-in profiling: with ``None`` the loop keeps no
+    per-step records and does no timing work.
+    """
 
     def __init__(
         self,
@@ -294,6 +301,7 @@ class R2T2StreamSession:
         unfixed_token_num: int = 1,
         unfixed_chunk_num: int = 0,
         rollback_punctuation: bool = False,
+        trace: R2T2StreamTrace | None = None,
     ) -> None:
         if (
             not callable(llm_generate)
@@ -320,9 +328,11 @@ class R2T2StreamSession:
         self._unfixed_token_num = int(unfixed_token_num)
         self._unfixed_chunk_num = int(unfixed_chunk_num)
         self._rollback_punctuation = bool(rollback_punctuation)
+        self._trace = trace
 
         self._buffer = np.zeros((0,), dtype=np.float32)
-        self._audio_accum = np.zeros((0,), dtype=np.float32)
+        self._audio_store = np.zeros((0,), dtype=np.float32)
+        self._audio_len = 0
         self._awaiting_first = True
         self.chunk_id = 0
         self._raw_decoded = ""
@@ -345,9 +355,17 @@ class R2T2StreamSession:
     def audio_samples(self) -> int:
         return int(self._audio_accum.shape[0])
 
+    @property
+    def trace(self) -> R2T2StreamTrace | None:
+        return self._trace
+
     def feed(self, pcm16k: np.ndarray) -> R2T2StreamUpdate:
         incoming = _as_float_pcm(pcm16k)
         if incoming.shape[0] > 0:
+            self._note_copy(
+                int(self._buffer.shape[0]) + int(incoming.shape[0]),
+                defer=True,
+            )
             self._buffer = np.concatenate([self._buffer, incoming])
         deltas: list[str] = []
         while self._buffer.shape[0] >= self._current_window():
@@ -355,12 +373,18 @@ class R2T2StreamSession:
             chunk = self._buffer[:window]
             self._buffer = self._buffer[window:]
             self._awaiting_first = False
+            metrics = self._begin_step(kind="window")
+            started = time.perf_counter()
             self._append_audio(chunk)
-            text, fixed_text = self._streaming_step(int(self._max_new_tokens))
+            budget = int(self._max_new_tokens)
+            if metrics is not None:
+                metrics.budget = budget
+            text, fixed_text = self._streaming_step(budget)
             delta = self._lock(fixed_text)
             deltas.append(delta)
             self._update_budget(delta)
             self._text = text
+            self._end_step(metrics, hypothesis=text, delta=delta, started=started)
         return self._update("".join(deltas))
 
     def finalize(self) -> R2T2Transcript:
@@ -370,9 +394,14 @@ class R2T2StreamSession:
 
         tail = self._buffer
         self._buffer = np.zeros((0,), dtype=np.float32)
+        metrics = self._begin_step(kind="tail")
+        started = time.perf_counter()
         self._append_audio(tail)
+        if metrics is not None:
+            metrics.budget = int(self._finalize_cap)
         self._text = self._finish_step(self._finalize_cap)
         self._lock(self._text)
+        self._end_step(metrics, hypothesis=self._text, delta="", started=started)
         return R2T2Transcript(text=self._committed, language=self._language)
 
     def _current_window(self) -> int:
@@ -380,11 +409,70 @@ class R2T2StreamSession:
             return self._chunk_samples + self._lookahead_samples
         return self._chunk_samples
 
+    @property
+    def _audio_accum(self) -> np.ndarray:
+        """Read-only view of all audio so far. Written samples never change,
+        so a view handed to the decoder stays valid after later appends."""
+
+        view = self._audio_store[: self._audio_len]
+        view.flags.writeable = False
+        return view
+
     def _append_audio(self, chunk: np.ndarray) -> None:
-        if self._audio_accum.shape[0] == 0:
-            self._audio_accum = np.array(chunk, dtype=np.float32, copy=True)
-        else:
-            self._audio_accum = np.concatenate([self._audio_accum, chunk])
+        chunk_samples = int(chunk.shape[0])
+        end = self._audio_len + chunk_samples
+        if end > self._audio_store.shape[0]:
+            capacity = max(end, 2 * int(self._audio_store.shape[0]), 16 * 16_000)
+            grown = np.zeros((capacity,), dtype=np.float32)
+            grown[: self._audio_len] = self._audio_store[: self._audio_len]
+            self._note_copy(self._audio_len)
+            self._audio_store = grown
+        self._audio_store[self._audio_len : end] = chunk
+        self._note_copy(chunk_samples)
+        self._audio_len = end
+
+    def _begin_step(self, *, kind: str) -> R2T2StepMetrics | None:
+        if self._trace is None:
+            return None
+        position = int(self._audio_accum.shape[0])
+        return self._trace.begin(
+            index=len(self._trace.steps),
+            kind=kind,
+            sample_start=position,
+            sample_end=position,
+        )
+
+    def _end_step(
+        self,
+        metrics: R2T2StepMetrics | None,
+        *,
+        hypothesis: str,
+        delta: str,
+        started: float,
+    ) -> None:
+        if self._trace is None or metrics is None:
+            return
+        metrics.sample_end = int(self._audio_accum.shape[0])
+        metrics.hypothesis = hypothesis
+        metrics.delta = delta
+        metrics.committed = self._committed
+        metrics.step_seconds = time.perf_counter() - started
+        self._trace.end()
+
+    def _note_copy(self, samples: int, *, defer: bool = False) -> None:
+        if self._trace is not None:
+            self._trace.count_copy(samples, _PCM_ITEMSIZE, defer=defer)
+
+    def _generate(self, prefix: str, audio: np.ndarray, max_new_tokens: int) -> str:
+        trace = self._trace
+        if trace is None:
+            return self._llm_generate(prefix, audio, max_new_tokens)
+        started = time.perf_counter()
+        try:
+            return self._llm_generate(prefix, audio, max_new_tokens)
+        finally:
+            if trace.current is not None:
+                trace.current.llm_seconds += time.perf_counter() - started
 
     def _streaming_step(self, max_new_tokens: int) -> tuple[str, str]:
         if self.chunk_id < self._unfixed_chunk_num:
@@ -402,9 +490,8 @@ class R2T2StreamSession:
                 drop_replacement=True,
             )
         prefix = prefix.split("|", 1)[0]
-        gen_text = self._llm_generate(
-            prefix, np.array(self._audio_accum, copy=True), max_new_tokens
-        )
+        audio_copy = self._audio_accum
+        gen_text = self._generate(prefix, audio_copy, max_new_tokens)
         gen_text = _normalize_punct_by_context(gen_text).replace("\ufffd", "")
         self._raw_decoded = prefix + gen_text
 
@@ -459,9 +546,8 @@ class R2T2StreamSession:
             end_idx = max(1, len(ids) - self._unfixed_token_num)
             prefix = self._detokenize(ids[:end_idx])
         prefix = prefix.split("|", 1)[0]
-        gen_text = self._llm_generate(
-            prefix, np.array(self._audio_accum, copy=True), max_new_tokens
-        )
+        audio_copy = self._audio_accum
+        gen_text = self._generate(prefix, audio_copy, max_new_tokens)
         gen_text = _normalize_punct_by_context(gen_text).replace("\ufffd", "")
         self._raw_decoded = (prefix + gen_text).split("|", 1)[0]
         language, text = parse_streaming_asr_output(

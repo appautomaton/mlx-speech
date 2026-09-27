@@ -10,6 +10,29 @@ import mlx.nn as nn
 from .config import Qwen3ASRTextConfig
 
 
+@dataclass(frozen=True)
+class Qwen3ASRDecodeCompute:
+    """Per-call decoder compute options. The default is the reference path.
+
+    ``native_linear`` runs decoder projections in the stored weight dtype
+    instead of casting each weight to float32 on every call.
+    ``native_lm_head`` does the same for the vocabulary head.
+    ``fused_attention`` uses ``mx.fast.scaled_dot_product_attention`` with
+    grouped KV heads instead of repeated heads and materialized scores.
+    """
+
+    native_linear: bool = False
+    native_lm_head: bool = False
+    fused_attention: bool = False
+
+
+REFERENCE_DECODE_COMPUTE = Qwen3ASRDecodeCompute()
+
+
+def _resolve_compute(compute: Qwen3ASRDecodeCompute | None) -> Qwen3ASRDecodeCompute:
+    return REFERENCE_DECODE_COMPUTE if compute is None else compute
+
+
 @dataclass
 class Qwen3ASRTextLayerKVCache:
     batch_size: int
@@ -56,6 +79,30 @@ class Qwen3ASRTextLayerKVCache:
     def reset(self) -> None:
         self.current_length = 0
 
+    def truncate(self, length: int) -> None:
+        """Drop every cached position at or after ``length``."""
+
+        length = int(length)
+        if length < 0 or length > self.current_length:
+            raise ValueError(
+                f"Cannot truncate KV cache of length {self.current_length} to {length}."
+            )
+        self.current_length = length
+
+    def reserve(self, max_length: int) -> None:
+        """Grow capacity to at least ``max_length``, keeping cached positions."""
+
+        max_length = int(max_length)
+        if max_length <= self.max_length:
+            return
+        shape = (self.batch_size, self.num_kv_heads, max_length, self.head_dim)
+        keys = mx.zeros(shape, dtype=self.dtype)
+        values = mx.zeros(shape, dtype=self.dtype)
+        if self.current_length:
+            keys[:, :, : self.current_length, :] = self.keys[:, :, : self.current_length, :]
+            values[:, :, : self.current_length, :] = self.values[:, :, : self.current_length, :]
+        self.keys, self.values, self.max_length = keys, values, max_length
+
 
 @dataclass
 class Qwen3ASRTextKVCache:
@@ -92,6 +139,19 @@ class Qwen3ASRTextKVCache:
         self.prompt_length = 0
         for layer in self.layers:
             layer.reset()
+
+    @property
+    def max_length(self) -> int:
+        return 0 if not self.layers else int(self.layers[0].max_length)
+
+    def truncate(self, length: int) -> None:
+        for layer in self.layers:
+            layer.truncate(length)
+        self.prompt_length = min(self.prompt_length, int(length))
+
+    def reserve(self, max_length: int) -> None:
+        for layer in self.layers:
+            layer.reserve(max_length)
 
 
 @dataclass(frozen=True)
@@ -176,11 +236,11 @@ class Qwen3ASRTextMLP(nn.Module):
         self.down_proj = nn.Linear(config.intermediate_size, config.hidden_size, bias=False)
         self.hidden_act = config.hidden_act
 
-    def __call__(self, x: mx.array) -> mx.array:
-        gate = _linear_forward(self.gate_proj, x)
-        up = _linear_forward(self.up_proj, x)
+    def __call__(self, x: mx.array, *, native: bool = False) -> mx.array:
+        gate = _linear_forward(self.gate_proj, x, native=native)
+        up = _linear_forward(self.up_proj, x, native=native)
         hidden = _activation(gate, self.hidden_act) * up
-        return _linear_forward(self.down_proj, hidden)
+        return _linear_forward(self.down_proj, hidden, native=native)
 
 
 class Qwen3ASRTextAttention(nn.Module):
@@ -243,11 +303,18 @@ class Qwen3ASRTextAttention(nn.Module):
         hidden_states: mx.array,
         *,
         offset: int,
+        native: bool = False,
     ) -> tuple[mx.array, mx.array, mx.array]:
         batch_size, seq_len, _ = hidden_states.shape
-        query_states = _linear_forward(self.q_proj, hidden_states, output_dtype=mx.float32)
-        key_states = _linear_forward(self.k_proj, hidden_states, output_dtype=mx.float32)
-        value_states = _linear_forward(self.v_proj, hidden_states, output_dtype=mx.float32)
+        query_states = _linear_forward(
+            self.q_proj, hidden_states, output_dtype=mx.float32, native=native
+        )
+        key_states = _linear_forward(
+            self.k_proj, hidden_states, output_dtype=mx.float32, native=native
+        )
+        value_states = _linear_forward(
+            self.v_proj, hidden_states, output_dtype=mx.float32, native=native
+        )
 
         query_states = query_states.reshape(
             batch_size,
@@ -287,8 +354,31 @@ class Qwen3ASRTextAttention(nn.Module):
         attention_mask: mx.array | None = None,
         query_offset: int = 0,
         use_causal_mask: bool = True,
+        compute: Qwen3ASRDecodeCompute | None = None,
     ) -> mx.array:
+        compute = _resolve_compute(compute)
         batch_size, _, query_len, _ = query_states.shape
+        if compute.fused_attention and self.sliding_window is None:
+            attn_output = _fused_attention(
+                query_states,
+                key_states,
+                value_states,
+                scale=self.scale,
+                attention_mask=attention_mask,
+                query_offset=query_offset,
+                use_causal_mask=use_causal_mask,
+            )
+            attn_output = attn_output.transpose(0, 2, 1, 3).reshape(
+                batch_size,
+                query_len,
+                self.attention_output_size,
+            )
+            return _linear_forward(
+                self.o_proj,
+                attn_output,
+                output_dtype=output_dtype,
+                native=compute.native_linear,
+            )
         if self.sliding_window is not None and use_causal_mask:
             attn_output = _sliding_window_attention(
                 query_states,
@@ -308,6 +398,7 @@ class Qwen3ASRTextAttention(nn.Module):
                 self.o_proj,
                 attn_output,
                 output_dtype=output_dtype,
+                native=compute.native_linear,
             )
         key_states = _repeat_kv(key_states, self.kv_repeat)
         value_states = _repeat_kv(value_states, self.kv_repeat)
@@ -338,7 +429,12 @@ class Qwen3ASRTextAttention(nn.Module):
             query_len,
             self.attention_output_size,
         )
-        return _linear_forward(self.o_proj, attn_output, output_dtype=output_dtype)
+        return _linear_forward(
+            self.o_proj,
+            attn_output,
+            output_dtype=output_dtype,
+            native=compute.native_linear,
+        )
 
     def __call__(
         self,
@@ -367,8 +463,12 @@ class Qwen3ASRTextAttention(nn.Module):
         *,
         layer_cache: Qwen3ASRTextLayerKVCache,
         attention_mask: mx.array | None = None,
+        compute: Qwen3ASRDecodeCompute | None = None,
     ) -> mx.array:
-        query_states, key_states, value_states = self._project_qkv(hidden_states, offset=0)
+        compute = _resolve_compute(compute)
+        query_states, key_states, value_states = self._project_qkv(
+            hidden_states, offset=0, native=compute.native_linear
+        )
         layer_cache.append(key_states, value_states)
         cached_keys, cached_values = layer_cache.get()
         return self._apply_attention(
@@ -379,6 +479,7 @@ class Qwen3ASRTextAttention(nn.Module):
             attention_mask=attention_mask,
             query_offset=0,
             use_causal_mask=True,
+            compute=compute,
         )
 
     def decode_step(
@@ -386,11 +487,14 @@ class Qwen3ASRTextAttention(nn.Module):
         hidden_states: mx.array,
         *,
         layer_cache: Qwen3ASRTextLayerKVCache,
+        compute: Qwen3ASRDecodeCompute | None = None,
     ) -> mx.array:
+        compute = _resolve_compute(compute)
         offset = layer_cache.current_length
         query_states, key_states, value_states = self._project_qkv(
             hidden_states,
             offset=offset,
+            native=compute.native_linear,
         )
         layer_cache.append(key_states, value_states)
         cached_keys, cached_values = layer_cache.get()
@@ -402,6 +506,7 @@ class Qwen3ASRTextAttention(nn.Module):
             attention_mask=None,
             query_offset=offset,
             use_causal_mask=True,
+            compute=compute,
         )
 
 
@@ -437,13 +542,19 @@ class Qwen3ASRTextDecoderLayer(nn.Module):
         *,
         layer_cache: Qwen3ASRTextLayerKVCache,
         attention_mask: mx.array | None = None,
+        compute: Qwen3ASRDecodeCompute | None = None,
     ) -> mx.array:
+        compute = _resolve_compute(compute)
         hidden_states = hidden_states + self.self_attn.prefill(
             self.input_layernorm(hidden_states),
             layer_cache=layer_cache,
             attention_mask=attention_mask,
+            compute=compute,
         )
-        hidden_states = hidden_states + self.mlp(self.post_attention_layernorm(hidden_states))
+        hidden_states = hidden_states + self.mlp(
+            self.post_attention_layernorm(hidden_states),
+            native=compute.native_linear,
+        )
         return hidden_states
 
     def decode_step(
@@ -451,12 +562,18 @@ class Qwen3ASRTextDecoderLayer(nn.Module):
         hidden_states: mx.array,
         *,
         layer_cache: Qwen3ASRTextLayerKVCache,
+        compute: Qwen3ASRDecodeCompute | None = None,
     ) -> mx.array:
+        compute = _resolve_compute(compute)
         hidden_states = hidden_states + self.self_attn.decode_step(
             self.input_layernorm(hidden_states),
             layer_cache=layer_cache,
+            compute=compute,
         )
-        hidden_states = hidden_states + self.mlp(self.post_attention_layernorm(hidden_states))
+        hidden_states = hidden_states + self.mlp(
+            self.post_attention_layernorm(hidden_states),
+            native=compute.native_linear,
+        )
         return hidden_states
 
 
@@ -501,6 +618,7 @@ class Qwen3ASRTextModel(nn.Module):
         attention_mask: mx.array | None = None,
         kv_cache: Qwen3ASRTextKVCache,
         output_hidden_states: bool = False,
+        compute: Qwen3ASRDecodeCompute | None = None,
     ) -> Qwen3ASRTextModelOutput:
         hidden_states = self._prepare_inputs(input_ids=input_ids, inputs_embeds=inputs_embeds)
         all_hidden_states: list[mx.array] | None = [] if output_hidden_states else None
@@ -511,6 +629,7 @@ class Qwen3ASRTextModel(nn.Module):
                 hidden_states,
                 layer_cache=kv_cache.layers[layer_idx],
                 attention_mask=attention_mask,
+                compute=compute,
             )
         hidden_states = self.norm(hidden_states)
         if all_hidden_states is not None:
@@ -529,6 +648,7 @@ class Qwen3ASRTextModel(nn.Module):
         inputs_embeds: mx.array | None = None,
         kv_cache: Qwen3ASRTextKVCache,
         output_hidden_states: bool = False,
+        compute: Qwen3ASRDecodeCompute | None = None,
     ) -> Qwen3ASRTextModelOutput:
         hidden_states = self._prepare_inputs(input_ids=input_ids, inputs_embeds=inputs_embeds)
         all_hidden_states: list[mx.array] | None = [] if output_hidden_states else None
@@ -538,6 +658,7 @@ class Qwen3ASRTextModel(nn.Module):
             hidden_states = layer.decode_step(
                 hidden_states,
                 layer_cache=kv_cache.layers[layer_idx],
+                compute=compute,
             )
         hidden_states = self.norm(hidden_states)
         if all_hidden_states is not None:
@@ -571,6 +692,21 @@ class Qwen3ASRTextForCausalLM(nn.Module):
         if self.tie_word_embeddings:
             self.lm_head.weight = self.model.embed_tokens.weight
 
+    def project_logits(
+        self,
+        hidden_states: mx.array,
+        *,
+        compute: Qwen3ASRDecodeCompute | None = None,
+    ) -> mx.array:
+        """Float32 vocabulary logits for ``hidden_states``."""
+
+        return _linear_forward(
+            self.lm_head,
+            hidden_states,
+            output_dtype=mx.float32,
+            native=_resolve_compute(compute).native_lm_head,
+        )
+
     def __call__(
         self,
         *,
@@ -597,14 +733,22 @@ class Qwen3ASRTextForCausalLM(nn.Module):
         inputs_embeds: mx.array | None = None,
         attention_mask: mx.array | None = None,
         kv_cache: Qwen3ASRTextKVCache,
+        compute: Qwen3ASRDecodeCompute | None = None,
+        last_logits_only: bool = False,
     ) -> Qwen3ASRTextCausalLMOutput:
+        """``last_logits_only`` projects only the final position to the vocabulary."""
+
         model_output = self.model.prefill(
             input_ids=input_ids,
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
             kv_cache=kv_cache,
+            compute=compute,
         )
-        logits = _linear_forward(self.lm_head, model_output.last_hidden_state, output_dtype=mx.float32)
+        hidden = model_output.last_hidden_state
+        if last_logits_only:
+            hidden = hidden[:, -1:, :]
+        logits = self.project_logits(hidden, compute=compute)
         return Qwen3ASRTextCausalLMOutput(
             logits=logits,
             last_hidden_state=model_output.last_hidden_state,
@@ -617,13 +761,21 @@ class Qwen3ASRTextForCausalLM(nn.Module):
         input_ids: mx.array | None = None,
         inputs_embeds: mx.array | None = None,
         kv_cache: Qwen3ASRTextKVCache,
+        compute: Qwen3ASRDecodeCompute | None = None,
+        last_logits_only: bool = False,
     ) -> Qwen3ASRTextCausalLMOutput:
+        """Append one or more positions at the cache offset (suffix prefill)."""
+
         model_output = self.model.decode_step(
             input_ids=input_ids,
             inputs_embeds=inputs_embeds,
             kv_cache=kv_cache,
+            compute=compute,
         )
-        logits = _linear_forward(self.lm_head, model_output.last_hidden_state, output_dtype=mx.float32)
+        hidden = model_output.last_hidden_state
+        if last_logits_only:
+            hidden = hidden[:, -1:, :]
+        logits = self.project_logits(hidden, compute=compute)
         return Qwen3ASRTextCausalLMOutput(
             logits=logits,
             last_hidden_state=model_output.last_hidden_state,
@@ -644,6 +796,7 @@ def _linear_forward(
     x: mx.array,
     *,
     output_dtype: mx.Dtype | None = None,
+    native: bool = False,
 ) -> mx.array:
     target_dtype = x.dtype if output_dtype is None else output_dtype
     # Quantized layers hold packed weights; dispatch to their own fused forward
@@ -652,11 +805,66 @@ def _linear_forward(
     if weight is None or isinstance(linear, nn.QuantizedLinear):
         y = linear(x)
         return y if y.dtype == target_dtype else y.astype(target_dtype)
+    if native:
+        # Matmul in the stored weight dtype; no per-call float32 weight copy.
+        y = mx.matmul(x.astype(weight.dtype), weight.T)
+        bias = getattr(linear, "bias", None)
+        if bias is not None:
+            y = y + bias.astype(weight.dtype)
+        return y if y.dtype == target_dtype else y.astype(target_dtype)
     y = mx.matmul(x.astype(mx.float32), weight.astype(mx.float32).T)
     bias = getattr(linear, "bias", None)
     if bias is not None:
         y = y + bias.astype(mx.float32)
     return y.astype(target_dtype)
+
+
+def _fused_attention(
+    query: mx.array,
+    key: mx.array,
+    value: mx.array,
+    *,
+    scale: float,
+    attention_mask: mx.array | None,
+    query_offset: int,
+    use_causal_mask: bool,
+) -> mx.array:
+    """Grouped-query attention through ``mx.fast.scaled_dot_product_attention``.
+
+    Same mask semantics as ``_make_additive_attention_mask``. Keys and values
+    keep their grouped heads; the kernel computes softmax in float32.
+    """
+
+    dtype = query.dtype
+    key = key.astype(dtype)
+    value = value.astype(dtype)
+    query_len = int(query.shape[2])
+    key_len = int(key.shape[2])
+    if query_offset < 0 or query_offset + query_len > key_len:
+        raise ValueError("attention query positions must fit within the key sequence")
+    mask: mx.array | str | None
+    if attention_mask is None and (
+        not use_causal_mask or (query_len == 1 and query_offset + 1 == key_len)
+    ):
+        mask = None
+    elif attention_mask is None and query_offset + query_len == key_len:
+        mask = "causal"
+    else:
+        mask = _make_additive_attention_mask(
+            query_len=query_len,
+            key_len=key_len,
+            query_offset=query_offset,
+            dtype=dtype,
+            attention_mask=attention_mask,
+            use_causal_mask=use_causal_mask,
+        )
+    return mx.fast.scaled_dot_product_attention(
+        query,
+        key,
+        value,
+        scale=scale,
+        mask=mask,
+    )
 
 
 def _repeat_kv(x: mx.array, repeats: int) -> mx.array:
