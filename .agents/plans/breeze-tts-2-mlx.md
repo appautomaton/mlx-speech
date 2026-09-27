@@ -1,8 +1,10 @@
 # Breeze TTS 2 — MLX inference
 
-Status: an offline no-CFG voice-design path can write a WAV. The files are
-in `/tmp/breeze-tts-2-mlx/wav/`. They have not been listened to, so this is
-not a claim that the speech is intelligible.
+Status: plain no-CFG voice design was listened to and accepted. Instruction
+voice design with official single-branch CFG scale 4 has written
+`/tmp/breeze-tts-2-mlx/wav/en-instruction-cfg4.wav` and
+`zh-instruction-cfg4.wav`. Those two files still need listening. Cloning is
+next.
 This is the single implementation plan for this model.
 
 Generated audio, probes, and one-off dumps go in `/tmp/breeze-tts-2-mlx/`.
