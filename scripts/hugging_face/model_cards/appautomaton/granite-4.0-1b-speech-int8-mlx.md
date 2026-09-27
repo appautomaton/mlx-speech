@@ -55,15 +55,7 @@ weight loading.
 
 ## Release validation
 
-On an Apple M5 Max, isolated BF16/int8 checks used two 12–13 second English
-samples, one excluded warmup, and five measured requests per sample.
-
-| Metric | BF16 | Selective int8 | Change |
-| --- | ---: | ---: | ---: |
-| Weight bytes | 4,626,527,776 | 2,904,308,838 | -37.225% |
-| Loaded MLX active bytes | 4,626,778,828 | 2,904,558,284 | -37.223% |
-| Hank median inference | 0.833 s | 0.734 s | -11.823% |
-| Peggy median inference | 0.825 s | 0.689 s | -16.428% |
+BF16/int8 checks used two 12–13 second English samples.
 
 The int8 transcripts differed from BF16 by one normalized word on each sample.
 Hank WER was unchanged at 10.714%; Peggy WER changed from 3.571% to 7.143%, one
@@ -76,7 +68,7 @@ The released weight SHA-256 is
 `cf355a69e931ccac95d5cf942c3d540ba2456f06ad89c379c8132875b9098e6c`.
 It is byte-identical to the existing
 [`mlx-community/granite-4.0-1b-speech-8bit`](https://huggingface.co/mlx-community/granite-4.0-1b-speech-8bit)
-weight file. Full local methodology and memory results are recorded in the
+weight file. Full local methodology is recorded in the
 [`mlx-speech` quantization gate](https://github.com/appautomaton/mlx-speech/blob/main/docs/benchmarks/granite-speech-int8-quant-gate-2026-08-03.md).
 
 ## Usage

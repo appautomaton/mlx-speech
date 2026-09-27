@@ -67,11 +67,10 @@ variant has its own complete inference bundle. Instruct will be added under
 
 ## Start with a reference voice
 
-Requires an Apple Silicon Mac and Python 3.13 or later. Install the current
-`mlx-speech` runtime from GitHub:
+Requires an Apple Silicon Mac and Python 3.13 or later.
 
 ```bash
-pip install "git+https://github.com/appautomaton/mlx-speech.git"
+pip install "mlx-speech>=0.5.3"
 ```
 
 The loader downloads the Base bundle on first use. Replace `reference.wav`
@@ -185,28 +184,19 @@ The dialect identifiers use the upstream `ZH_` prefix, for example
 Language coverage comes from the upstream model and tokenizer. The local
 quality check below covers one Mandarin request with an English reference.
 
-## Measured locally
+## Local check
 
-The optimized runtime uses bounded RedAE sliding attention, cached Qwen3
-continuation, and a compiled DiT tensor region. On the fixed request documented
-in the runtime guide, one warmup was excluded before three measured runs.
+On the fixed request documented in the runtime guide:
 
-| Measurement | Result |
+| Check | Result |
 | --- | --- |
-| Median core-generation time | 2.052 seconds, down from 2.648 seconds |
-| Core-generation improvement | 22.5% against the corrected attention baseline |
-| MLX peak memory | 5.768 GiB, effectively unchanged |
 | Output | Finite, non-silent, mono 24 kHz waveform |
 | Seed repeatability | Two bitwise-identical waveforms on one loaded model |
 | Local ASR transcript | `你好，很高兴认识你。` |
 | CAM++ reference/output cosine | 0.7374 |
 
-Core-generation timing excludes model loading, reference preparation, and
-waveform decoding. These measurements describe the local fixture and machine.
-They do not establish performance or voice quality across other languages and
-recordings. The
-[runtime guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md#mlx-runtime-behavior)
-records the measurement context and a separate long-form comparison.
+This covers one fixture only; it does not establish voice quality across other
+languages and recordings.
 
 ## Current limits
 

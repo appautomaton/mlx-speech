@@ -28,7 +28,7 @@ tags:
 
 MLX-native **int8** conversion of [Qwen3-ASR-1.7B](https://huggingface.co/Qwen/Qwen3-ASR-1.7B) for local automatic speech recognition on Apple Silicon — English, Chinese, and mixed Chinese/English. It runs through the [`mlx-speech`](https://github.com/appautomaton/mlx-speech) runtime with no PyTorch and no cloud API at inference time. Weights ship as plain `.safetensors`.
 
-> **This is the default Qwen3-ASR build in `mlx-speech`.** In local Apple Silicon checks the int8 build produced transcripts **identical to the bf16 build** on our English test clips, while using **~2.3× less peak memory** (≈2.9 GiB vs ≈6.6 GiB) and decoding **~3–4× faster**. For the unquantized reference, see the [bf16 build](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx).
+> **This is the default Qwen3-ASR build in `mlx-speech`.** In local Apple Silicon checks the int8 build produced transcripts **identical to the bf16 build** on our English test clips. For the unquantized reference, see the [bf16 build](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx).
 
 ## Model Details
 

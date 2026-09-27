@@ -68,10 +68,8 @@ MLX-native **bf16** conversion of NetEase Youdao's [Confucius4-R2T2](https://hug
 
 ## How to Get Started
 
-Confucius4-R2T2 support is not in a PyPI release or on `main` of `mlx-speech` yet. Install from the `confucius4-r2t2-streaming` branch:
-
 ```bash
-pip install "git+https://github.com/appautomaton/mlx-speech@confucius4-r2t2-streaming"
+pip install "mlx-speech>=0.5.3"
 ```
 
 Streaming — feed microphone PCM as it arrives:

@@ -115,11 +115,6 @@ Five-stage pipeline, all running pure MLX with bf16 activations:
 The VQ02 and VQ06 tokenizers encode reference audio into dual codebook tokens
 consumed by Step1.
 
-## Performance
-
-On Apple Silicon with int8 weights and bf16 activations, real-time factor
-(RTF) is approximately 1.46x for voice cloning — faster than real-time.
-
 ## Links
 
 - Source code: [`mlx-speech`](https://github.com/appautomaton/mlx-speech)
