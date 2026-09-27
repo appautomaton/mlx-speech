@@ -9,6 +9,8 @@ from __future__ import annotations
 import mlx.core as mx
 import mlx.nn as nn
 
+from .audio_encoder import CodecEncoder
+
 
 def _causal_mask(
     query_length: int, key_length: int, dtype: mx.Dtype
@@ -359,11 +361,15 @@ def codec_parameter_key(checkpoint_key: str) -> str:
 
 
 class SpeechCodec(nn.Module):
-    """Weight-key root: parameters begin with ``decoder.``."""
+    """Decoder and reference encoder for the bundled audio tokenizer."""
 
     def __init__(self) -> None:
         super().__init__()
         self.decoder = CodecDecoder()
+        self.encoder = CodecEncoder()
 
     def decode(self, codes: mx.array) -> mx.array:
         return self.decoder(codes)
+
+    def encode(self, samples: mx.array) -> mx.array:
+        return self.encoder.encode(samples)

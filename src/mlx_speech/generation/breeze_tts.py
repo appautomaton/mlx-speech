@@ -59,12 +59,10 @@ def load_breeze_speech(model_dir: Path) -> tuple[BreezeSpeech, SpeechCodec, Toke
     speech.load_weights(list(main.items()), strict=True)
     codec = SpeechCodec()
     codec_weights = mx.load(str(model_dir / "audio_tokenizer" / "model.safetensors"))
-    decoder_weights = [
-        (codec_parameter_key(key), value)
-        for key, value in codec_weights.items()
-        if key.startswith("decoder.")
+    codec_parameters = [
+        (codec_parameter_key(key), value) for key, value in codec_weights.items()
     ]
-    codec.load_weights(decoder_weights, strict=True)
+    codec.load_weights(codec_parameters, strict=True)
     mx.eval(tree_flatten(speech.parameters()), tree_flatten(codec.parameters()))
     tokenizer = Tokenizer.from_file(str(model_dir / "tokenizer.json"))
     return speech, codec, tokenizer
@@ -84,6 +82,8 @@ def generate_breeze(
     top_k: int = 50,
     repetition_penalty: float = 1.1,
     seed: int = 0,
+    ref_audio: mx.array | None = None,
+    ref_text: str | None = None,
 ) -> BreezeAudio:
     """Generate one utterance. ``cfg_scale`` other than 1 requires an instruction."""
 
@@ -94,17 +94,32 @@ def generate_breeze(
     direction = (instruction or "").strip()
     if cfg_scale != 1.0 and not direction:
         raise ValueError("cfg_scale other than 1 requires an instruction.")
+    reference = _validated_reference(ref_audio, ref_text)
     mx.random.seed(seed)
     guided = cfg_scale != 1.0
     prompt = _prompt_embeddings(
-        speech, tokenizer, _prompt_text(speaker, text, direction or None)
+        speech,
+        codec,
+        tokenizer,
+        text,
+        speaker=speaker,
+        instruction=direction or None,
+        reference=reference,
     )
     cache = speech.backbone_model.make_cache(batch_size=1, dtype=prompt.dtype)
     hidden = speech.backbone_model(prompt, cache)[:, -1, :]
     uncond_cache = None
     uncond_hidden = None
     if guided:
-        plain = _prompt_embeddings(speech, tokenizer, _prompt_text(speaker, text, None))
+        plain = _prompt_embeddings(
+            speech,
+            codec,
+            tokenizer,
+            text,
+            speaker=speaker,
+            instruction=None,
+            reference=reference,
+        )
         uncond_cache = speech.backbone_model.make_cache(batch_size=1, dtype=plain.dtype)
         uncond_hidden = speech.backbone_model(plain, uncond_cache)[:, -1, :]
     _realize([hidden, uncond_hidden], [cache, uncond_cache])
@@ -159,15 +174,63 @@ def _finite_positive(value: float) -> bool:
     return value > 0 and value == value and value not in {float("inf"), float("-inf")}
 
 
+def _validated_reference(
+    ref_audio: mx.array | None, ref_text: str | None
+) -> tuple[mx.array, str] | None:
+    transcript = (ref_text or "").strip()
+    has_audio = ref_audio is not None
+    if has_audio != bool(transcript):
+        raise ValueError("ref_audio and ref_text must be provided together.")
+    if ref_audio is None:
+        return None
+    return ref_audio, transcript
+
+
 def _prompt_embeddings(
-    speech: BreezeSpeech, tokenizer: Tokenizer, text: str
+    speech: BreezeSpeech,
+    codec: SpeechCodec,
+    tokenizer: Tokenizer,
+    text: str,
+    *,
+    speaker: str,
+    instruction: str | None,
+    reference: tuple[mx.array, str] | None,
 ) -> mx.array:
+    if reference is None:
+        return _text_embeddings(
+            speech, tokenizer, _prompt_text(speaker, text, instruction)
+        )
+    ref_audio, ref_text = reference
+    codes = codec.encode(ref_audio)
+    left = _segment_embeddings(speech, tokenizer, _prompt_text(speaker, ref_text, None))
+    right = _segment_embeddings(
+        speech, tokenizer, _prompt_text(speaker, text, instruction)
+    )
+    audio = speech.backbone_model.embed_audio(codes[None, :, :])[0]
+    eos = speech.backbone_model.embed_audio(
+        mx.zeros((1, 1, codes.shape[1]), dtype=mx.int32)
+    )[0]
+    return mx.concatenate([left, audio, eos, right], axis=0)[None, :, :]
+
+
+def _text_embeddings(speech: BreezeSpeech, tokenizer: Tokenizer, text: str) -> mx.array:
     token_ids = tokenizer.encode(text, add_special_tokens=False).ids
     bos_id = tokenizer.token_to_id("<bos>")
     if bos_id is not None and (not token_ids or token_ids[0] != bos_id):
         token_ids = [bos_id, *token_ids]
     hidden = speech.text_encoder(mx.array(token_ids, dtype=mx.int32)[None, :])
     return speech.text_encoder_proj(hidden)
+
+
+def _segment_embeddings(
+    speech: BreezeSpeech, tokenizer: Tokenizer, text: str
+) -> mx.array:
+    rendered = tokenizer.decode(
+        tokenizer.encode(text, add_special_tokens=True).ids, skip_special_tokens=False
+    )
+    token_ids = tokenizer.encode(rendered, add_special_tokens=False).ids
+    hidden = speech.text_encoder(mx.array(token_ids, dtype=mx.int32)[None, :])
+    return speech.text_encoder_proj(hidden)[0]
 
 
 def _depth_frame(
