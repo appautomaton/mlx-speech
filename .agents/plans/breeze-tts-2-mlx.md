@@ -1,8 +1,8 @@
 # Breeze TTS 2 — MLX inference
 
-Status: weight package, text encoder, Qwen3 backbone, and depth decoder
-are on `breeze-tts-2-mlx`. Codec decode and the first WAV are not.
-Official weights and source are local. No Breeze synthesis has run yet.
+Status: an offline no-CFG voice-design path can write a WAV. The files are
+in `/tmp/breeze-tts-2-mlx/wav/`. They have not been listened to, so this is
+not a claim that the speech is intelligible.
 This is the single implementation plan for this model.
 
 Generated audio, probes, and one-off dumps go in `/tmp/breeze-tts-2-mlx/`.
