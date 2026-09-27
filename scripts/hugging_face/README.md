@@ -16,6 +16,7 @@ inside the repo — not as separate repos.
 | `models/openmoss/moss_sound_effect/` | `appautomaton/openmoss-sound-effect-mlx` | OpenMOSS sound effect model |
 | `models/vibevoice/` | `appautomaton/vibevoice-mlx` | VibeVoice long-form speech |
 | `models/cohere/cohere_transcribe/` | `appautomaton/cohere-asr-mlx` | Cohere ASR transcription |
+| `models/netease/confucius4_r2t2/mlx-bf16/` | `appautomaton/confucius4-r2t2-bf16-mlx` | Confucius4-R2T2 streaming ASR, bf16; ships NetEase `LICENSE` |
 | `models/firered/firered_tts3/mlx-bf16/` | `appautomaton/fireredtts3-mlx` | Complete Base BF16 bundle at `base/mlx-bf16/` |
 
 ## FireRedTTS3 family repository
