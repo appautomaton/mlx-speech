@@ -1,11 +1,11 @@
 # Breeze TTS 2 — MLX inference
 
-Status: plain voice design and instruction voice design at CFG scale 4
-were listened to and accepted. Voice clone has written
-`/tmp/breeze-tts-2-mlx/wav/en-clone.wav` and `zh-clone.wav` from reference
-audio plus its transcript. Those two files still need listening. Reference
-voice direction is implemented but not accepted: the English CFG clip
-decays to silence instead of finishing the sentence.
+Status: plain voice design, instruction voice design at CFG scale 4, and
+Peggy Hill voice cloning into Chinese were listened to and accepted.
+Reference voice direction at CFG scale 4 has written
+`/tmp/breeze-tts-2-mlx/wav/peggy-en-direction-cfg4-seed0.wav` and
+`peggy-zh-direction-cfg4.wav`. Those two still need listening. Seed 42 on
+the English direction can miss EOS and continue into silence.
 This is the single implementation plan for this model.
 
 Generated audio, probes, and one-off dumps go in `/tmp/breeze-tts-2-mlx/`.
