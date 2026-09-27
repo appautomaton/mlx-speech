@@ -78,6 +78,7 @@ def generate_breeze(
     max_frames: int = 80,
     temperature: float = 0.9,
     top_k: int = 50,
+    repetition_penalty: float = 1.1,
     seed: int = 0,
 ) -> BreezeAudio:
     """Generate one utterance from a plain ``[speaker]text`` prompt."""
@@ -89,8 +90,13 @@ def generate_breeze(
     cache = speech.backbone_model.make_cache(batch_size=1, dtype=prompt.dtype)
     hidden = speech.backbone_model(prompt, cache)[:, -1, :]
     frames: list[mx.array] = []
+    first_codes: list[int] = []
     for _ in range(max_frames):
-        logits = _mask_reserved(speech.lm_head(hidden), keep_eos=True)
+        logits = _penalize(
+            _mask_reserved(speech.lm_head(hidden), keep_eos=True),
+            first_codes,
+            repetition_penalty,
+        )
         first = _sample(logits, temperature=temperature, top_k=top_k)
         if int(first.item()) == speech.config.backbone_eos_id:
             break
@@ -98,6 +104,7 @@ def generate_breeze(
             speech, hidden, first, temperature=temperature, top_k=top_k
         )
         frames.append(frame)
+        first_codes.append(int(first.item()))
         hidden = speech.backbone_model(
             speech.backbone_model.embed_audio(frame.reshape(1, 1, -1)), cache
         )[:, -1, :]
@@ -152,6 +159,18 @@ def _mask_reserved(logits: mx.array, *, keep_eos: bool) -> mx.array:
     if not keep_eos and masked.shape[-1] > 2051:
         masked = masked[..., :2051]
     return masked
+
+
+def _penalize(logits: mx.array, tokens: list[int], penalty: float) -> mx.array:
+    if penalty == 1.0 or not tokens:
+        return logits
+    ids = mx.array(
+        sorted({token for token in tokens if 0 <= token < logits.shape[-1]}),
+        dtype=mx.int32,
+    )
+    selected = logits[..., ids]
+    adjusted = mx.where(selected < 0, selected * penalty, selected / penalty)
+    return logits.at[..., ids].add(adjusted - selected)
 
 
 def _sample(logits: mx.array, *, temperature: float, top_k: int) -> mx.array:
