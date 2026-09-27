@@ -137,6 +137,12 @@ _ASR_MODELS: dict[str, _ModelAlias] = {
         "Qwen3-ASR-1.7B (int8, affine) — English, Chinese, and mixed Chinese/English ASR",
         "qwen3",
     ),
+    # NetEase's Qwen3-ASR finetune for real-time streaming; bf16 only.
+    "confucius4-r2t2": _ModelAlias(
+        "appautomaton/confucius4-r2t2-bf16-mlx",
+        "Confucius4-R2T2 (bf16) — real-time streaming ASR, 30 languages",
+        "r2t2",
+    ),
     # Int8 is the only published Nemotron build. A temporary long-form English
     # and Mandarin comparison found negligible accuracy differences from bf16.
     "nemotron-asr-streaming": _ModelAlias(

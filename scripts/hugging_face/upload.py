@@ -45,6 +45,11 @@ MODELS: dict[str, tuple[str, str, bool]] = {
         "models/qwen3_asr_1_7b/mlx-int8",
         True,
     ),
+    "confucius4-r2t2-bf16": (
+        "appautomaton/confucius4-r2t2-bf16-mlx",
+        "models/netease/confucius4_r2t2/mlx-bf16",
+        True,
+    ),
     "nemotron-asr-streaming-int8": (
         "appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx",
         "models/nvidia/nemotron_3_5_asr_streaming_0_6b/mlx-int8",

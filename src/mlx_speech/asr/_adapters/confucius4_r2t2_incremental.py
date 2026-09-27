@@ -70,7 +70,8 @@ class R2T2IncrementalStep:
             n_fft=self._n_fft,
             n_mels=int(extractor.n_mels),
         )
-        self._raw = np.zeros((int(extractor.n_mels), 0), dtype=np.float32)
+        # raw log-mel buffer: [:, :_stable] final, the rest scratch
+        self._raw = np.zeros((int(extractor.n_mels), 4096), dtype=np.float32)
         self._stable = 0  # raw frames [0, _stable) are final
         self._stable_max = -np.inf
 
@@ -104,13 +105,16 @@ class R2T2IncrementalStep:
         spectrum = (np.abs(np.fft.rfft(windows * self._window, axis=1)) ** 2).astype(np.float32)
         mel = np.maximum(1e-10, self._filters.T @ spectrum.T)
         fresh = np.log10(mel).astype(np.float32)
-        raw = np.concatenate([self._raw[:, :first], fresh], axis=1) if first else fresh
+        if frames > self._raw.shape[1]:
+            grown = np.zeros((self._raw.shape[0], max(frames, 2 * self._raw.shape[1])), dtype=np.float32)
+            grown[:, :first] = self._raw[:, :first]
+            self._raw = grown
+        self._raw[:, first:frames] = fresh
+        raw = self._raw[:, :frames]
 
         stable = min(frames, (samples - half) // self._hop + 1) if samples >= half else 0
         if stable > first:
-            newly = raw[:, first:stable]
-            self._stable_max = max(self._stable_max, float(newly.max()))
-            self._raw = raw[:, :stable]  # view into raw; copied on next concat
+            self._stable_max = max(self._stable_max, float(raw[:, first:stable].max()))
             self._stable = stable
         return raw
 
@@ -283,9 +287,3 @@ class R2T2IncrementalStep:
             metrics.add_counter(PREFILL_POSITIONS, len(ids) - keep)
             metrics.add_counter(VOCAB_POSITIONS, 1)
         return output
-
-    def record_generated(self, generated: list[int]) -> None:
-        """Remember which generated tokens entered the KV cache."""
-
-        fed = self._kv.current_length - len(self._kv_ids)
-        self._kv_ids = self._kv_ids + list(generated[:fed])

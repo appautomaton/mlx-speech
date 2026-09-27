@@ -178,7 +178,7 @@ when language is omitted.
 ## Current Limits
 
 - v0 is single-pass offline ASR only.
-- Streaming is deferred.
+- Streaming is deferred; for streaming use [Confucius4-R2T2](./confucius4-r2t2.md).
 - Timestamps and forced alignment are deferred.
 - Long-audio chunking and language merge logic are deferred.
 - Broader multilingual validation beyond English, Chinese, and mixed

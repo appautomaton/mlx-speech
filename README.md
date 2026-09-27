@@ -61,9 +61,8 @@ mlx-speech asr --model qwen3-asr-1.7b --audio speech.wav
 
 ## Models
 
-Choose a model by task, then use its selector with `tts.load()`, `asr.load()`, or
-the CLI's `--model` flag. Model names link to guides with examples, controls,
-and limitations. Weight links open the corresponding Hugging Face repositories.
+Pass the selector to `tts.load()`, `asr.load()`, or `--model`. Names link to
+guides; weight links open the Hugging Face repositories.
 
 ### Text-to-speech, voice cloning, and sound effects
 
@@ -79,7 +78,7 @@ and limitations. Weight links open the corresponding Hugging Face repositories.
 | [DramaBox](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md) | Speech synthesis in 48 kHz stereo | `dramabox` | [BF16](https://huggingface.co/appautomaton/dramabox-tts-3.3b-bf16-mlx)¹ |
 | [dots.tts SOAR](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) | Voice cloning and waveform streaming | `dots-tts-soar` | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
 | [dots.tts MeanFlow](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) | Distilled TTS and waveform streaming | `dots-tts-mf` | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
-| [FireRedTTS3 Base](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md) | Multilingual voice cloning at 24 kHz | `fireredtts3-base` | [BF16](https://huggingface.co/appautomaton/fireredtts3-mlx/tree/main/base/mlx-bf16)² |
+| [FireRedTTS3 Base](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md) | Multilingual voice cloning at 24 kHz | `fireredtts3-base` | [BF16](https://huggingface.co/appautomaton/fireredtts3-mlx/tree/main/base/mlx-bf16) |
 
 ### Speech-to-text
 
@@ -87,14 +86,9 @@ and limitations. Weight links open the corresponding Hugging Face repositories.
 | --- | --- | --- | --- |
 | [Cohere Transcribe](https://github.com/appautomaton/mlx-speech/blob/main/docs/cohere-asr.md) | Multilingual transcription | `cohere-asr` | [int8](https://huggingface.co/appautomaton/cohere-asr-mlx) |
 | [Qwen3-ASR-1.7B](https://github.com/appautomaton/mlx-speech/blob/main/docs/qwen3-asr.md) | English, Chinese, and mixed speech | `qwen3-asr-1.7b` | [int8](https://huggingface.co/appautomaton/qwen3-asr-1.7b-int8-mlx) · [BF16](https://huggingface.co/appautomaton/qwen3-asr-1.7b-bf16-mlx) |
+| [Confucius4-R2T2](https://github.com/appautomaton/mlx-speech/blob/main/docs/confucius4-r2t2.md) | Real-time streaming transcription, 30 languages | `confucius4-r2t2` | [BF16](https://huggingface.co/appautomaton/confucius4-r2t2-bf16-mlx) |
 | [NVIDIA Nemotron 3.5 ASR Streaming](https://github.com/appautomaton/mlx-speech/blob/main/docs/nemotron-asr.md) | Multilingual streaming transcription | `nemotron-asr-streaming` | [int8](https://huggingface.co/appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx) |
 | [IBM Granite Speech 4.0 1B](https://github.com/appautomaton/mlx-speech/blob/main/docs/granite-speech-asr.md) | Speech recognition with a selective-int8 language model | `granite-speech-4.0-1b` | [int8](https://huggingface.co/appautomaton/granite-4.0-1b-speech-int8-mlx) |
-
-FireRedTTS3 Base bundles its speech model, codec, speaker encoder, and tokenizer
-in `base/mlx-bf16/` within the FireRedTTS3 model repository and produces mono
-24 kHz audio. See the
-[FireRedTTS3 guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md)
-for conversion, generation, and measured runtime results.
 
 <details>
 <summary>Loading local weights, shared repositories, and DramaBox components</summary>
@@ -114,11 +108,6 @@ to clean noisy voice references. Denoising is off by default, and the enhancer
 weights carry the NSCLv1 non-commercial license. The
 [DramaBox guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md)
 covers these components and advanced controls.
-
-² FireRedTTS3 shipped after the current PyPI release, so the `pip install
-mlx-speech` package does not include it yet. Install from GitHub source as the
-[FireRedTTS3 guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md)
-describes.
 
 </details>
 
@@ -140,6 +129,18 @@ result = model.generate(
     reference_text="Transcript of the reference audio.",
 )
 write_wav("cloned.wav", result.waveform, sample_rate=result.sample_rate)
+```
+
+**Live transcription with Confucius4-R2T2**
+
+```python
+import mlx_speech
+
+asr = mlx_speech.asr.load("confucius4-r2t2")
+session = asr.stream_session(language="English")
+for pcm in microphone:                 # float32, 16 kHz mono
+    print(session.feed(pcm).committed)
+print(session.finalize().text)
 ```
 
 **Streaming transcription with Nemotron**
@@ -207,6 +208,7 @@ mlx-speech asr --model qwen3-asr-1.7b --audio speech.wav --language Chinese
 # File transcription with the streaming-capable Nemotron model
 mlx-speech asr --model nemotron-asr-streaming --audio speech.wav --language en-US
 mlx-speech asr --model granite-speech-4.0-1b --audio speech.wav
+mlx-speech asr --model confucius4-r2t2 --audio speech.wav
 
 # Local checkpoint paths work anywhere an alias does
 mlx-speech tts --model models/fish_s2_pro/mlx-int8 --text "Hello!" -o output.wav
@@ -243,15 +245,8 @@ uv run pytest
 uv run ruff check .
 ```
 
-The default test suite runs without model checkpoints. FireRedTTS3 includes
-small golden fixtures for numerical regression checks, so those tests keep
-working after large local weight files are removed. A manifest records the
-checkpoint hashes and capture provenance. Real-weight inference and audio
-quality use separate tests. See the
-[testing guide](https://github.com/appautomaton/mlx-speech/blob/main/tests/README.md)
-for test tiers and the
-[FireRedTTS3 fixture guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md#checkpoint-independent-regression-vectors)
-for capture and regeneration.
+The default suite needs no checkpoints. Real-weight tests are separate; see the
+[testing guide](https://github.com/appautomaton/mlx-speech/blob/main/tests/README.md).
 
 ```text
 mlx-speech/

@@ -1,6 +1,7 @@
 # TNT live consumer for R2T2 streaming
 
-**Status: PARKED — not started and not assigned.**
+**Status: CLOSED — not started; closed by the user (2026-09-26).**
+Do not execute. Kept as a record of known TNT issues.
 
 Begin only when the user schedules it, after the R2T2 streaming performance
 work in `confucius4-r2t2-live-cost.md`. The agent executing that plan does

@@ -407,16 +407,24 @@ def _incremental_completion(
     )
     if metrics is not None:
         _capture_logits(metrics, prefill.logits)
-    generated = _greedy_tokens(
-        runtime.model,
-        prefill,
-        max_new_tokens=max_new_tokens,
-        eos_token_ids=runtime.eos_token_ids,
-        metrics=metrics,
-        decoder_compute=compute.decoder,
-        logits_observer=logits_observer,
-    )
-    step.record_generated(generated)
+    if metrics is None and logits_observer is None:
+        generated = _greedy_tokens_pipelined(
+            runtime.model,
+            prefill,
+            max_new_tokens=max_new_tokens,
+            eos_token_ids=runtime.eos_token_ids,
+            decoder_compute=compute.decoder,
+        )
+    else:
+        generated = _greedy_tokens(
+            runtime.model,
+            prefill,
+            max_new_tokens=max_new_tokens,
+            eos_token_ids=runtime.eos_token_ids,
+            metrics=metrics,
+            decoder_compute=compute.decoder,
+            logits_observer=logits_observer,
+        )
     completion = processor.tokenizer.decode(generated, skip_special_tokens=True)
     if metrics is not None:
         metrics.completion = completion
@@ -579,6 +587,45 @@ def _greedy_tokens(
         if logits_observer is not None:
             logits_observer(index + 1, step.logits[0, -1, :])
         next_token = _token_id(greedy_next_token(step.logits))
+    return generated
+
+
+def _greedy_tokens_pipelined(
+    model,
+    prefill,
+    *,
+    max_new_tokens: int,
+    eos_token_ids: tuple[int, ...],
+    decoder_compute: Qwen3ASRDecodeCompute | None = None,
+) -> list[int]:
+    """Same tokens as ``_greedy_tokens`` without a host round-trip per step.
+
+    The next decode step is queued on the GPU before the current token is
+    read back. If the current token is EOS, the queued step is wasted and its
+    KV position is discarded by the next window's truncation.
+    """
+
+    eos = set(eos_token_ids)
+    token = greedy_next_token(prefill.logits)
+    mx.async_eval(token)
+    generated: list[int] = []
+    for index in range(max_new_tokens):
+        queued = None
+        if index < max_new_tokens - 1:
+            step = model.decode_step(
+                input_ids=token.reshape(1, 1).astype(mx.int32),
+                kv_cache=prefill.past_key_values,
+                compute=decoder_compute,
+            )
+            queued = greedy_next_token(step.logits)
+            mx.async_eval(queued)
+        value = _token_id(token)
+        if value in eos:
+            break
+        generated.append(value)
+        if queued is None:
+            break
+        token = queued
     return generated
 
 
