@@ -1,6 +1,20 @@
-# Confucius4-R2T2 streaming ASR
+# Confucius4-R2T2 streaming ASR — completed baseline record
 
-Plan only. Do not copy upstream Python into `src/`. Code in
+**Status: DONE / CLOSED as a historical full-refeed port plan (2026-09-26).**
+
+Do not execute or append tasks to this plan. The sole active inference plan
+is [Confucius4-R2T2 streaming inference performance](confucius4-r2t2-live-cost.md).
+Closing this record does not certify incremental inference or real-time cost:
+the existing port still recomputes cumulative audio and the full prompt per
+window. The sections below retain the original port scope and checklists;
+closure is not fresh verification that every historical checklist item shipped.
+Remaining inference, validation, and documentation work belongs in the
+active plan. The bounded `feed`/drain caller contract and TNT integration
+belong in `tnt-asr-live-consumer.md`. Publication/alias prerequisites below
+remain historical constraints, not a claim that a model repository or alias
+was published.
+
+Historical port specification follows. Do not copy upstream Python into `src/`. Code in
 `.references/Confucius4-R2T2` is Apache-2.0; weights are under the NetEase
 model license and stay out of git. Inference stays on `mlx`, `numpy`,
 `safetensors`, `soundfile`, and `tokenizers`. `huggingface_hub` only inside
@@ -16,6 +30,10 @@ Checked out references, read locally (no fetch/pull of those clones):
   (`init_streaming_state`, `streaming_transcribe`, `finish_streaming_transcribe`,
   `_build_text_prompt`), `examples/example_qwen3_asr_vllm_streaming.py`,
   `modeling_qwen3_asr.py` `_get_feat_extract_output_lengths`.
+
+Slices 1–6 establish the full-refeed transcription baseline only. Their
+text checks did not measure incremental computation. Calling that finished
+incremental streaming was wrong; the active plan addresses that gap.
 
 Conversion is done. Do not repeat it before slices 1–4.
 
@@ -41,16 +59,19 @@ difference. `|` is not in R2T2 `additional_special_tokens`.
 `hop_length=160`. The language list in the original config is the 30 names
 already in `support_languages` (Chinese and English through Macedonian).
 
-Do not claim a parameter-delta size. The next work is the streaming state
-machine, then the adapter. Weights stay out of git.
+Do not claim a parameter-delta size. Do not repeat the existing state-machine
+port or conversion. Weights stay out of git.
 
 ## 1. What the reference streaming state machine does
 
 `R2T2ASRModel` subclasses `Qwen3ASRModel` and does not define a new module
 graph. `transcribe` is `super().transcribe`. Streaming is a prompt-prefix loop
-around a full re-encode of the audio seen so far. vLLM is only the runner.
-There is no cache-aware encoder and no cross-chunk KV cache: each step sends
+that resubmits all audio seen so far to vLLM. Each step sends
 `{"prompt": prompt_raw + prefix, "multi_modal_data": {"audio": [audio_accum]}}`.
+The state machine has no explicit cross-step encoder/KV reuse. This call
+alone does not establish the backend's internal prefix-cache hit behavior.
+The current MLX port explicitly rebuilds audio features and decoder KV;
+the active plan replaces that implementation while preserving window semantics.
 
 ### State
 
@@ -323,11 +344,10 @@ Must be new:
   the budget). The existing `transcribe()` always starts from an empty
   hypothesis and uses a large default cap (448). Do not call it in a loop and
   pretend that is R2T2.
-- Cross-chunk KV reuse is incorrect for v1. Each new window grows the audio-pad
-  span, so the new prompt is not a token prefix of the previous prompt. Encode
-  the full `audio_accum`, splice audio embeddings into `inputs_embeds`, and
-  prefill from scratch every chunk. Decode only the new tokens. The text KV
-  cache is only for those tokens inside that chunk.
+- Slices 1–6 used full audio encode and full prompt prefill as the baseline,
+  with decoder KV only inside one generation call. This was an implementation
+  choice, not proof that cross-window reuse is impossible. The active plan
+  specifies stable-prefix reuse and invalidation.
 - Registry marker and adapter, so this directory is not the offline Qwen path.
 
 Offline `generate` stays `Qwen3ASRTranscriber.transcribe`, including the MLX
@@ -417,7 +437,8 @@ The adapter imports the Qwen model and processor and injects
 does not import that graph, does not subclass it, and does not live under
 `models/qwen3_asr/`. It only calls the injected callable, plus a
 `tokenize` / `detokenize` pair for prefix rollback. Slice 1's fake codec
-never runs an MLX forward.
+never runs an MLX forward. This describes the baseline seam; production
+changes to that seam are specified only in the active plan.
 
 ## 5. Public surface
 
@@ -447,7 +468,8 @@ it later. `None` is auto language tags. For mixed Chinese/English, pass
 `resolve_language` list.
 
 `feed` may return an empty delta when the buffer is short of a chunk. It does
-not return token ids.
+not return token ids. In this baseline, it consumes all ready windows before
+returning. Future bounded processing is specified only in the active plan.
 
 ```text
 R2T2StreamUpdate
@@ -457,9 +479,10 @@ R2T2StreamUpdate
   language: str
 ```
 
-`finalize` flushes the tail with the finish prefix rule, applies the same
-length lock, and returns `ASROutput(text=committed, language=...)`. The
-end state is that transcript, not tokens.
+In this baseline, `feed` drains complete windows; `finalize` flushes the
+remaining tail with the finish prefix rule, applies the length lock, and
+returns `ASROutput(text=committed, language=...)`. No tail means no extra
+decode. Revised finalization and lifecycle rules belong to the active plan.
 
 This does not satisfy `ASRStreamSession`, and it must not change that
 protocol. Do not add `att_context_size` here.
@@ -478,11 +501,11 @@ offline. Do not grow a websocket server.
 `context` maps to the system turn already supported by `build_prompt`. Cap is
 not required in v1; the server’s 4000-character check can wait.
 
-## 6. Implementation slices
+## 6. Historical implementation slices
 
-Each slice is one change, tested with `pytest tests/unit/` and no PyTorch.
-Slices 1–3 need no checkpoint. Do not start the next slice until the current
-one’s tests pass.
+These are retained port checklists, not an active task queue. The original
+validation used `pytest tests/unit/` with no PyTorch; slices 1–3 required no
+checkpoint. Do not append new slices here.
 
 ### Slice 1 — pure state machine (done)
 
@@ -567,7 +590,10 @@ Also assert `_get_feat_extract_output_lengths` at 1280, 2560, and 5120
 samples of mel frames (1, 2, and 4 audio tokens). The pad count follows that
 formula, not `samples // 1280`.
 
-### Slice 4 — adapter and one-step MLX decode
+### Slice 4 — adapter and one-step MLX decode (full-refeed baseline)
+
+This is the historical execution strategy used by the active plan's
+full-refeed differential oracle.
 
 `asr/_adapters/confucius4_r2t2.py` holds a `Qwen3ASRTranscriber` built by the existing
 `from_dir`. Offline `generate` calls `transcribe` and stops. No streaming
@@ -592,7 +618,11 @@ renamed, three conv weights transposed, family marker patched into the copied
 `config.json`. The tied `lm_head` is not stored. Do not reconvert unless the
 upstream file changes. No int8 and no 4-bit.
 
-### Slice 6 — runtime behavior with weights
+### Slice 6 — runtime behavior with weights (text only)
+
+This checks the words, not the cost. Each window still runs mel, the audio
+encoder, and a full text prefill over all audio so far. A passing test here
+does not mean a later window is incremental.
 
 Gated by the local converted directory, same skip rule as other checkpoint
 tests. Not part of the default `pytest tests/unit/` run. Put it in
@@ -617,7 +647,7 @@ Do not document llama.cpp or the websocket server as supported.
 Add `confucius4-r2t2` under `_ASR_MODELS` only with a real MLX repo id.
 Until then, path load is the public entry. Do not retarget `qwen3-asr-1.7b`.
 
-### Explicitly later, not in the slices above
+### Separate behavior changes, outside incremental inference
 
 - `streaming_transcribe_no_reset`: 16 s cap, drop 8 s, per-chunk text list.
   The hardcoded 320/160 ms discard math is wrong if chunk size is not 160 ms.
@@ -626,10 +656,6 @@ Until then, path load is the public entry. Do not retarget `qwen3-asr-1.7b`.
 - VAD end-of-speech reset, hallucination repeat reset, 60 s / 90 s hard reset
   (`ws_server.py`). Those reset the state machine; they are not required for
   the library call.
-- Cross-chunk encoder or text KV cache. Only consider it after a numerical
-  check shows the full re-feed is the baseline. A tail chunk changes conv
-  padding and attention block boundaries (`n_window * 2`), so a naive cache is
-  wrong.
 
 ## 7. Non-goals
 

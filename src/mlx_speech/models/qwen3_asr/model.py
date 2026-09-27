@@ -10,6 +10,7 @@ import mlx.nn as nn
 from .audio_encoder import Qwen3ASRAudioEncoder
 from .config import Qwen3ASRConfig
 from .text_decoder import (
+    Qwen3ASRDecodeCompute,
     Qwen3ASRTextCausalLMOutput,
     Qwen3ASRTextForCausalLM,
     Qwen3ASRTextKVCache,
@@ -90,6 +91,8 @@ class Qwen3ASRModel(nn.Module):
         inputs_embeds: mx.array,
         max_cache_len: int,
         attention_mask: mx.array | None = None,
+        compute: Qwen3ASRDecodeCompute | None = None,
+        last_logits_only: bool = False,
     ) -> Qwen3ASRTextCausalLMOutput:
         kv_cache = Qwen3ASRTextKVCache.allocate(
             self.config.text_config,
@@ -101,6 +104,8 @@ class Qwen3ASRModel(nn.Module):
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
             kv_cache=kv_cache,
+            compute=compute,
+            last_logits_only=last_logits_only,
         )
 
     def decode_step(
@@ -108,8 +113,13 @@ class Qwen3ASRModel(nn.Module):
         *,
         input_ids: mx.array,
         kv_cache: Qwen3ASRTextKVCache,
+        compute: Qwen3ASRDecodeCompute | None = None,
     ) -> Qwen3ASRTextCausalLMOutput:
-        return self.text_decoder.decode_step(input_ids=input_ids, kv_cache=kv_cache)
+        return self.text_decoder.decode_step(
+            input_ids=input_ids,
+            kv_cache=kv_cache,
+            compute=compute,
+        )
 
     def __call__(
         self,
