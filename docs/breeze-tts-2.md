@@ -2,7 +2,8 @@
 
 Status: the gitignored `mlx-bf16/` runtime package has been written.
 Inference has not started. This is not a supported model adapter or a claim
-of working MLX synthesis.
+of working MLX synthesis. Generated audio and probes belong in
+`/tmp/breeze-tts-2-mlx/`, not in this repository.
 
 Implementation plan: [native MLX inference](../.agents/plans/breeze-tts-2-mlx.md).
 Community model, codec, conversion, and cache snippets are staged under

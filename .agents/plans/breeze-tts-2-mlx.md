@@ -1,9 +1,12 @@
 # Breeze TTS 2 — MLX inference
 
-Status: weight package written; inference not started. Official weights and
-source are local, and useful community MLX source is staged. No Breeze
-synthesis has run in this project yet. This is the single implementation plan
-for this model.
+Status: weight package committed on `breeze-tts-2-mlx`. The text encoder
+is in the library. Backbone, depth decoder, codec, and the first WAV are not.
+Official weights and source are local. No Breeze synthesis has run yet.
+This is the single implementation plan for this model.
+
+Generated audio, probes, and one-off dumps go in `/tmp/breeze-tts-2-mlx/`.
+Do not write them into the repository. The weight package stays gitignored.
 
 `models/breezeblue/breeze_tts_2/mlx-bf16/` is the runtime package: 766 BF16
 main tensors, including the materialized tied audio embedding, and 496 FP32
