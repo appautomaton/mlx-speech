@@ -1,9 +1,9 @@
 # Breeze TTS 2 — MLX inference
 
-Status: phases 1–3 accepted by listening, including Peggy Chinese cloning
-and voice direction. Phase 4 streams waveform chunks through the shared TTS
-API. Phase 5 has not started. Seed 42 on the English direction can miss EOS
-and trail into silence; seed 0 was the accepted English clip.
+Status: phases 1–4 accepted by listening, including streamed Peggy Chinese.
+Phase 5 measurements are in `docs/breeze-tts-2.md`. Warmed streaming does
+not keep up with playback, so quantization, compilation, and kernels stay
+out. English CFG direction can still miss EOS.
 This is the single implementation plan for this model.
 
 Generated audio, probes, and one-off dumps go in `/tmp/breeze-tts-2-mlx/`.
@@ -157,3 +157,8 @@ for actual failure modes. Use real weights for the final waveform smoke test.
 Update `docs/breeze-tts-2.md` with working API examples and known limitations.
 The runtime, converter, and tests must work without PyTorch. No benchmark
 reporting framework, repeated checksums, or separate serving application.
+
+Recorded there: warmed streaming real-time factor is about 1.1 without CFG
+and about 1.6–1.8 at CFG scale 4. First audio on short lines is under a
+second. That does not keep up with playback, so compilation and kernels were
+not added.

@@ -1,15 +1,109 @@
 # Breeze TTS 2 — local source and weight preparation
 
-Status: the gitignored `mlx-bf16/` runtime package has been written.
-Inference has not started. This is not a supported model adapter or a claim
-of working MLX synthesis. Generated audio and probes belong in
-`/tmp/breeze-tts-2-mlx/`, not in this repository.
+Status: local MLX inference is in the shared TTS API. Listening accepted
+voice design, instruction direction, Peggy cloning, and streamed Chinese,
+including a 32.8 s Peggy line. Warmed streaming does not keep up with
+playback. Generated audio and probes belong in `/tmp/breeze-tts-2-mlx/`,
+not in this repository.
 
 Implementation plan: [native MLX inference](../.agents/plans/breeze-tts-2-mlx.md).
 Community model, codec, conversion, and cache snippets are staged under
 `.references/{mlx-audio-breeze,mlx-breeze-tts2,BreezeTTS2_Mac_Streaming,breeze-tts-mlx}/`.
 Each includes a `SOURCE.md` and upstream license. These are reading references;
 none was installed or executed. Known hybrid PyTorch paths are excluded.
+
+## Inference
+
+Load the gitignored `mlx-bf16/` package through the shared TTS API. The
+runtime family is `breeze_tts`. The codec is `audio_tokenizer`, not the Mimi
+block in `config.json`. Main weights stay BF16 and the codec stays FP32.
+`guidance_scale` and `cfg_scale` are the same control. Scale `1` keeps the
+conditional branch. Any other scale requires `instruction`. A reference clip
+requires its transcript. `max_new_tokens` is the codec-frame budget; the
+default is 80, and the codec runs at 12.5 frames per second.
+
+```python
+import mlx_speech
+from mlx_speech.audio import write_wav
+
+model = mlx_speech.tts.load("models/breezeblue/breeze_tts_2/mlx-bf16")
+reference_text = open(
+    "outputs/source/peggy_hill_ref.txt", encoding="utf-8"
+).read().strip()
+clip = model.generate(
+    "我们该把昨晚的事说清楚。",
+    reference_audio="outputs/source/peggy_hill_ref.wav",
+    reference_text=reference_text,
+    instruction="说慢一点，语气克制、严肃。",
+    guidance_scale=4.0,
+    seed=42,
+)
+write_wav("peggy.wav", clip.waveform, sample_rate=clip.sample_rate)
+
+for chunk in model.generate_stream(
+    "我们该把昨晚的事说清楚。",
+    reference_audio="outputs/source/peggy_hill_ref.wav",
+    reference_text=reference_text,
+    instruction="说慢一点，语气克制、严肃。",
+    guidance_scale=4.0,
+    seed=42,
+    stream_chunk_patches=4,
+):
+    # chunk.waveform is 24 kHz mono PCM for the new frames only.
+    ...
+```
+
+The CLI passes the reference transcript as `--reference-text`.
+
+```bash
+USE_TORCH=0 .venv/bin/python -m mlx_speech.tts.generate \
+  --model models/breezeblue/breeze_tts_2/mlx-bf16 \
+  --text "我们该把昨晚的事说清楚。" \
+  --reference-audio outputs/source/peggy_hill_ref.wav \
+  --reference-text "$(cat outputs/source/peggy_hill_ref.txt)" \
+  --instruction "说慢一点，语气克制、严肃。" \
+  --guidance-scale 4 \
+  --seed 42 \
+  --stream \
+  --output /tmp/breeze-tts-2-mlx/wav/peggy.wav
+```
+
+## Measured runtime
+
+These numbers are from one warmed process on this Mac. Loading the package
+took 0.75 s and is not included below. Each measured run streams in chunks
+of four codec frames. MLX active memory stayed near 7.1 GiB. Encoding the
+Peggy reference raised the MLX cache to about 1.8 GiB and the process
+physical footprint to about 9.2 GiB.
+
+| Run | First audio | Utterance | RTF |
+| --- | --- | --- | --- |
+| English design, no CFG, seed 0 | 0.41 s | 3.84 s, 48 frames, EOS | 1.12 |
+| English direction, CFG 4, seed 0, no reference | 0.54 s | hit the 120-frame cap | 1.60 on that capped run |
+| Chinese design, no CFG, seed 42 | 0.43 s | 1.44 s, 18 frames, EOS | 1.21 |
+| Chinese direction, CFG 4, seed 42 | 0.55 s | 1.68 s, 21 frames, EOS | 1.62 |
+| Peggy clone, no CFG, seed 42 | 0.51 s | 2.08 s, 26 frames, EOS | 1.21 |
+| Peggy direction, CFG 4, seed 42 | 0.73 s | 2.00 s, 25 frames, EOS | 1.78 |
+
+Warmed generation does not keep up with playback. No-CFG real-time factor is
+about 1.1. CFG scale 4 is about 1.6 to 1.8 on utterances that reach EOS.
+First audio on these short lines is still under a second. Quantization,
+`mx.compile`, batched CFG, and specialized kernels are not enabled. The gap
+is not large enough to justify that complexity on the current eager path.
+
+## Known limitations
+
+- English CFG direction can miss EOS and continue sampling. In the measurement
+  above, seed 0 without a reference ran to the frame cap. An earlier English
+  Peggy direction at seed 42 did the same; seed 0 with that reference finished.
+- Streamed codec audio matches one offline decode of the same codes except for
+  overlap-add rounding. The accepted lively Peggy line was about 62 dB SNR
+  against its offline render.
+- Codec attention keeps the full prefix. It does not use a sliding window.
+- There is no published hub alias yet. Point the loader at the local
+  `mlx-bf16` directory.
+- The BreezeBlue non-commercial license still applies to the weights and to
+  outputs made from them.
 
 ## Implementation constraint
 
@@ -90,7 +184,7 @@ Preparation verification:
   Both dependency source archives matched their PyPI SHA-256 values.
 - Existing project baseline, before this converter: `USE_TORCH=0 .venv/bin/pytest tests/unit/`
   passed 1,184 tests. The converter has since written `mlx-bf16/`.
-  No Breeze inference or parity run has occurred.
+  Inference landed after that preparation check.
 
 ## Source entry points
 
