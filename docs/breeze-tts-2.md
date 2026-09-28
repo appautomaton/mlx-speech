@@ -1,16 +1,20 @@
-# Breeze TTS 2 — local source and weight preparation
+# Breeze TTS 2
 
 Status: local MLX inference is in the shared TTS API. Listening accepted
-voice design, instruction direction, Peggy cloning, and streamed Chinese,
-including a 32.8 s Peggy line. Warmed streaming does not keep up with
-playback. Generated audio and probes belong in `/tmp/breeze-tts-2-mlx/`,
-not in this repository.
+voice design, instruction direction, Peggy Chinese cloning, English and
+Chinese Peggy direction, and streamed Chinese, including a 32.8 s Peggy line
+at seed 3, heard again after the codec adopted its official 72-frame
+attention window. English Peggy cloning and English `(sigh)` and `(laugh)`
+events were accepted, in both a clone and a voice-design take. Warmed
+streaming does not keep up with playback. Generated audio and probes belong
+in `/tmp/breeze-tts-2-mlx/`, not in this repository.
 
 Implementation plan: [native MLX inference](../.agents/plans/breeze-tts-2-mlx.md).
 Community model, codec, conversion, and cache snippets are staged under
 `.references/{mlx-audio-breeze,mlx-breeze-tts2,BreezeTTS2_Mac_Streaming,breeze-tts-mlx}/`.
 Each includes a `SOURCE.md` and upstream license. These are reading references;
 none was installed or executed. Known hybrid PyTorch paths are excluded.
+[Sources](#sources) lists their public repositories.
 
 ## Inference
 
@@ -20,7 +24,11 @@ block in `config.json`. Main weights stay BF16 and the codec stays FP32.
 `guidance_scale` and `cfg_scale` are the same control. Scale `1` keeps the
 conditional branch. Any other scale requires `instruction`. A reference clip
 requires its transcript. `max_new_tokens` is the codec-frame budget; the
-default is 80, and the codec runs at 12.5 frames per second.
+default is 80, and the codec runs at 12.5 frames per second. Reaching the
+budget before EOS raises a `RuntimeWarning` because the speech may be cut
+off. `temperature` and `repetition_penalty` must be positive; `top_k` of 0
+disables top-k. Codec attention uses the official 72-frame sliding window,
+and a stream keeps only that window.
 
 ```python
 import mlx_speech
@@ -86,20 +94,31 @@ physical footprint to about 9.2 GiB.
 | Peggy direction, CFG 4, seed 42 | 0.73 s | 2.00 s, 25 frames, EOS | 1.78 |
 
 Warmed generation does not keep up with playback. No-CFG real-time factor is
-about 1.1. CFG scale 4 is about 1.6 to 1.8 on utterances that reach EOS.
+about 1.1 to 1.2. CFG scale 4 is about 1.6 to 1.8 on utterances that reach EOS.
 First audio on these short lines is still under a second. Quantization,
 `mx.compile`, batched CFG, and specialized kernels are not enabled. The gap
 is not large enough to justify that complexity on the current eager path.
 
 ## Known limitations
 
-- English CFG direction can miss EOS and continue sampling. In the measurement
-  above, seed 0 without a reference ran to the frame cap. An earlier English
-  Peggy direction at seed 42 did the same; seed 0 with that reference finished.
+- Generation can miss EOS and keep sampling silence until the frame budget.
+  It is most common in English and under CFG. In the measurement above,
+  English direction at seed 0 without a reference ran to the frame cap. An
+  earlier English Peggy direction at seed 42 did the same; seed 0 with that
+  reference finished. A plain English Peggy clone spoke its whole sentence,
+  then ran to the cap at seeds 0 and 42. The 32.8 s Chinese Peggy line ran to
+  its 700-frame cap at seeds 42 and 0; seed 3 reached EOS at 410 frames. The
+  official inference stops only on backbone EOS or the length limit, as this
+  port does.
+- An English vocal event can swallow the words after it. A Peggy clone of
+  `(sigh) It is good to hear your voice again after all this time.` gave
+  about 0.5 s of sound and no words at seed 0. A closing
+  `(clears throat) All right, listen up.` was dropped in all eight clone and
+  design attempts. Takes with `(sigh)` and `(laugh)` before or between
+  sentences did say every word; one clone and one design take reached EOS.
 - Streamed codec audio matches one offline decode of the same codes except for
-  overlap-add rounding. The accepted lively Peggy line was about 62 dB SNR
+  overlap-add and attention rounding. The 32.8 s Peggy line is about 63 dB SNR
   against its offline render.
-- Codec attention keeps the full prefix. It does not use a sliding window.
 - There is no published hub alias yet. Point the loader at the local
   `mlx-bf16` directory.
 - The BreezeBlue non-commercial license still applies to the weights and to
@@ -217,3 +236,31 @@ Official source is Apache-2.0. Breeze model weights, derivative models, and
 self-hosted outputs use the bundled BreezeBlue Research and Non-Commercial
 License. The source-only dependencies retain their own license files.
 MLX conversion does not remove the model's non-commercial terms.
+
+## Sources
+
+- Official inference: [breezeblue-ai/breeze-tts](https://github.com/breezeblue-ai/breeze-tts)
+  at `008f769`, with `qwen-tts==0.1.1` and `transformers==4.57.3` for the codec
+  and backbone definitions. It is the behavior reference for prompts, CFG,
+  sampling, EOS, and the codec, including its 72-frame attention window.
+- Official weights: [BreezeBlue/Breeze-TTS-2](https://huggingface.co/BreezeBlue/Breeze-TTS-2)
+  at `3e28c51`.
+
+Earlier community MLX work was read for implementation ideas at these
+revisions. None was installed or run, and none is a runtime dependency.
+
+- [Blaizzy/mlx-audio](https://github.com/Blaizzy/mlx-audio) `4ab7e6f`: Breeze
+  graph and Qwen codec in MLX. Its depth loop recomputes the frame prefix and
+  reads each sampled code back to the host.
+- [vanch007/mlx-breeze-tts2](https://github.com/vanch007/mlx-breeze-tts2)
+  `51c182d`: standalone model, codec, weight mapping, cached depth decoding,
+  and stream cleanup. It tokenizes through Transformers.
+- [xzf-thu/BreezeTTS2_Mac_Streaming](https://github.com/xzf-thu/BreezeTTS2_Mac_Streaming)
+  `c6552ad`: depth KV reuse and device-side sampling, layered on mlx-audio.
+- [rishikksh20/breeze-tts-mlx](https://github.com/rishikksh20/breeze-tts-mlx)
+  `4e045c1`: MLX text encoder, backbone, and depth decoder. Its codec runs in
+  PyTorch.
+
+This port keeps the whole path in MLX: backbone KV across frames, a fresh
+depth KV per frame, on-device sampling, and a windowed streaming codec. It
+has not been benchmarked against these projects.

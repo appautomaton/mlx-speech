@@ -1,9 +1,15 @@
 # Breeze TTS 2 — MLX inference
 
-Status: phases 1–4 accepted by listening, including streamed Peggy Chinese.
+Status: listening accepted voice design, instruction direction, Peggy
+Chinese cloning, English and Chinese Peggy direction, and streamed Peggy
+Chinese, then English Peggy cloning with `(sigh)` and `(laugh)` events.
+Review then aligned codec attention with the official 72-frame window; the
+32.8 s line (seed 3) was heard again and accepted with that fix.
 Phase 5 measurements are in `docs/breeze-tts-2.md`. Warmed streaming does
 not keep up with playback, so quantization, compilation, and kernels stay
-out. English CFG direction can still miss EOS.
+out. Generation can still miss EOS, most often in English and under CFG;
+the frame budget now warns. English vocal events can drop the words after
+them. Both are recorded under known limitations in the docs.
 This is the single implementation plan for this model.
 
 Generated audio, probes, and one-off dumps go in `/tmp/breeze-tts-2-mlx/`.
@@ -43,8 +49,8 @@ only when they remove real duplication.
 
 Performance basics belong in the first implementation: correct KV lifetimes,
 last-position logits, device-resident sampling, and limited copies/syncs.
-Batch CFG branches where compatible and grow buffers amortized. Add compilation
-or specialized kernels only for measured bottlenecks; keep complexity proportional
+Grow buffers amortized. Add batched CFG, compilation, or specialized kernels
+only for measured bottlenecks; keep complexity proportional
 to demonstrated latency or memory benefit.
 
 ## Local references
@@ -144,6 +150,11 @@ once to the emitted samples; adding the raw chunks double-counts it. Stream
 state stays on the decode stream and is dropped when the iterator finishes
 or closes. A new request must not reuse it.
 
+Codec attention is a 72-frame sliding window, as in the official decoder
+config and streaming cache. Offline decode masks to that window, and the
+stream keeps only the last 71 keys per layer. Same-codes stream checks cannot
+catch a mask both paths share; compare against the official definition.
+
 ## 5. Measure and finish
 
 Measure first-audio latency, complete generation time, RTF, and peak memory
@@ -158,7 +169,7 @@ Update `docs/breeze-tts-2.md` with working API examples and known limitations.
 The runtime, converter, and tests must work without PyTorch. No benchmark
 reporting framework, repeated checksums, or separate serving application.
 
-Recorded there: warmed streaming real-time factor is about 1.1 without CFG
-and about 1.6–1.8 at CFG scale 4. First audio on short lines is under a
+Recorded there: warmed streaming real-time factor is about 1.1–1.2 without
+CFG and about 1.6–1.8 at CFG scale 4. First audio on short lines is under a
 second. That does not keep up with playback, so compilation and kernels were
 not added.
