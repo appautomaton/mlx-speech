@@ -11,14 +11,16 @@ def _resolve_tts_family(model_dir: Path) -> str:
     config_path = model_dir / "config.json"
     if not config_path.exists():
         raise FileNotFoundError(
-            f"No config.json found at {model_dir}. "
-            "Cannot auto-detect model type."
+            f"No config.json found at {model_dir}. Cannot auto-detect model type."
         )
 
     with config_path.open(encoding="utf-8") as f:
         payload = json.load(f)
 
     model_type = payload.get("model_type", "")
+    mlx_speech = payload.get("mlx_speech")
+    if isinstance(mlx_speech, dict) and mlx_speech.get("family") == "breeze_tts":
+        return "breeze_tts"
 
     if model_type == "fish_qwen3_omni":
         return "fish_s2_pro"
@@ -34,6 +36,8 @@ def _resolve_tts_family(model_dir: Path) -> str:
         return "dots_tts"
     if model_type == "fireredtts3_base":
         return "fireredtts3"
+    if model_type == "breeze":
+        return "breeze_tts"
     if model_type == "moss_tts_delay":
         dir_lower = str(model_dir).lower()
         if "sound_effect" in dir_lower or "sound-effect" in dir_lower:
@@ -44,5 +48,5 @@ def _resolve_tts_family(model_dir: Path) -> str:
     raise ValueError(
         f"Unknown TTS model_type {model_type!r} in {model_dir}. "
         "Supported: fish_qwen3_omni, vibevoice, audiodit, step1, dramabox-tts, "
-        "moss_tts_delay, dots_tts, fireredtts3_base."
+        "moss_tts_delay, dots_tts, fireredtts3_base, breeze_tts."
     )

@@ -114,6 +114,11 @@ def load(
 
         return FireRedTTS3Adapter.from_dir(model_dir)
 
+    if family == "breeze_tts":
+        from ._adapters.breeze_tts import BreezeTTSAdapter
+
+        return BreezeTTSAdapter.from_dir(model_dir)
+
     if family in ("moss_local", "moss_delay", "moss_sound_effect"):
         codec_dir = _resolve_codec_path(codec_path_or_repo, revision=revision)
         if family == "moss_local":

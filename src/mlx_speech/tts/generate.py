@@ -88,6 +88,11 @@ def add_tts_args(parser: argparse.ArgumentParser) -> None:
         help="Classifier-free guidance scale.",
     )
     parser.add_argument(
+        "--instruction",
+        default=None,
+        help="Voice-direction instruction for models that support it.",
+    )
+    parser.add_argument(
         "--flow-steps",
         type=int,
         default=None,
@@ -201,6 +206,8 @@ def tts_main(args: argparse.Namespace) -> None:
         generate_kwargs["seed"] = args.seed
     if args.guidance_scale is not None:
         generate_kwargs["guidance_scale"] = args.guidance_scale
+    if args.instruction is not None:
+        generate_kwargs["instruction"] = args.instruction
     if args.flow_steps is not None:
         generate_kwargs["flow_steps"] = args.flow_steps
     if args.stop_threshold is not None:
@@ -217,7 +224,9 @@ def tts_main(args: argparse.Namespace) -> None:
     first_chunk_seconds: float | None = None
     if args.stream:
         if not isinstance(model, StreamingTTSModel):
-            raise ValueError(f"TTS model {args.model!r} does not support waveform streaming")
+            raise ValueError(
+                f"TTS model {args.model!r} does not support waveform streaming"
+            )
         stream = iter(
             model.generate_stream(
                 args.text,

@@ -79,6 +79,7 @@ guides; weight links open the Hugging Face repositories.
 | [dots.tts SOAR](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) | Voice cloning and waveform streaming | `dots-tts-soar` | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
 | [dots.tts MeanFlow](https://github.com/appautomaton/mlx-speech/blob/main/docs/dots-tts.md) | Distilled TTS and waveform streaming | `dots-tts-mf` | [int8 + base](https://huggingface.co/appautomaton/dots-tts-mlx) |
 | [FireRedTTS3 Base](https://github.com/appautomaton/mlx-speech/blob/main/docs/fireredtts3.md) | Multilingual voice cloning at 24 kHz | `fireredtts3-base` | [BF16](https://huggingface.co/appautomaton/fireredtts3-mlx/tree/main/base/mlx-bf16) |
+| [Breeze TTS 2](https://github.com/appautomaton/mlx-speech/blob/main/docs/breeze-tts-2.md) | Voice design, instruction direction, and cloning with waveform streaming | local path | BF16, converted locally² |
 
 ### Speech-to-text
 
@@ -91,7 +92,7 @@ guides; weight links open the Hugging Face repositories.
 | [IBM Granite Speech 4.0 1B](https://github.com/appautomaton/mlx-speech/blob/main/docs/granite-speech-asr.md) | Speech recognition with a selective-int8 language model | `granite-speech-4.0-1b` | [int8](https://huggingface.co/appautomaton/granite-4.0-1b-speech-int8-mlx) |
 
 <details>
-<summary>Loading local weights, shared repositories, and DramaBox components</summary>
+<summary>Loading local weights, shared repositories, DramaBox components, and Breeze TTS 2</summary>
 
 Flat model repositories accept an alias or a full repository ID.
 `tts.load("fish-s2-pro")` and
@@ -108,6 +109,14 @@ to clean noisy voice references. Denoising is off by default, and the enhancer
 weights carry the NSCLv1 non-commercial license. The
 [DramaBox guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/dramabox.md)
 covers these components and advanced controls.
+
+² Breeze TTS 2 has no published MLX weights or alias yet. Download the
+[official checkpoint](https://huggingface.co/BreezeBlue/Breeze-TTS-2), convert
+it with `scripts/convert/breeze_tts.py`, and pass the converted directory to
+`tts.load()`. The weights and outputs made from them carry the BreezeBlue
+non-commercial license. The
+[Breeze TTS 2 guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/breeze-tts-2.md)
+covers conversion, controls, and known limits.
 
 </details>
 
