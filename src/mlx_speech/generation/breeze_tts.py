@@ -11,8 +11,10 @@ Scale 1 keeps the conditional branch only.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Iterator
 from dataclasses import dataclass
+from numbers import Integral
 from pathlib import Path
 
 import mlx.core as mx
@@ -32,6 +34,7 @@ from mlx_speech.models.breeze_tts.text_encoder import BreezeTextEncoder
 
 CODEC_CODEBOOK_SIZE = 2048
 SAMPLE_RATE = 24_000
+FRAME_RATE = 12.5
 
 
 @dataclass(frozen=True)
@@ -93,12 +96,21 @@ def _iter_code_frames(
     ref_audio: mx.array | None = None,
     ref_text: str | None = None,
 ) -> Iterator[mx.array]:
-    """Yield one ``(num_codebooks,)`` frame at a time, stopping before EOS."""
+    """Yield one ``(num_codebooks,)`` frame at a time, stopping before EOS.
+
+    Running out of ``max_frames`` before EOS warns: the speech may be cut off.
+    """
 
     if max_frames <= 0:
         raise ValueError("max_frames must be positive.")
     if not _finite_positive(cfg_scale):
         raise ValueError("cfg_scale must be finite and greater than 0.")
+    if not _finite_positive(temperature):
+        raise ValueError("temperature must be finite and greater than 0.")
+    if isinstance(top_k, bool) or not isinstance(top_k, Integral) or top_k < 0:
+        raise ValueError("top_k must be a non-negative integer; 0 disables it.")
+    if not _finite_positive(repetition_penalty):
+        raise ValueError("repetition_penalty must be finite and greater than 0.")
     direction = (instruction or "").strip()
     if cfg_scale != 1.0 and not direction:
         raise ValueError("cfg_scale other than 1 requires an instruction.")
@@ -159,6 +171,14 @@ def _iter_code_frames(
         if uncond_cache is not None:
             uncond_hidden = speech.backbone_model(audio, uncond_cache)[:, -1, :]
         _realize([frame, hidden, uncond_hidden], [cache, uncond_cache])
+    else:
+        warnings.warn(
+            f"Breeze reached the {max_frames}-frame budget "
+            f"({max_frames / FRAME_RATE:.1f} s) before EOS; the speech may be "
+            "cut off. Raise max_new_tokens for longer text.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
 
 def generate_breeze(
@@ -448,7 +468,7 @@ def _penalize(logits: mx.array, tokens: list[int], penalty: float) -> mx.array:
 
 
 def _sample(logits: mx.array, *, temperature: float, top_k: int) -> mx.array:
-    values = logits if temperature == 0 else logits / temperature
+    values = logits / temperature
     if top_k > 0 and top_k < values.shape[-1]:
         cutoff = mx.topk(values, top_k)[..., -1:]
         values = mx.where(values < cutoff, mx.array(-1.0e9, dtype=values.dtype), values)

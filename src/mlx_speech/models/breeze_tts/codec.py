@@ -2,6 +2,8 @@
 
 Convolutions stay in MLX layout, channels last. Codebooks are recovered from
 ``embedding_sum / cluster_usage``; the checkpoint does not store a lookup table.
+Every transformer layer is sliding attention over the last 72 frames, as in
+the official decoder config and its streaming cache.
 """
 
 from __future__ import annotations
@@ -11,21 +13,41 @@ from dataclasses import dataclass, field
 import mlx.core as mx
 import mlx.nn as nn
 
-from mlx_speech.models._cache import BoundedKVCache
-
 from .audio_encoder import CodecEncoder
+
+_SLIDING_WINDOW = 72
 
 
 def _causal_mask(
     query_length: int, key_length: int, dtype: mx.Dtype
 ) -> mx.array | None:
-    if query_length == 1:
+    """Queries sit at the end of the keys and see at most the last window."""
+
+    if query_length == 1 and key_length <= _SLIDING_WINDOW:
         return None
-    query_positions = mx.arange(key_length - query_length, key_length)
-    key_positions = mx.arange(key_length)
-    blocked = key_positions[None, :] > query_positions[:, None]
+    query_positions = mx.arange(key_length - query_length, key_length)[:, None]
+    key_positions = mx.arange(key_length)[None, :]
+    blocked = (key_positions > query_positions) | (
+        key_positions <= query_positions - _SLIDING_WINDOW
+    )
     minimum = mx.array(mx.finfo(dtype).min, dtype=dtype)
     return mx.where(blocked, minimum, mx.array(0, dtype=dtype))[None, None, :, :]
+
+
+@dataclass
+class _WindowKV:
+    """One layer's keys and values for the frames a later query can still see."""
+
+    keys: mx.array | None = None
+    values: mx.array | None = None
+
+    def extend(self, keys: mx.array, values: mx.array) -> tuple[mx.array, mx.array]:
+        if self.keys is not None and self.values is not None:
+            keys = mx.concatenate([self.keys, keys], axis=2)
+            values = mx.concatenate([self.values, values], axis=2)
+        self.keys = keys[:, :, -(_SLIDING_WINDOW - 1) :, :]
+        self.values = values[:, :, -(_SLIDING_WINDOW - 1) :, :]
+        return keys, values
 
 
 class CausalConv1d(nn.Module):
@@ -156,7 +178,7 @@ class DecoderAttention(nn.Module):
         x: mx.array,
         rope: tuple[mx.array, mx.array],
         mask: mx.array | None,
-        cache: BoundedKVCache | None = None,
+        cache: _WindowKV | None = None,
     ) -> mx.array:
         batch, length, _ = x.shape
         query = (
@@ -180,10 +202,8 @@ class DecoderAttention(nn.Module):
         query = query * cos + _rotate_half(query) * sin
         key = key * cos + _rotate_half(key) * sin
         if cache is not None:
-            cache.append(key.transpose(0, 2, 1, 3), value.transpose(0, 2, 1, 3))
-            key = cache.keys[:, : cache.offset].transpose(0, 2, 1, 3)
-            value = cache.values[:, : cache.offset].transpose(0, 2, 1, 3)
-            mask = _causal_mask(length, cache.offset, x.dtype)
+            key, value = cache.extend(key, value)
+            mask = _causal_mask(length, int(key.shape[2]), x.dtype)
         output = mx.fast.scaled_dot_product_attention(
             query, key, value, scale=self.scale, mask=mask
         )
@@ -231,7 +251,7 @@ class TransformerLayer(nn.Module):
         x: mx.array,
         rope: tuple[mx.array, mx.array],
         mask: mx.array | None,
-        cache: BoundedKVCache | None = None,
+        cache: _WindowKV | None = None,
     ) -> mx.array:
         x = x + self.self_attn_layer_scale(
             self.self_attn(self.input_layernorm(x), rope, mask, cache)
@@ -277,9 +297,7 @@ class PreTransformer(nn.Module):
             hidden = layer(hidden, rope, mask)
         return self.output_proj(self.norm(hidden))
 
-    def step(
-        self, x: mx.array, caches: list[BoundedKVCache], position: int
-    ) -> mx.array:
+    def step(self, x: mx.array, caches: list[_WindowKV], position: int) -> mx.array:
         hidden = self.input_proj(x)
         length = int(hidden.shape[1])
         positions = mx.arange(position, position + length)[None, :]
@@ -452,7 +470,7 @@ class CodecDecodeStream:
         default_factory=dict
     )
     tails: dict[int, mx.array | None] = field(default_factory=dict)
-    caches: list[BoundedKVCache] | None = None
+    caches: list[_WindowKV] | None = None
     position: int = 0
 
     def push(self, codes: mx.array) -> mx.array:
@@ -469,19 +487,7 @@ class CodecDecodeStream:
         )
         self.conv_buffers[id(decoder.pre_conv)] = buffer
         if self.caches is None:
-            self.caches = [
-                BoundedKVCache.allocate(
-                    batch_size=int(hidden.shape[0]),
-                    capacity=64,
-                    num_heads=16,
-                    head_dim=64,
-                    key_dtype=hidden.dtype,
-                    value_dtype=hidden.dtype,
-                    max_capacity=4096,
-                    growth_step=64,
-                )
-                for _ in range(8)
-            ]
+            self.caches = [_WindowKV() for _ in decoder.pre_transformer.layers]
         hidden = decoder.pre_transformer.step(hidden, self.caches, self.position)
         self.position += int(hidden.shape[1])
         for transpose, block in decoder.upsample:
@@ -530,10 +536,10 @@ class CodecDecodeStream:
         pending.extend(value for value in self.tails.values() if value is not None)
         for buffers in self.residual_buffers.values():
             pending.extend(value for value in buffers if value is not None)
-        if self.caches is not None:
-            for cache in self.caches:
-                pending.append(cache.keys)
-                pending.append(cache.values)
+        for cache in self.caches or []:
+            pending.extend(
+                value for value in (cache.keys, cache.values) if value is not None
+            )
         mx.eval(*pending)
 
     def close(self) -> None:
