@@ -74,6 +74,27 @@ result = model.generate(
 `model.prepare_reference(...)` encodes a voice once; pass the result back as
 `reference_audio` to reuse it.
 
+## Delivery
+
+Without direction, a cloned voice keeps the mood and pace of its reference clip: an
+angry reference reads a bedtime story angrily. A description in brackets before the
+line redirects the delivery while the voice stays (technical report, Appendix C):
+
+```python
+result = model.generate(
+    "[温柔轻缓，带着笑意，像在哄孩子睡觉] 从前有只小狐狸，每天晚上都爬到山顶数星星。",
+    reference_audio=voice,
+    reference_text="Transcript of voice.wav.",
+)
+```
+
+Write the description in the language of the line. On twelve Mandarin dubbing lines,
+Chinese descriptions were followed more closely than English ones; on new text read
+by three voices against their reference's mood, the description changed the
+delivery and kept the voice. The report also lists point tags such as `[pause]`,
+`[sighs]` and `[laughs]`, span tags such as `<whisper>…</whisper>`, and director's
+notes (`Direction: …` then `Line: …`); these were not compared here.
+
 ## Duration Control
 
 `duration_seconds` asks for audio of that length, through the model's own duration
@@ -85,9 +106,11 @@ line has a slot:
 result = model.generate(line, reference_audio=voice, duration_seconds=2.8)
 ```
 
-A request shorter than the text needs drops its last words: for Mandarin, keep at
-least about one second per six characters. A duration also generates the text in
-one pass and caps it at 2.5 times the requested length.
+A request shorter than the text needs drops its last words. For Mandarin read at a
+natural pace, allow one second per 3.3 characters, punctuation not counted: at four
+per second the last words were clipped, and a voice whose reference speaks slowly
+needed one second per three. A duration also generates the text in one pass and
+caps it at 2.5 times the requested length.
 
 ## Stalls and How to Avoid Them
 
