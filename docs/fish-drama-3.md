@@ -124,10 +124,12 @@ latest one as context, as upstream does.
 
 ## Performance
 
-About 22 frames/s on an M5 Max without competing GPU load, just above real time
-(21.5 frames/s). Not yet optimized: graph compilation and asynchronous evaluation are
-open. The codec decodes in time tiles that reproduce a whole pass exactly, so its
-memory stays near 5 GB whatever the audio length.
+On an M5 Max, decoding runs at about 49 frames/s, 2.3 times real time (21.5
+frames/s), with a 178-row prompt prefilled in about 0.18 s. Low Power Mode halves
+that to about 22 frames/s, just real time. Decoding a frame runs every layer on a
+single row, so the elementwise chains are compiled into fused kernels. The codec
+decodes in time tiles that reproduce a whole pass exactly, so its memory stays near
+5 GB whatever the audio length.
 
 ## Validation
 
