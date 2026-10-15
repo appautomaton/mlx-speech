@@ -265,6 +265,24 @@ def test_model_forward_with_pad_mask_does_not_nan():
     assert mx.all(mx.isfinite(last)).item()
 
 
+def test_pad_mask_keeps_fused_attention_finite_at_gemma_scale():
+    # Gemma 3's head_dim 256 at DramaBox's 1024-token prompt runs MLX's fused
+    # NAX kernel, which overflowed a full -finfo.max mask to NaN on left-padded
+    # rows; NaN there spreads to every token in the next layer.
+    model = Gemma3Model(_tiny_config(num_layers=1))
+    length, pad = 1024, 700
+    attention_mask = (mx.arange(length) >= pad).astype(mx.int32)[None]
+    mask = model._build_causal_mask(attention_mask, length, mx.bfloat16)
+    q, k, v = (
+        mx.random.normal((1, 8, length, 256), key=mx.random.key(i)).astype(mx.bfloat16)
+        for i in range(3)
+    )
+
+    out = mx.fast.scaled_dot_product_attention(q, k, v, scale=256**-0.5, mask=mask)
+
+    assert mx.all(mx.isfinite(out)).item()
+
+
 def test_model_forward_no_mask_acts_as_full_causal():
     cfg = _tiny_config(num_layers=2)
     model = Gemma3Model(cfg)
