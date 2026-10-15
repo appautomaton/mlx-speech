@@ -83,6 +83,11 @@ def load(
 
         return FishS2ProAdapter.from_dir(model_dir)
 
+    if family == "fish_drama_3":
+        from ._adapters.fish_drama_3 import FishDrama3Adapter
+
+        return FishDrama3Adapter.from_dir(model_dir)
+
     if family == "vibevoice":
         from ._adapters.vibevoice import VibeVoiceAdapter
 
