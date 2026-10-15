@@ -15,7 +15,7 @@ import mlx.nn as nn
 
 from .._cache import BoundedKVCache
 from .config import FishDrama3AudioDecoderConfig, FishDrama3Config
-from .layers import ZeroCenteredRMSNorm
+from .layers import ZeroCenteredRMSNorm, sigmoid_gate, swiglu
 from .sampling import (
     RAS_TEMPERATURE,
     RAS_TOP_K,
@@ -23,6 +23,15 @@ from .sampling import (
     resample_repeats,
     sample_top_k_top_p,
 )
+
+
+@mx.compile
+def code_embedding(
+    table: mx.array, codes: mx.array, semantic: mx.array, like: mx.array
+) -> mx.array:
+    """Embeddings of codes on semantic rows, zero elsewhere, in like's dtype."""
+    embedded = mx.take(table, mx.clip(codes, 0, table.shape[0] - 1), axis=0)
+    return mx.where(semantic[:, None], embedded, 0.0).astype(like.dtype)
 
 
 class TowerAttention(nn.Module):
@@ -81,7 +90,7 @@ class TowerAttention(nn.Module):
             mask="causal" if length > 1 else None,
         )
         attended = attended.transpose(0, 2, 1, 3).reshape(length, self.q_width)
-        return self.wo(attended * mx.sigmoid(gate))
+        return self.wo(sigmoid_gate(attended, gate))
 
 
 class TowerMLP(nn.Module):
@@ -92,7 +101,7 @@ class TowerMLP(nn.Module):
         self.w2 = nn.Linear(config.intermediate_size, config.dim, bias=False)
 
     def __call__(self, x: mx.array) -> mx.array:
-        return self.w2(nn.silu(self.w1(x)) * self.w3(x))
+        return self.w2(swiglu(self.w1(x), self.w3(x)))
 
 
 class TowerTransformerLayer(nn.Module):
@@ -135,10 +144,7 @@ class TowerLayer(nn.Module):
         shared_input: mx.array | None = None,
     ) -> mx.array:
         embedding = self.semantic_embedding if self.shared else self.codebook_embedding
-        codes = mx.clip(codes, 0, embedding.weight.shape[0] - 1)
-        embedded = mx.where(semantic[:, None], embedding(codes), 0.0).astype(
-            hidden.dtype
-        )
+        embedded = code_embedding(embedding.weight, codes, semantic, hidden)
         if shared_input is not None:
             embedded = embedded + shared_input
         mixed = self.eh_proj(
