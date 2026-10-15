@@ -290,3 +290,21 @@ def test_codec_model_decode_clamps_out_of_range_residual_codes():
     assert seen["codes"][0, 1].tolist() == [0, 1023, 1023, 1023]
     assert seen["codes"][0, 2].tolist() == [5, 1023, 999, 1023]
     assert audio.shape == (1, 8)
+
+
+def test_causal_decoder_in_tiles_matches_one_pass():
+    # The real decoder's strides, kernels and dilations at narrow width: the
+    # receptive field, and so the halo a tile needs, depends only on those.
+    from mlx_speech.models.fish_s2_pro.codec_model import Decoder
+
+    decoder = Decoder(8, 32, [8, 8, 4, 2], causal=True)
+    latents = mx.random.normal(
+        (1, 8, 3 * Decoder.TILE_STEPS + 17), key=mx.random.key(0)
+    )
+
+    with mx.stream(mx.cpu):
+        whole = decoder(latents)
+        tiled = decoder.decode_in_tiles(latents)
+
+    assert tiled.shape == whole.shape
+    assert mx.array_equal(tiled, whole).item()

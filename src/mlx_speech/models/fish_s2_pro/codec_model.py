@@ -1018,6 +1018,14 @@ class DecoderBlock(nn.Module):
 
 
 class Decoder(nn.Module):
+    # A causal decoder output sample depends on 9,514 earlier samples' worth of
+    # input, 18.6 input steps at rates [8, 8, 4, 2]: the kernel-7 input conv, one
+    # step per transposed conv, and dilated (1, 3, 9) kernel-7 residual units after
+    # every upsampling. Tiles that re-read a 19-step halo therefore reproduce one
+    # whole pass exactly, while peak memory follows the tile, not the audio length.
+    TILE_STEPS = 256
+    TILE_HALO = 19
+
     def __init__(
         self,
         input_channel: int,
@@ -1027,6 +1035,8 @@ class Decoder(nn.Module):
         causal: bool = False,
     ):
         super().__init__()
+        self.causal = causal
+        self.upsample = int(np.prod(rates))
         conv_class = CausalWNConv1d if causal else WNConv1d
         layers: list[nn.Module] = [
             conv_class(input_channel, channels, kernel_size=7, padding=3)
@@ -1047,6 +1057,21 @@ class Decoder(nn.Module):
         for layer in self.model:
             x = layer(x)
         return x
+
+    def decode_in_tiles(self, x: mx.array) -> mx.array:
+        """Decode latents [batch, channels, steps] tile by tile along time."""
+        steps = x.shape[-1]
+        if not self.causal or steps <= self.TILE_STEPS:
+            return self(x)
+        mx.eval(x)  # every tile reads it
+        tiles = []
+        for start in range(0, steps, self.TILE_STEPS):
+            left = max(0, start - self.TILE_HALO)
+            audio = self(x[..., left : start + self.TILE_STEPS])
+            audio = audio[..., (start - left) * self.upsample :]
+            mx.eval(audio)  # release this tile's activations before the next
+            tiles.append(audio)
+        return mx.concatenate(tiles, axis=-1)
 
 
 class DAC(nn.Module):
@@ -1097,7 +1122,7 @@ class DAC(nn.Module):
             indices = indices[None]
         z = self.quantizer.decode(indices)
         audio_lengths = feature_lengths * self.frame_length
-        return self.decoder(z), audio_lengths
+        return self.decoder.decode_in_tiles(z), audio_lengths
 
     def sanitize(self, weights: dict[str, mx.array]) -> dict[str, mx.array]:
         wn_prefixes = set()
