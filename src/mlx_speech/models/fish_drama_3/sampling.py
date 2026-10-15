@@ -14,6 +14,7 @@ RAS_TOP_K = 30
 RAS_TOP_P = 0.95
 
 
+@mx.compile
 def top_k_top_p_candidates(
     logits: mx.array, temperature: float, top_k: int, top_p: float
 ) -> tuple[mx.array, mx.array]:
@@ -33,8 +34,7 @@ def top_k_top_p_candidates(
     values = mx.take_along_axis(values, order, axis=-1)
     normalizer = mx.logsumexp(scaled, axis=-1, keepdims=True)
     cumulative = mx.cumsum(mx.exp(values - normalizer), axis=-1)
-    dropped = cumulative > top_p
-    dropped[..., 0] = False
+    dropped = (cumulative > top_p) & (mx.arange(k) > 0)
     return ids, mx.where(dropped, -mx.inf, values)
 
 

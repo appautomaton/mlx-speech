@@ -4,6 +4,7 @@ Gated DeltaNet, each followed by a routed mixture of experts."""
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -17,6 +18,101 @@ SORTED_EXPERT_MIN_PAIRS = 64
 L2NORM_EPS = 1e-6
 
 
+# A decoded frame runs every layer on one row, where each small op costs a kernel
+# launch. The elementwise chains below are compiled into fused kernels; weights are
+# passed in, never captured, and converted inside the kernel, so per-step constants
+# cost nothing.
+
+
+@partial(mx.compile, shapeless=True)
+def zero_centered_rms_norm(x: mx.array, weight: mx.array, eps: float) -> mx.array:
+    scale = 1.0 + weight.astype(mx.float32)
+    return mx.fast.rms_norm(x.astype(mx.float32), scale, eps).astype(x.dtype)
+
+
+@partial(mx.compile, shapeless=True)
+def gated_rms_norm(
+    x: mx.array, gate: mx.array, weight: mx.array, eps: float
+) -> mx.array:
+    normed = mx.fast.rms_norm(x.astype(mx.float32), None, eps)
+    out = weight * normed.astype(x.dtype)
+    return (out * nn.silu(gate.astype(mx.float32))).astype(x.dtype)
+
+
+@partial(mx.compile, shapeless=True)
+def sigmoid_gate(x: mx.array, gate: mx.array) -> mx.array:
+    return x * mx.sigmoid(gate)
+
+
+@partial(mx.compile, shapeless=True)
+def swiglu(gate: mx.array, up: mx.array) -> mx.array:
+    return nn.silu(gate) * up
+
+
+@mx.compile
+def causal_conv_silu(padded: mx.array, weight: mx.array) -> mx.array:
+    """silu of a depthwise conv over padded [batch, kernel - 1 + rows, channels]
+    with weight [channels, kernel, 1], accumulated in fp32."""
+    kernel = weight.shape[1]
+    rows = padded.shape[1] - kernel + 1
+    taps = weight[:, :, 0].astype(mx.float32)
+    out = padded[:, :rows].astype(mx.float32) * taps[:, 0]
+    for tap in range(1, kernel):
+        out = out + padded[:, tap : tap + rows].astype(mx.float32) * taps[:, tap]
+    return nn.silu(out.astype(padded.dtype))
+
+
+def l2norm(x: mx.array) -> mx.array:
+    return x * mx.rsqrt((x * x).sum(axis=-1, keepdims=True) + L2NORM_EPS)
+
+
+@mx.compile
+def delta_rule_inputs(
+    query: mx.array,
+    key: mx.array,
+    value: mx.array,
+    a: mx.array,
+    b: mx.array,
+    A_log: mx.array,
+    dt_bias: mx.array,
+) -> tuple[mx.array, mx.array, mx.array, mx.array, mx.array]:
+    """fp32 normalized and scaled queries and keys, values, decay in linear space
+    and beta, as the delta-rule kernel takes them."""
+    f32 = mx.float32
+    beta = mx.sigmoid(b.astype(f32))
+    decay = -mx.exp(A_log.astype(f32)) * nn.softplus(
+        a.astype(f32) + dt_bias.astype(f32)
+    )
+    query = l2norm(query.astype(f32)) * query.shape[-1] ** -0.5
+    return query, l2norm(key.astype(f32)), value.astype(f32), mx.exp(decay), beta
+
+
+@mx.compile
+def route(
+    logits: mx.array, like: mx.array, top_k: int, normalize: bool
+) -> tuple[mx.array, mx.array]:
+    """Top-k expert ids and their softmax weights, rounded to the activation
+    dtype of like as upstream does."""
+    probabilities = mx.softmax(logits.astype(mx.float32), axis=-1)
+    ids = mx.argpartition(-probabilities, kth=top_k - 1, axis=-1)[:, :top_k]
+    weights = mx.take_along_axis(probabilities, ids, axis=-1)
+    if normalize:
+        weights = weights / weights.sum(axis=-1, keepdims=True)
+    return ids, weights.astype(like.dtype)
+
+
+@partial(mx.compile, shapeless=True)
+def weighted_expert_sum(out: mx.array, weights: mx.array, like: mx.array) -> mx.array:
+    """out [rows, k, hidden] weighted by weights [rows, k], summed in fp32."""
+    out = out.astype(mx.float32) * weights[..., None].astype(mx.float32)
+    return out.sum(axis=1).astype(like.dtype)
+
+
+@partial(mx.compile, shapeless=True)
+def add_gated_shared(routed: mx.array, gate: mx.array, shared: mx.array) -> mx.array:
+    return routed + mx.sigmoid(gate) * shared
+
+
 class ZeroCenteredRMSNorm(nn.Module):
     """RMSNorm scaling by 1 + weight, computed in fp32."""
 
@@ -26,8 +122,7 @@ class ZeroCenteredRMSNorm(nn.Module):
         self.weight = mx.zeros((dims,))
 
     def __call__(self, x: mx.array) -> mx.array:
-        scale = 1.0 + self.weight.astype(mx.float32)
-        return mx.fast.rms_norm(x.astype(mx.float32), scale, self.eps).astype(x.dtype)
+        return zero_centered_rms_norm(x, self.weight, self.eps)
 
 
 class GatedRMSNorm(nn.Module):
@@ -42,9 +137,7 @@ class GatedRMSNorm(nn.Module):
         self.weight = mx.ones((dims,))
 
     def __call__(self, x: mx.array, gate: mx.array) -> mx.array:
-        normed = mx.fast.rms_norm(x.astype(mx.float32), None, self.eps)
-        out = self.weight * normed.astype(x.dtype)
-        return (out * nn.silu(gate.astype(mx.float32))).astype(x.dtype)
+        return gated_rms_norm(x, gate, self.weight, self.eps)
 
 
 class GatedAttention(nn.Module):
@@ -107,7 +200,7 @@ class GatedAttention(nn.Module):
         attended = attended.transpose(0, 2, 1, 3).reshape(
             batch, length, self.num_heads * self.head_dim
         )
-        return self.o_proj(attended * mx.sigmoid(gate))
+        return self.o_proj(sigmoid_gate(attended, gate))
 
 
 @dataclass
@@ -139,10 +232,6 @@ class DeltaNetState:
                 dtype=mx.float32,
             ),
         )
-
-
-def l2norm(x: mx.array) -> mx.array:
-    return x * mx.rsqrt((x * x).sum(axis=-1, keepdims=True) + L2NORM_EPS)
 
 
 class GatedDeltaNet(nn.Module):
@@ -177,22 +266,14 @@ class GatedDeltaNet(nn.Module):
         self.out_proj = nn.Linear(self.value_dim, hidden, bias=False)
 
     def causal_conv(self, mixed: mx.array, state: DeltaNetState) -> mx.array:
-        """Depthwise conv over the cached history plus mixed, accumulated in fp32."""
-        length = mixed.shape[1]
+        """silu of the depthwise conv over the cached history plus mixed."""
         padded = mx.concatenate([state.conv.astype(mixed.dtype), mixed], axis=1)
         state.conv = padded[:, -(self.kernel_size - 1) :, :]
-        weight = self.conv1d.weight[:, :, 0].astype(mx.float32)  # [channels, kernel]
-        out = padded[:, :length, :].astype(mx.float32) * weight[:, 0]
-        for tap in range(1, self.kernel_size):
-            out = (
-                out
-                + padded[:, tap : tap + length, :].astype(mx.float32) * weight[:, tap]
-            )
-        return out.astype(mixed.dtype)
+        return causal_conv_silu(padded, self.conv1d.weight)
 
     def __call__(self, x: mx.array, state: DeltaNetState) -> mx.array:
         batch, length, _ = x.shape
-        mixed = nn.silu(self.causal_conv(self.in_proj_qkv(x), state))
+        mixed = self.causal_conv(self.in_proj_qkv(x), state)
         query, key, value = mx.split(mixed, [self.key_dim, 2 * self.key_dim], axis=-1)
         query = query.reshape(batch, length, self.num_key_heads, self.key_head_dim)
         key = key.reshape(batch, length, self.num_key_heads, self.key_head_dim)
@@ -200,21 +281,18 @@ class GatedDeltaNet(nn.Module):
         z = self.in_proj_z(x).reshape(
             batch, length, self.num_value_heads, self.value_head_dim
         )
-        beta = mx.sigmoid(self.in_proj_b(x).astype(mx.float32))
-        decay = -mx.exp(self.A_log.astype(mx.float32)) * nn.softplus(
-            self.in_proj_a(x).astype(mx.float32) + self.dt_bias.astype(mx.float32)
-        )
-        # The kernel takes normalized, scaled queries and keys with key heads shared
-        # by consecutive value heads, and the decay in linear space.
-        query = l2norm(query.astype(mx.float32)) * self.key_head_dim**-0.5
-        key = l2norm(key.astype(mx.float32))
-        core, state.recurrent = mx.fast.gated_delta_update(
+        # The kernel shares each key head across consecutive value heads.
+        query, key, value, gamma, beta = delta_rule_inputs(
             query,
             key,
-            value.astype(mx.float32),
-            mx.exp(decay),
-            beta,
-            state.recurrent,
+            value,
+            self.in_proj_a(x),
+            self.in_proj_b(x),
+            self.A_log,
+            self.dt_bias,
+        )
+        core, state.recurrent = mx.fast.gated_delta_update(
+            query, key, value, gamma, beta, state.recurrent
         )
         core = self.norm(
             core.astype(x.dtype).reshape(-1, self.value_head_dim),
@@ -295,11 +373,10 @@ class RoutedExperts(nn.Module):
             ids = flat_ids[order]
         gate = self.gate_proj(expanded, ids, sorted_indices=sort)
         up = self.up_proj(expanded, ids, sorted_indices=sort)
-        out = self.down_proj(nn.silu(gate) * up, ids, sorted_indices=sort)
+        out = self.down_proj(swiglu(gate, up), ids, sorted_indices=sort)
         if sort:
             out = out[mx.argsort(order)].reshape(rows, top_k, 1, -1)
-        out = out.squeeze(-2).astype(mx.float32) * weights[..., None].astype(mx.float32)
-        return out.sum(axis=1).astype(x.dtype)
+        return weighted_expert_sum(out.squeeze(-2), weights, x)
 
 
 class DenseMLP(nn.Module):
@@ -310,7 +387,7 @@ class DenseMLP(nn.Module):
         self.down_proj = nn.Linear(intermediate, hidden, bias=False)
 
     def __call__(self, x: mx.array) -> mx.array:
-        return self.down_proj(nn.silu(self.gate_proj(x)) * self.up_proj(x))
+        return self.down_proj(swiglu(self.gate_proj(x), self.up_proj(x)))
 
 
 class SparseMoeBlock(nn.Module):
@@ -330,17 +407,11 @@ class SparseMoeBlock(nn.Module):
 
     def __call__(self, x: mx.array) -> mx.array:
         flat = x.reshape(-1, x.shape[-1])
-        probabilities = mx.softmax(self.gate(flat).astype(mx.float32), axis=-1)
-        ids = mx.argpartition(-probabilities, kth=self.top_k - 1, axis=-1)[
-            :, : self.top_k
-        ]
-        weights = mx.take_along_axis(probabilities, ids, axis=-1)
-        if self.norm_topk_prob:
-            weights = weights / weights.sum(axis=-1, keepdims=True)
-        # Upstream rounds the routing weights to the activation dtype first.
-        routed = self.experts(flat, ids, weights.astype(flat.dtype))
-        shared = mx.sigmoid(self.shared_expert_gate(flat)) * self.shared_expert(flat)
-        return (routed + shared).reshape(x.shape)
+        ids, weights = route(self.gate(flat), flat, self.top_k, self.norm_topk_prob)
+        routed = self.experts(flat, ids, weights)
+        return add_gated_shared(
+            routed, self.shared_expert_gate(flat), self.shared_expert(flat)
+        ).reshape(x.shape)
 
 
 class DecoderLayer(nn.Module):
