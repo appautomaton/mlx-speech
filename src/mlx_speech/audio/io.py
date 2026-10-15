@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import tempfile
 import wave
@@ -36,7 +37,14 @@ def resample_audio(
     orig_sample_rate: int,
     target_sample_rate: int,
 ) -> mx.array:
-    """Resample mono audio with linear interpolation."""
+    """Resample mono audio with a windowed-sinc kernel (anti-aliased).
+
+    This reproduces ``torchaudio.functional.resample`` (``sinc_interp_hann``, ``lowpass_filter_width=6``,
+    ``rolloff=0.99``), the resampler the upstream Step-Audio / CosyVoice / FunASR front ends were built with; on
+    real speech it matches torchaudio to ~3e-7. Linear interpolation (the previous implementation) has no low-pass,
+    so on 24->16 kHz the 8-12 kHz band aliased into the passband and every 16 kHz consumer saw a slightly different
+    signal (Step-Audio vq02/vq06 codes flipped on 5-10 % of frames; CAM++ embeddings drifted to cosine 0.86).
+    """
 
     if orig_sample_rate <= 0 or target_sample_rate <= 0:
         raise ValueError("Sample rates must be positive.")
@@ -46,12 +54,28 @@ def resample_audio(
     if waveform.size == 0 or orig_sample_rate == target_sample_rate:
         return mx.array(waveform, dtype=mx.float32)
 
-    duration = waveform.shape[0] / float(orig_sample_rate)
-    target_samples = max(1, int(round(duration * target_sample_rate)))
-    source_positions = np.linspace(0.0, 1.0, num=waveform.shape[0], endpoint=False, dtype=np.float32)
-    target_positions = np.linspace(0.0, 1.0, num=target_samples, endpoint=False, dtype=np.float32)
-    resampled = np.interp(target_positions, source_positions, waveform).astype(np.float32)
-    return mx.array(resampled, dtype=mx.float32)
+    lowpass_filter_width = 6
+    rolloff = 0.99
+    gcd = math.gcd(int(orig_sample_rate), int(target_sample_rate))
+    orig = int(orig_sample_rate) // gcd
+    new = int(target_sample_rate) // gcd
+    base_freq = min(orig, new) * rolloff
+    width = math.ceil(lowpass_filter_width * orig / base_freq)
+
+    # one kernel per output phase: (new, 2 * width + orig)
+    idx = np.arange(-width, width + orig, dtype=np.float64)[None, :] / orig
+    t = (-np.arange(new, dtype=np.float64)[:, None] / new + idx) * base_freq
+    t = np.clip(t, -lowpass_filter_width, lowpass_filter_width)
+    window = np.cos(t * math.pi / lowpass_filter_width / 2) ** 2
+    t = t * math.pi
+    safe_t = np.where(t == 0, 1.0, t)
+    kernels = np.where(t == 0, 1.0, np.sin(safe_t) / safe_t) * window * (base_freq / orig)
+
+    target_samples = math.ceil(new * waveform.shape[0] / orig)
+    padded = np.pad(waveform.astype(np.float64), (width, width + orig))
+    frames = np.lib.stride_tricks.sliding_window_view(padded, kernels.shape[1])[::orig]
+    resampled = (frames @ kernels.T).reshape(-1)[:target_samples]
+    return mx.array(resampled.astype(np.float32), dtype=mx.float32)
 
 
 def loudness_normalize(
