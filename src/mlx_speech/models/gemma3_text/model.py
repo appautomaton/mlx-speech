@@ -248,10 +248,13 @@ class Gemma3Model(nn.Module):
     def _build_causal_mask(self, attention_mask: mx.array | None, seq_len: int, dtype: mx.Dtype) -> mx.array:
         """Causal mask + optional pad mask, returned as additive `[B,1,L,L]`.
 
-        Padded positions get ``-finfo.max`` so the softmax zeros them out.
-        We avoid `-inf` because some attention implementations propagate NaN
-        when an entire row is `-inf`; this is the same trick the upstream
-        `convert_to_additive_mask` uses.
+        Padded positions get a huge finite negative so the softmax zeros them
+        out, as the upstream `convert_to_additive_mask` does; a row padded from
+        end to end then attends uniformly instead of producing NaN. Only half
+        the float range is used: fused attention kernels scale the mask by
+        log2(e) before exponentiating, and a full `-finfo.max` overflows to
+        `-inf` there (MLX 0.32.3+, head_dim 256), which turns left-padded rows
+        into NaN that spreads to every token in the next layer.
         """
         # Causal `[L, L]` (lower-triangular True)
         q_idx = mx.arange(seq_len)[:, None]
@@ -264,7 +267,7 @@ class Gemma3Model(nn.Module):
         else:
             full = mx.broadcast_to(causal[None, :, :], (1, seq_len, seq_len))
 
-        large_neg = mx.array(mx.finfo(dtype).min, dtype=dtype)
+        large_neg = mx.array(mx.finfo(dtype).min / 2, dtype=dtype)
         zero = mx.array(0.0, dtype=dtype)
         additive = mx.where(full, zero, large_neg)
         return additive[:, None, :, :]  # [B, 1, L, L]
