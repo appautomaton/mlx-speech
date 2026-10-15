@@ -290,3 +290,40 @@ def test_codec_model_decode_clamps_out_of_range_residual_codes():
     assert seen["codes"][0, 1].tolist() == [0, 1023, 1023, 1023]
     assert seen["codes"][0, 2].tolist() == [5, 1023, 999, 1023]
     assert audio.shape == (1, 8)
+
+
+def _narrow_causal_decoder():
+    # The real decoder's strides, kernels and dilations at narrow width: the
+    # receptive field, and so the halo a tile needs, depends only on those.
+    from mlx_speech.models.fish_s2_pro.codec_model import Decoder
+
+    return Decoder(8, 32, [8, 8, 4, 2], causal=True)
+
+
+def test_an_input_step_reaches_exactly_the_tile_halo_ahead():
+    # Outputs outside an input step's reach are computed from identical inputs, so
+    # their difference is exactly zero on any hardware.
+    decoder = _narrow_causal_decoder()
+    steps, poke = 64, 20
+    base = mx.random.normal((1, 8, steps), key=mx.random.key(0))
+    poked = base + mx.zeros_like(base).at[0, :, poke].add(1.0)
+
+    moved = (decoder(poked) - decoder(base)).abs().reshape(steps, decoder.upsample)
+    reached = [step for step, row in enumerate(moved.max(axis=1).tolist()) if row > 0]
+
+    assert reached[0] == poke  # causal: nothing before the step moves
+    assert reached[-1] - poke == decoder.TILE_HALO
+
+
+def test_causal_decoder_in_tiles_matches_one_pass():
+    decoder = _narrow_causal_decoder()
+    latents = mx.random.normal(
+        (1, 8, 3 * decoder.TILE_STEPS + 17), key=mx.random.key(0)
+    )
+
+    with mx.stream(mx.cpu):
+        whole = decoder(latents)
+        tiled = decoder.decode_in_tiles(latents)
+
+    assert tiled.shape == whole.shape
+    assert mx.allclose(tiled, whole, atol=1e-5).item()

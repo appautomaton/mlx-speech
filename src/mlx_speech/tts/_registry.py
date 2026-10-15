@@ -24,6 +24,8 @@ def _resolve_tts_family(model_dir: Path) -> str:
 
     if model_type == "fish_qwen3_omni":
         return "fish_s2_pro"
+    if model_type == "fish_omni":
+        return "fish_drama_3"
     if model_type == "vibevoice":
         return "vibevoice"
     if model_type == "audiodit":
@@ -47,6 +49,6 @@ def _resolve_tts_family(model_dir: Path) -> str:
 
     raise ValueError(
         f"Unknown TTS model_type {model_type!r} in {model_dir}. "
-        "Supported: fish_qwen3_omni, vibevoice, audiodit, step1, dramabox-tts, "
-        "moss_tts_delay, dots_tts, fireredtts3_base, breeze_tts."
+        "Supported: fish_qwen3_omni, fish_omni, vibevoice, audiodit, step1, "
+        "dramabox-tts, moss_tts_delay, dots_tts, fireredtts3_base, breeze_tts."
     )
