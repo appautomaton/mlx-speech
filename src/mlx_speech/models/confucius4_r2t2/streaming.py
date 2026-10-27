@@ -20,6 +20,11 @@ from .metrics import R2T2StepMetrics, R2T2StreamTrace
 
 SAMPLE_RATE = 16000
 _BUDGET_SAMPLES = 1280
+# Upstream finishes with the first-window budget (4 tokens at 160 ms), which
+# cuts the closing words or punctuation. The finish step must rewrite the
+# held-back tokens and the sub-chunk tail; it stops at EOS, so a larger cap
+# costs nothing when unused.
+_MIN_FINALIZE_TOKENS = 16
 _PCM_ITEMSIZE = np.dtype(np.float32).itemsize
 _ASR_TEXT_TAG = "<asr_text>"
 _LANG_PREFIX = "language "
@@ -277,7 +282,7 @@ def _detokenize_prefix(
         text = detokenize(ids[:end_idx]) if end_idx > 0 else ""
         if not drop_replacement or "\ufffd" not in text:
             return text
-        if end_idx == 0:
+        if end_idx <= min_end:
             return ""
         k += 1
 
@@ -345,7 +350,7 @@ class R2T2StreamSession:
         self._floor = float(
             min(32, max(4, 2 * (self._chunk_samples // _BUDGET_SAMPLES)))
         )
-        self._finalize_cap = int(self._max_new_tokens)
+        self._finalize_cap = max(_MIN_FINALIZE_TOKENS, int(self._max_new_tokens))
 
     @property
     def language(self) -> str | None:
@@ -542,9 +547,16 @@ class R2T2StreamSession:
         if self.chunk_id < self._unfixed_chunk_num:
             prefix = ""
         else:
-            ids = list(self._tokenize(self._raw_decoded))
-            end_idx = max(1, len(ids) - self._unfixed_token_num)
-            prefix = self._detokenize(ids[:end_idx])
+            # Upstream keeps a split multibyte character here, which leaks
+            # U+FFFD into the final text; back off as the window steps do.
+            prefix = _detokenize_prefix(
+                self._raw_decoded,
+                tokenize=self._tokenize,
+                detokenize=self._detokenize,
+                k=self._unfixed_token_num,
+                min_end=1,
+                drop_replacement=True,
+            )
         prefix = prefix.split("|", 1)[0]
         audio_copy = self._audio_accum
         gen_text = self._generate(prefix, audio_copy, max_new_tokens)

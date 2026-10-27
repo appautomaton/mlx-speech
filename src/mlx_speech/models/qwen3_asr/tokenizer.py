@@ -140,20 +140,30 @@ def _load_bpe_tokenizer(
     )
     tokenizer.decoder = ByteLevelDecoder()
 
-    added_tokens = []
+    # Register one token at a time, in id order, through the method that
+    # matches its flag. ``add_special_tokens`` marks every token special, and
+    # ``decode(skip_special_tokens=True)`` would then drop ``<asr_text>``.
     decoder_config = tokenizer_config.get("added_tokens_decoder", {})
-    for item in decoder_config.values():
-        added_tokens.append(
-            AddedToken(
-                str(item["content"]),
-                single_word=bool(item.get("single_word", False)),
-                lstrip=bool(item.get("lstrip", False)),
-                rstrip=bool(item.get("rstrip", False)),
-                normalized=bool(item.get("normalized", False)),
-                special=bool(item.get("special", False)),
-            )
+    for token_id, item in sorted(decoder_config.items(), key=lambda kv: int(kv[0])):
+        content = str(item["content"])
+        special = bool(item.get("special", False))
+        token = AddedToken(
+            content,
+            single_word=bool(item.get("single_word", False)),
+            lstrip=bool(item.get("lstrip", False)),
+            rstrip=bool(item.get("rstrip", False)),
+            normalized=bool(item.get("normalized", False)),
+            special=special,
         )
-    tokenizer.add_special_tokens(added_tokens)
+        if special:
+            tokenizer.add_special_tokens([token])
+        else:
+            tokenizer.add_tokens([token])
+        if tokenizer.token_to_id(content) != int(token_id):
+            raise ValueError(
+                f"Qwen3-ASR added token {content!r} resolved to "
+                f"{tokenizer.token_to_id(content)}, expected {token_id}."
+            )
     return tokenizer
 
 

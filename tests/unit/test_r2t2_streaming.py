@@ -243,6 +243,8 @@ def test_finish_prefix_skips_per_chunk_rollback_rules():
     pipe_session.finalize()
     assert pipe.calls[0][0] == "ab"
 
+
+def test_finish_prefix_backs_off_a_split_character():
     broken = _Script(["TAIL"])
     broken_session = _session(
         broken,
@@ -253,8 +255,9 @@ def test_finish_prefix_skips_per_chunk_rollback_rules():
     )
     broken_session._raw_decoded = f"ab{_SPLIT}"
     broken_session.feed(_pcm(10))
-    broken_session.finalize()
-    assert broken.calls[0][0] == "ab\ufffd"
+    result = broken_session.finalize()
+    assert broken.calls[0][0] == "ab"
+    assert result.text == "abTAIL"
 
 
 def test_finish_does_not_use_running_budget_or_cjk_space_deletion():
@@ -270,7 +273,7 @@ def test_finish_does_not_use_running_budget_or_cjk_space_deletion():
     assert script.calls[0][2] == 3
     session.feed(_pcm(10))
     session.finalize()
-    assert script.calls[1][2] == 3
+    assert script.calls[1][2] == 16
     assert script.calls[1][0].endswith("hello")
     assert "你 好" in session._raw_decoded
 
