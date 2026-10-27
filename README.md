@@ -13,8 +13,6 @@ Voice cloning, audio editing, sound effects, and transcription. All running loca
 
 [Quick start](#quick-start) · [Models](#models) · [Model guides](https://github.com/appautomaton/mlx-speech/tree/main/docs) · [Hugging Face weights](https://huggingface.co/appautomaton) · [Project website](https://appautomaton.com/mlx-speech/)
 
-Website contributions belong in the [frontend repository](https://github.com/appautomaton/appautomaton.github.io/tree/main/sites/mlx-speech). See [website ownership](WEBSITE.md).
-
 </div>
 
 mlx-speech is an open-source Python library for text-to-speech (TTS) and
@@ -211,22 +209,16 @@ mlx-speech tts --model moss-sound-effect \
   --duration-seconds 8 \
   -o thunder.wav
 
-# Transcribe audio
+# Transcribe audio with any ASR selector
 mlx-speech asr --model cohere-asr --audio speech.wav
 mlx-speech asr --model qwen3-asr-1.7b --audio speech.wav --language Chinese
-# File transcription with the streaming-capable Nemotron model
-mlx-speech asr --model nemotron-asr-streaming --audio speech.wav --language en-US
-mlx-speech asr --model granite-speech-4.0-1b --audio speech.wav
-mlx-speech asr --model confucius4-r2t2 --audio speech.wav
 
 # Local checkpoint paths work anywhere an alias does
 mlx-speech tts --model models/fish_s2_pro/mlx-int8 --text "Hello!" -o output.wav
-mlx-speech asr --model models/ibm/granite_4_0_1b_speech/mlx-int8 --audio speech.wav
 
 # Discover models
 mlx-speech tts --list-models
 mlx-speech asr --list-models
-mlx-speech --help
 ```
 
 </details>
@@ -256,6 +248,9 @@ uv run ruff check .
 
 The default suite needs no checkpoints. Real-weight tests are separate; see the
 [testing guide](https://github.com/appautomaton/mlx-speech/blob/main/tests/README.md).
+Website changes belong in the
+[frontend repository](https://github.com/appautomaton/appautomaton.github.io/tree/main/sites/mlx-speech);
+see [website ownership](https://github.com/appautomaton/mlx-speech/blob/main/WEBSITE.md).
 
 ```text
 mlx-speech/

@@ -29,7 +29,10 @@ every complete window before returning; `finalize` decodes the remaining tail.
 ## Streaming behavior
 
 The session follows NetEase's chunk loop: prefix rollback, per-window token
-budget, append-only commit. Each window reuses final mel frames, closed
+budget, append-only commit. `finalize` departs from upstream in two places: it
+gets at least 16 tokens instead of the first-window budget, which cut closing
+words and punctuation, and its prefix backs off a split multibyte character
+instead of leaking U+FFFD. Each window reuses final mel frames, closed
 8-second audio-encoder blocks, and the decoder KV prefix; it recomputes the
 open audio block and the text after it. Decoder matmuls and attention run in
 native bf16. Offline `generate` keeps the float32-cast Qwen3-ASR path.

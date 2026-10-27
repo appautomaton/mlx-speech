@@ -149,6 +149,46 @@ def test_qwen3_asr_tokenizer_rejects_audio_token_mismatch(monkeypatch, tmp_path)
         Qwen3ASRTokenizer.from_dir(tmp_path)
 
 
+def _write_bpe_assets(model_dir, added_tokens_decoder):
+    (model_dir / "vocab.json").write_text(json.dumps({"h": 0, "i": 1}), encoding="utf-8")
+    (model_dir / "merges.txt").write_text("#version: 0.2\n", encoding="utf-8")
+    return {"added_tokens_decoder": added_tokens_decoder}
+
+
+def test_qwen3_asr_bpe_keeps_non_special_added_tokens_on_decode(tmp_path):
+    config = _write_bpe_assets(
+        tmp_path,
+        {
+            "2": {"content": "<|im_end|>", "special": True},
+            "3": {"content": "<asr_text>", "special": False},
+        },
+    )
+    tokenizer = tokenizer_module._load_bpe_tokenizer(
+        vocab_path=tmp_path / "vocab.json",
+        merges_path=tmp_path / "merges.txt",
+        tokenizer_config=config,
+    )
+
+    ids = tokenizer.encode("hi<asr_text>hi<|im_end|>", add_special_tokens=False).ids
+
+    assert ids == [0, 1, 3, 0, 1, 2]
+    assert tokenizer.decode(ids, skip_special_tokens=True) == "hi<asr_text>hi"
+
+
+def test_qwen3_asr_bpe_rejects_added_token_id_gap(tmp_path):
+    config = _write_bpe_assets(
+        tmp_path,
+        {"5": {"content": "<asr_text>", "special": False}},
+    )
+
+    with pytest.raises(ValueError, match="expected 5"):
+        tokenizer_module._load_bpe_tokenizer(
+            vocab_path=tmp_path / "vocab.json",
+            merges_path=tmp_path / "merges.txt",
+            tokenizer_config=config,
+        )
+
+
 def test_qwen3_asr_tokenizer_reports_missing_assets(tmp_path):
     with pytest.raises(FileNotFoundError, match="config"):
         Qwen3ASRTokenizer.from_dir(tmp_path)
