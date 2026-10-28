@@ -24,6 +24,7 @@ Current guides:
 - [Qwen3-ASR](./qwen3-asr.md)
 - [Confucius4-R2T2](./confucius4-r2t2.md)
 - [Nemotron 3.5 ASR Streaming](./nemotron-asr.md)
+- [Audio8-ASR-Infinite](./audio8-asr-infinite.md)
 - [Fish S2 Pro](./fish-s2-pro.md)
 - [Fish Audio Drama 3](./fish-drama-3.md)
 - [dots.tts](./dots-tts.md)
