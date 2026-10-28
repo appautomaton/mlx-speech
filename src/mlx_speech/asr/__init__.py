@@ -67,6 +67,10 @@ def load(
         from ._adapters.nemotron import NemotronASRAdapter
 
         return NemotronASRAdapter.from_dir(model_dir)
+    if family == "audio8":
+        from ._adapters.audio8_asr_infinite import Audio8ASRAdapter
+
+        return Audio8ASRAdapter.from_dir(model_dir)
     if family == "r2t2":
         from ._adapters.confucius4_r2t2 import Confucius4R2T2Adapter
 
