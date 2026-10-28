@@ -4,6 +4,7 @@ from pathlib import Path
 
 import mlx.core as mx
 import numpy as np
+import pytest
 from tokenizers import Tokenizer
 from tokenizers.decoders import ByteLevel
 from tokenizers.models import BPE
@@ -42,7 +43,9 @@ def _tokenizer() -> Audio8Tokenizer:
 
 def _model() -> Audio8ASRModel:
     mx.random.seed(19)
-    model = Audio8ASRModel(Audio8Config.from_dict(_config_payload()))
+    payload = _config_payload()
+    payload["audio_config"]["sliding_window"] = 24  # holds the 18-frame prefill
+    model = Audio8ASRModel(Audio8Config.from_dict(payload))
     model.tokenizer = _tokenizer()
     model.eval()
     return model
@@ -87,3 +90,11 @@ def test_arbitrary_pcm_packets_produce_identical_tokens_and_idempotent_finalize(
     assert packeted.finalize() == ()
     assert len(packeted.semantic_vad_probabilities) == len(whole_result.generated_token_ids)
     assert packeted.semantic_vad_probabilities[0].shape == (2, 8)
+
+
+def test_delay_that_overflows_the_audio_window_is_rejected():
+    model = _model()
+
+    model.stream_session(language="zh", frame_len=2, target_delay_ms=200)
+    with pytest.raises(ValueError, match="maximum for frame_len=2 is 200"):
+        model.stream_session(language="zh", frame_len=2, target_delay_ms=240)

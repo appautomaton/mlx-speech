@@ -77,6 +77,18 @@ class Audio8StreamSession:
         self.audio_cache: Audio8AudioCache = model.audio_tower.new_cache(
             max_query_frames=frame_len
         )
+        # The ring would drop the head of an oversized first prefill before
+        # attention reads it.
+        window_frames = self.audio_cache.layers[0].capacity
+        if self.prefill_tokens * frame_len > window_frames:
+            max_delay_ms = (
+                window_frames // frame_len - self.left_pad_tokens - 1
+            ) * self.clock_ms
+            raise ValueError(
+                f"target_delay_ms={target_delay_ms} overflows the {window_frames}-frame "
+                f"audio attention window; the maximum for frame_len={frame_len} "
+                f"is {max_delay_ms}"
+            )
         self.text_cache: Audio8TextCache | None = None
         self.t_cond = model.build_t_cond(
             frame_len=frame_len,
@@ -197,7 +209,8 @@ class Audio8StreamSession:
         self.token_queue.append(token_id)
         if self.model.semantic_vad_heads:
             probabilities = self.model.semantic_vad(output.last_hidden_state[:, -1:, :])
-            self.semantic_vad_probabilities.append(np.asarray(probabilities[0, :, 0, :]))
+            # Copy: a view would pin its MLX buffer for the life of the session.
+            self.semantic_vad_probabilities.append(np.array(probabilities[0, :, 0, :]))
         self._trim_rolling_context()
         cache_arrays = []
         for layer in self.audio_cache.layers:

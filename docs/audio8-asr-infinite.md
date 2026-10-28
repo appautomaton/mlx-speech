@@ -38,18 +38,22 @@ for pcm in microphone:
     for token_id in session.feed(pcm):
         consume(token_id)
 
-session.finalize()
+for token_id in session.finalize():
+    consume(token_id)
+
 result = session.result()
 ```
 
 `feed()` accepts any number of 16 kHz samples and returns the visible token ids
 decoded so far. `finalize()` is required: it appends the right padding
 (`delay + 1 + right_pad_text_tokens` clocks of silence) that flushes the text
-still trailing the audio. Arbitrarily ragged feeds are tested to produce the
-same tokens as a single feed.
+still trailing the audio, and returns those final token ids. Arbitrarily ragged
+feeds are tested to produce the same tokens as a single feed.
 
 `result()` returns `text`, `tokens`, `language`, `generated_token_ids`, and
-`semantic_vad_probabilities`.
+`semantic_vad_probabilities`. It decodes the whole history, so call it once at
+the end; a live display should accumulate the ids from `feed()` and
+`finalize()`.
 
 ## Clock and delay
 
@@ -64,12 +68,15 @@ multiple of the clock. The decoder is conditioned on both.
 | 8 | 160 ms | 9 | 320 / 480 |
 
 Other multiples of the clock run, but the checkpoint was not post-trained for
-them. Defaults are `frame_len=4`, `target_delay_ms=480`.
+them. The first prefill must fit the 750-frame attention window, which caps
+`target_delay_ms` at about 13.5 s; larger values raise `ValueError`. Defaults are
+`frame_len=4`, `target_delay_ms=480`.
 
 ## Unlimited-length audio
 
 The checkpoint's native context is 30 seconds (1500 audio frames). A rolling
-window keeps memory and latency constant beyond that:
+window keeps both KV caches, and with them the per-clock cost, constant beyond
+that:
 
 - The text KV cache is trimmed to `rolling_context_tokens` (default 375, 30 s at
   the 80 ms clock) every `rolling_trim_interval_ms` (default 3000). The first 16
@@ -81,6 +88,9 @@ window keeps memory and latency constant beyond that:
 With `rolling_context_tokens=0` the window is disabled and a session raises
 `RuntimeError` once the native audio context is exhausted. Below the window
 size, rolling and unbounded sessions produce identical tokens.
+
+The session itself keeps every generated token id and one VAD probability array
+per clock, which grows by roughly 20 MB per hour of audio.
 
 ## Semantic VAD
 

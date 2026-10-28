@@ -80,8 +80,9 @@ def test_long_stream_keeps_text_audio_and_pcm_state_bounded():
     assert len(session.generated_token_ids) > 21
     assert text_cache_length(session.text_cache) <= 20
     assert session.audio_cache.position_offset < 32
+    ring_capacity = model.config.audio_config.sliding_window + 2 - 1  # + frame_len - 1
     for layer in session.audio_cache.layers:
-        assert layer.keys.shape[2] <= 9
+        assert layer.keys.shape[2] <= ring_capacity
         assert int(mx.min(layer.positions).item()) >= 0
         assert int(mx.max(layer.positions).item()) < 32
     assert session._pcm.shape[0] < 5000
