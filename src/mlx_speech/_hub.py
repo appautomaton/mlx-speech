@@ -167,6 +167,23 @@ _ASR_MODELS: dict[str, _ModelAlias] = {
         "Granite Speech 4.0 1B (selective affine int8) — six-language offline ASR",
         "granite",
     ),
+    # Int8 is the default; bf16 is the unquantized reference. Both produced
+    # identical transcripts in the release check.
+    "audio8-asr-infinite": _ModelAlias(
+        "appautomaton/audio8-asr-infinite-int8-mlx",
+        "Audio8-ASR-Infinite (int8) — live, unlimited-length Chinese and English ASR",
+        "audio8",
+    ),
+    "audio8-asr-infinite-bf16": _ModelAlias(
+        "appautomaton/audio8-asr-infinite-bf16-mlx",
+        "Audio8-ASR-Infinite (bf16) — live, unlimited-length Chinese and English ASR",
+        "audio8",
+    ),
+    "audio8-asr-infinite-int8": _ModelAlias(
+        "appautomaton/audio8-asr-infinite-int8-mlx",
+        "Audio8-ASR-Infinite (int8, affine) — live, unlimited-length Chinese and English ASR",
+        "audio8",
+    ),
     # mxfp8 is a supported conversion mode (scripts/convert/qwen3_asr.py --quant
     # mxfp8) but is not published as a downloadable repo — at 8-bit it offers no
     # advantage over int8. Load a locally-built mxfp8 package by path; the

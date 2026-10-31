@@ -4,7 +4,7 @@
 
 **Text-to-speech and speech recognition on Apple Silicon**
 
-Voice cloning, audio editing, sound effects, and transcription. All running locally in MLX.
+Voice cloning, audio editing, sound effects, and live transcription. All running locally in MLX.
 
 [![PyPI](https://img.shields.io/pypi/v/mlx-speech)](https://pypi.org/project/mlx-speech/)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
@@ -32,7 +32,7 @@ Requires an Apple Silicon Mac (M1 or later) and Python 3.13+.
 pip install mlx-speech
 ```
 
-## Quick Start
+## Quick start
 
 **Python:**
 
@@ -88,6 +88,7 @@ guides; weight links open the Hugging Face repositories.
 | [Confucius4-R2T2](https://github.com/appautomaton/mlx-speech/blob/main/docs/confucius4-r2t2.md) | Real-time streaming transcription, 30 languages | `confucius4-r2t2` | [BF16](https://huggingface.co/appautomaton/confucius4-r2t2-bf16-mlx) |
 | [NVIDIA Nemotron 3.5 ASR Streaming](https://github.com/appautomaton/mlx-speech/blob/main/docs/nemotron-asr.md) | Multilingual streaming transcription | `nemotron-asr-streaming` | [int8](https://huggingface.co/appautomaton/nemotron-3.5-asr-streaming-0.6b-int8-mlx) |
 | [IBM Granite Speech 4.0 1B](https://github.com/appautomaton/mlx-speech/blob/main/docs/granite-speech-asr.md) | Speech recognition with a selective-int8 language model | `granite-speech-4.0-1b` | [int8](https://huggingface.co/appautomaton/granite-4.0-1b-speech-int8-mlx) |
+| [Audio8-ASR-Infinite](https://github.com/appautomaton/mlx-speech/blob/main/docs/audio8-asr-infinite.md) | Unlimited-length streaming transcription, Chinese and English | `audio8-asr-infinite` | [int8](https://huggingface.co/appautomaton/audio8-asr-infinite-int8-mlx) · [BF16](https://huggingface.co/appautomaton/audio8-asr-infinite-bf16-mlx) |
 
 <details>
 <summary>Loading local weights, shared repositories, DramaBox components, and Breeze TTS 2</summary>
@@ -165,6 +166,19 @@ session.finalize()
 print(session.result().text)
 ```
 
+**Unlimited-length live transcription with Audio8**
+
+```python
+import mlx_speech
+
+asr = mlx_speech.asr.load("audio8-asr-infinite")
+session = asr.stream_session(language="zh", target_delay_ms=480)
+for pcm in microphone:                 # float32, 16 kHz mono
+    session.feed(pcm)
+session.finalize()
+print(session.result().text)
+```
+
 **Granite transcription and model discovery**
 
 ```python
@@ -212,6 +226,7 @@ mlx-speech tts --model moss-sound-effect \
 # Transcribe audio with any ASR selector
 mlx-speech asr --model cohere-asr --audio speech.wav
 mlx-speech asr --model qwen3-asr-1.7b --audio speech.wav --language Chinese
+mlx-speech asr --model audio8-asr-infinite --audio speech.wav --language zh
 
 # Local checkpoint paths work anywhere an alias does
 mlx-speech tts --model models/fish_s2_pro/mlx-int8 --text "Hello!" -o output.wav

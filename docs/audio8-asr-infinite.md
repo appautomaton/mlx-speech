@@ -6,21 +6,23 @@ path in MLX: waveform to log-mel features, a causal Voxtral-Realtime audio
 tower, a projector, and a delay-conditioned Qwen2 decoder that emits one token
 per audio clock.
 
-The converted packages are:
+The published packages download on first use:
 
-```text
-models/edge0/audio8_asr_infinite/
-  original/   # upstream Hugging Face snapshot
-  mlx-bf16/   # 8.2 GB
-  mlx-int8/   # 4.4 GB, affine, group size 64
-```
+| Selector | Repository | Precision | Size |
+| --- | --- | --- | ---: |
+| `audio8-asr-infinite` (default) | [`appautomaton/audio8-asr-infinite-int8-mlx`](https://huggingface.co/appautomaton/audio8-asr-infinite-int8-mlx) | int8, affine, group size 64 | 4.4 GB |
+| `audio8-asr-infinite-bf16` | [`appautomaton/audio8-asr-infinite-bf16-mlx`](https://huggingface.co/appautomaton/audio8-asr-infinite-bf16-mlx) | bf16 | 8.2 GB |
+
+Both builds produced identical transcripts in the release check. A locally
+converted package loads by path, for example
+`models/edge0/audio8_asr_infinite/mlx-int8`.
 
 ## Load and transcribe
 
 ```python
 import mlx_speech
 
-model = mlx_speech.asr.load("models/edge0/audio8_asr_infinite/mlx-bf16")
+model = mlx_speech.asr.load("audio8-asr-infinite")
 result = model.generate("speech.wav", language="zh", target_delay_ms=480)
 print(result.language, result.text)
 ```

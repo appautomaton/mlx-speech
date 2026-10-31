@@ -21,6 +21,8 @@ Each model family gets its own Hugging Face repo.
 | `models/cohere/cohere_transcribe/` | `appautomaton/cohere-asr-mlx` | `mlx-int8` |
 | `models/Qwen3-ASR-1.7B-MLX-BF16/` | `appautomaton/qwen3-asr-1.7b-bf16-mlx` | bf16, repo root |
 | `models/ibm/granite_4_0_1b_speech/mlx-int8/` | `appautomaton/granite-4.0-1b-speech-int8-mlx` | selective int8, repo root |
+| `models/edge0/audio8_asr_infinite/mlx-int8/` | `appautomaton/audio8-asr-infinite-int8-mlx` | int8, repo root |
+| `models/edge0/audio8_asr_infinite/mlx-bf16/` | `appautomaton/audio8-asr-infinite-bf16-mlx` | bf16, repo root |
 | `models/dots_tts/` | `appautomaton/dots-tts-mlx` | SOAR/MF × `mlx-base`/`mlx-int8` |
 
 Multi-variant family repositories keep variants in explicit subfolders.
