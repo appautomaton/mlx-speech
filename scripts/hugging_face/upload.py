@@ -60,6 +60,16 @@ MODELS: dict[str, tuple[str, str, bool]] = {
         "models/ibm/granite_4_0_1b_speech/mlx-int8",
         True,
     ),
+    "audio8-asr-infinite-int8": (
+        "appautomaton/audio8-asr-infinite-int8-mlx",
+        "models/edge0/audio8_asr_infinite/mlx-int8",
+        True,
+    ),
+    "audio8-asr-infinite-bf16": (
+        "appautomaton/audio8-asr-infinite-bf16-mlx",
+        "models/edge0/audio8_asr_infinite/mlx-bf16",
+        True,
+    ),
     "openmoss-audio-tokenizer": (
         "appautomaton/openmoss-audio-tokenizer-mlx",
         "models/openmoss/moss_audio_tokenizer/mlx-int8",

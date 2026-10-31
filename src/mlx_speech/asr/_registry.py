@@ -32,6 +32,8 @@ def _resolve_asr_family(model_dir: Path) -> str:
         return "qwen3"
     if model_type == "nemotron_asr":
         return "nemotron"
+    if model_type == "audio8_asr_infinite":
+        return "audio8"
 
     raise ValueError(
         f"Unknown ASR model_type {model_type!r} in {model_dir}. "
