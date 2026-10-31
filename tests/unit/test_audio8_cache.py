@@ -3,7 +3,10 @@ from __future__ import annotations
 import mlx.core as mx
 import numpy as np
 
-from mlx_speech.models.audio8_asr_infinite.audio_encoder import Audio8RotaryEmbedding
+from mlx_speech.models.audio8_asr_infinite.audio_encoder import (
+    Audio8RotaryEmbedding,
+    apply_rotary,
+)
 from mlx_speech.models.audio8_asr_infinite.cache import (
     apply_rope_delta,
     trim_text_cache,
@@ -20,9 +23,9 @@ def test_rope_negative_delta_matches_direct_rebased_positions():
     keys = mx.random.normal((1, 2, 3, 4))
     positions = mx.array([3, 7, 11], dtype=mx.int32)
 
-    rotated = rotary.apply(keys, keys, positions)[1]
+    rotated = apply_rotary(keys, rotary(positions, keys.dtype))
     rebased = apply_rope_delta(rotated, rotary.inv_freq, -3)
-    expected = rotary.apply(keys, keys, positions - 3)[1]
+    expected = apply_rotary(keys, rotary(positions - 3, keys.dtype))
     mx.eval(rebased, expected)
 
     np.testing.assert_allclose(

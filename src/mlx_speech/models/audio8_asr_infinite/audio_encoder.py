@@ -17,11 +17,8 @@ class Audio8RMSNorm(nn.Module):
         self.eps = eps
 
     def __call__(self, hidden_states: mx.array) -> mx.array:
-        input_dtype = hidden_states.dtype
-        values = hidden_states.astype(mx.float32)
-        variance = mx.mean(values * values, axis=-1, keepdims=True)
-        normalized = values * mx.rsqrt(variance + self.eps)
-        return self.weight * normalized.astype(input_dtype)
+        # Normalize in float32 and round before scaling: the reference order.
+        return self.weight * mx.fast.rms_norm(hidden_states, None, self.eps)
 
 
 class Audio8RotaryEmbedding(nn.Module):
@@ -32,20 +29,19 @@ class Audio8RotaryEmbedding(nn.Module):
             ** (mx.arange(0, config.head_dim, 2, dtype=mx.float32) / config.head_dim)
         )
 
-    def cos_sin(self, positions: mx.array, dtype: mx.Dtype) -> tuple[mx.array, mx.array]:
+    def __call__(
+        self, positions: mx.array, dtype: mx.Dtype
+    ) -> tuple[mx.array, mx.array]:
         frequencies = positions.astype(mx.float32)[:, None] * self.inv_freq[None, :]
         angles = mx.concatenate([frequencies, frequencies], axis=-1)
         return mx.cos(angles).astype(dtype), mx.sin(angles).astype(dtype)
 
-    def apply(
-        self, query: mx.array, key: mx.array, positions: mx.array
-    ) -> tuple[mx.array, mx.array]:
-        cos, sin = self.cos_sin(positions, query.dtype)
-        cos, sin = cos[None, None, :, :], sin[None, None, :, :]
-        return (
-            query * cos + _rotate_half(query) * sin,
-            key * cos + _rotate_half(key) * sin,
-        )
+
+def apply_rotary(
+    values: mx.array, position_embeddings: tuple[mx.array, mx.array]
+) -> mx.array:
+    cos, sin = position_embeddings
+    return values * cos + _rotate_half(values) * sin
 
 
 @dataclass
@@ -111,10 +107,6 @@ class Audio8LayerCache:
         self._write(0, keys, values, positions)
         self.length = keys.shape[2]
         self.write_offset = self.length % self.capacity
-
-    def retain_last(self, count: int) -> None:
-        if count > self.capacity:
-            raise ValueError("Audio8 ring capacity is smaller than the sliding window")
 
     def _allocate(
         self, keys: mx.array, values: mx.array, positions: mx.array
@@ -186,7 +178,7 @@ class Audio8Attention(nn.Module):
         self,
         hidden_states: mx.array,
         *,
-        rotary: Audio8RotaryEmbedding,
+        position_embeddings: tuple[mx.array, mx.array],
         positions: mx.array,
         cache: Audio8LayerCache | None,
     ) -> mx.array:
@@ -200,7 +192,8 @@ class Audio8Attention(nn.Module):
         value = self.v_proj(hidden_states).reshape(
             batch, sequence, self.num_heads, self.head_dim
         ).transpose(0, 2, 1, 3)
-        query, key = rotary.apply(query, key, positions)
+        query = apply_rotary(query, position_embeddings)
+        key = apply_rotary(key, position_embeddings)
         if cache is None:
             key_positions = positions
         else:
@@ -213,10 +206,7 @@ class Audio8Attention(nn.Module):
             query, key, value, scale=self.scale, mask=allowed[None, None, :, :]
         )
         attended = attended.transpose(0, 2, 1, 3).reshape(batch, sequence, self.output_size)
-        output = self.o_proj(attended)
-        if cache is not None:
-            cache.retain_last(self.sliding_window)
-        return output
+        return self.o_proj(attended)
 
 
 class Audio8MLP(nn.Module):
@@ -242,14 +232,14 @@ class Audio8EncoderLayer(nn.Module):
         self,
         hidden_states: mx.array,
         *,
-        rotary: Audio8RotaryEmbedding,
+        position_embeddings: tuple[mx.array, mx.array],
         positions: mx.array,
         cache: Audio8LayerCache | None,
     ) -> mx.array:
         residual = hidden_states
         hidden_states = self.self_attn(
             self.self_attn_layer_norm(hidden_states),
-            rotary=rotary,
+            position_embeddings=position_embeddings,
             positions=positions,
             cache=cache,
         )
@@ -305,10 +295,11 @@ class Audio8Encoder(nn.Module):
             positions = positions[0]
         if positions.shape != (sequence,):
             raise ValueError(f"Expected positions [{sequence}], got {positions.shape}")
+        position_embeddings = self.rotary_emb(positions, hidden_states.dtype)
         for index, layer in enumerate(self.layers):
             hidden_states = layer(
                 hidden_states,
-                rotary=self.rotary_emb,
+                position_embeddings=position_embeddings,
                 positions=positions,
                 cache=cache.layers[index] if cache is not None else None,
             )
