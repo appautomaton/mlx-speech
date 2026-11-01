@@ -90,8 +90,14 @@ guides; weight links open the Hugging Face repositories.
 | [IBM Granite Speech 4.0 1B](https://github.com/appautomaton/mlx-speech/blob/main/docs/granite-speech-asr.md) | Speech recognition with a selective-int8 language model | `granite-speech-4.0-1b` | [int8](https://huggingface.co/appautomaton/granite-4.0-1b-speech-int8-mlx) |
 | [Audio8-ASR-Infinite](https://github.com/appautomaton/mlx-speech/blob/main/docs/audio8-asr-infinite.md) | Unlimited-length streaming transcription, Chinese and English | `audio8-asr-infinite` | [int8](https://huggingface.co/appautomaton/audio8-asr-infinite-int8-mlx) · [BF16](https://huggingface.co/appautomaton/audio8-asr-infinite-bf16-mlx) |
 
+### Forced alignment
+
+| Model | Use it for | Selector | Weights |
+| --- | --- | --- | --- |
+| [Qwen3-ForcedAligner](https://github.com/appautomaton/mlx-speech/blob/main/docs/qwen3-forced-aligner.md) | Character and word timestamps for a known transcript, Chinese and English | local path | BF16 or int8, converted locally³ |
+
 <details>
-<summary>Loading local weights, shared repositories, DramaBox components, and Breeze TTS 2</summary>
+<summary>Loading local weights, shared repositories, DramaBox components, Breeze TTS 2, and Qwen3-ForcedAligner</summary>
 
 Flat model repositories accept an alias or a full repository ID.
 `tts.load("fish-s2-pro")` and
@@ -117,12 +123,19 @@ non-commercial license. The
 [Breeze TTS 2 guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/breeze-tts-2.md)
 covers conversion, controls, and known limits.
 
+³ Qwen3-ForcedAligner has no published MLX weights or alias yet. Download the
+[official checkpoint](https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B),
+convert it with `scripts/convert/qwen3_forced_aligner.py`, and pass the
+converted directory to `align.load()`. The
+[Qwen3-ForcedAligner guide](https://github.com/appautomaton/mlx-speech/blob/main/docs/qwen3-forced-aligner.md)
+covers conversion, inputs, and limits.
+
 </details>
 
 ## More examples
 
 <details>
-<summary>Python: voice cloning, streaming transcription, and model discovery</summary>
+<summary>Python: voice cloning, streaming transcription, forced alignment, and model discovery</summary>
 
 **Voice cloning with emotion tags**
 
@@ -177,6 +190,16 @@ for pcm in microphone:                 # float32, 16 kHz mono
     session.feed(pcm)
 session.finalize()
 print(session.result().text)
+```
+
+**Forced alignment of a known transcript**
+
+```python
+import mlx_speech
+
+aligner = mlx_speech.align.load("models/qwen3_forced_aligner_0_6b/mlx-int8")
+for item in aligner.generate("speech.wav", "大家好，欢迎收听。", language="zh"):
+    print(f"{item.start_s:.2f}–{item.end_s:.2f}  {item.text}")
 ```
 
 **Granite transcription and model discovery**

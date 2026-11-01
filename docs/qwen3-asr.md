@@ -179,7 +179,8 @@ when language is omitted.
 
 - v0 is single-pass offline ASR only.
 - Streaming is deferred; for streaming use [Confucius4-R2T2](./confucius4-r2t2.md).
-- Timestamps and forced alignment are deferred.
+- ASR returns no timestamps. To time a known transcript, use
+  [Qwen3-ForcedAligner](./qwen3-forced-aligner.md).
 - Long-audio chunking and language merge logic are deferred.
 - Broader multilingual validation beyond English, Chinese, and mixed
   Chinese/English is deferred.
