@@ -28,7 +28,20 @@ class Qwen3ASRTokenizer:
     model_max_length: int
 
     @classmethod
-    def from_dir(cls, model_dir: str | Path) -> "Qwen3ASRTokenizer":
+    def from_dir(
+        cls,
+        model_dir: str | Path,
+        *,
+        qwen2_pretokenizer: bool = False,
+    ) -> "Qwen3ASRTokenizer":
+        """Load the BPE assets.
+
+        ``qwen2_pretokenizer`` reproduces Hugging Face's Qwen2 tokenizer (NFC
+        plus Qwen's split regex) instead of GPT-2 byte-level splitting. The two
+        differ on apostrophes and case, e.g. ``O'Neill`` and ``DON'T``. The
+        aligner encodes free text and needs the exact ids; ASR keeps the
+        default.
+        """
         model_dir = Path(model_dir)
         config = Qwen3ASRConfig.from_dir(model_dir)
         tokenizer_config_path = model_dir / "tokenizer_config.json"
@@ -45,6 +58,7 @@ class Qwen3ASRTokenizer:
             vocab_path=vocab_path,
             merges_path=merges_path,
             tokenizer_config=tokenizer_config,
+            qwen2_pretokenizer=qwen2_pretokenizer,
         )
 
         audio_token = str(tokenizer_config["audio_token"])
@@ -112,14 +126,22 @@ class Qwen3ASRTokenizer:
         return int(token_id) if token_id is not None else None
 
 
+# Hugging Face's Qwen2 tokenizer split pattern (transformers Qwen2Converter).
+QWEN2_PRETOKENIZE_REGEX = (
+    r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}"
+    r"| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"
+)
+
+
 def _load_bpe_tokenizer(
     *,
     vocab_path: Path,
     merges_path: Path,
     tokenizer_config: dict[str, Any],
+    qwen2_pretokenizer: bool = False,
 ) -> Any:
     try:
-        from tokenizers import AddedToken, Tokenizer
+        from tokenizers import AddedToken, Regex, Tokenizer, normalizers, pre_tokenizers
         from tokenizers.decoders import ByteLevel as ByteLevelDecoder
         from tokenizers.models import BPE
         from tokenizers.pre_tokenizers import ByteLevel
@@ -135,9 +157,19 @@ def _load_bpe_tokenizer(
         unk_token=str(unk_token) if unk_token is not None else None,
     )
     tokenizer = Tokenizer(model)
-    tokenizer.pre_tokenizer = ByteLevel(
-        add_prefix_space=bool(tokenizer_config.get("add_prefix_space", False))
-    )
+    add_prefix_space = bool(tokenizer_config.get("add_prefix_space", False))
+    if qwen2_pretokenizer:
+        tokenizer.normalizer = normalizers.NFC()
+        tokenizer.pre_tokenizer = pre_tokenizers.Sequence(
+            [
+                pre_tokenizers.Split(
+                    Regex(QWEN2_PRETOKENIZE_REGEX), behavior="isolated", invert=False
+                ),
+                ByteLevel(add_prefix_space=add_prefix_space, use_regex=False),
+            ]
+        )
+    else:
+        tokenizer.pre_tokenizer = ByteLevel(add_prefix_space=add_prefix_space)
     tokenizer.decoder = ByteLevelDecoder()
 
     # Register one token at a time, in id order, through the method that

@@ -9,6 +9,7 @@ import pytest
 
 from mlx_speech.models.qwen3_asr.config import Qwen3ASRTextConfig
 from mlx_speech.models.qwen3_asr.text_decoder import (
+    FAST_DECODE_COMPUTE,
     REFERENCE_DECODE_COMPUTE,
     Qwen3ASRDecodeCompute,
     Qwen3ASRTextAttention,
@@ -119,6 +120,34 @@ def test_fused_decoder_matches_reference_for_float32_weights() -> None:
     _, fused = _run(model, embeds, FUSED)
     for left, right in zip(reference, fused, strict=True):
         np.testing.assert_allclose(left, right, rtol=1e-4, atol=1e-5)
+
+
+def test_full_forward_default_compute_is_the_reference_path() -> None:
+    model = _model()
+    embeds = _embeds()
+    default = model.model(inputs_embeds=embeds).last_hidden_state
+    reference = model.model(inputs_embeds=embeds, compute=REFERENCE_DECODE_COMPUTE).last_hidden_state
+    np.testing.assert_array_equal(np.array(default), np.array(reference))
+
+
+def test_full_forward_fast_compute_matches_reference() -> None:
+    # The forced aligner's single cache-free pass runs with FAST_DECODE_COMPUTE.
+    model = _model()
+    embeds = _embeds(length=23)
+    reference = model.model(inputs_embeds=embeds).last_hidden_state
+    fast = model.model(inputs_embeds=embeds, compute=FAST_DECODE_COMPUTE).last_hidden_state
+    np.testing.assert_allclose(np.array(reference), np.array(fast), rtol=1e-4, atol=1e-5)
+
+
+def test_full_forward_matches_prefill_under_the_same_compute() -> None:
+    model = _model()
+    embeds = _embeds(length=12)
+    cache = Qwen3ASRTextKVCache.allocate(model.config, batch_size=1, max_length=12)
+    prefill = model.model.prefill(
+        inputs_embeds=embeds, kv_cache=cache, compute=FAST_DECODE_COMPUTE
+    ).last_hidden_state
+    full = model.model(inputs_embeds=embeds, compute=FAST_DECODE_COMPUTE).last_hidden_state
+    np.testing.assert_allclose(np.array(prefill), np.array(full), rtol=1e-5, atol=1e-6)
 
 
 def test_last_logits_only_is_the_last_row_of_full_logits() -> None:

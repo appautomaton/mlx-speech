@@ -246,6 +246,20 @@ class Qwen3ASRThinkerConfig:
         payload.update(self.extra)
         return payload
 
+    @property
+    def is_forced_aligner(self) -> bool:
+        """Qwen3-ForcedAligner ships this architecture with a time-class head."""
+        return "forced_aligner" in self.model_type
+
+    @property
+    def lm_head_size(self) -> int:
+        """Rows of ``lm_head``: time classes for the aligner, else the vocabulary."""
+        if not self.is_forced_aligner:
+            return self.text_config.vocab_size
+        if "classify_num" not in self.extra:
+            raise ValueError(f"{self.model_type} thinker_config is missing 'classify_num'.")
+        return int(self.extra["classify_num"])
+
 
 @dataclass(frozen=True)
 class Qwen3ASRConfig:
