@@ -283,13 +283,15 @@ def quantize_qwen3_asr_model(
     quantization: QuantizationConfig,
     *,
     state_dict: dict[str, mx.array] | None = None,
+    keep_unquantized: tuple[str, ...] = (),
 ) -> nn.Module:
     """Quantize eligible Linear/Embedding layers in place.
 
     When ``state_dict`` is provided (the load path), only layers that were
     quantized in the saved checkpoint are re-quantized — matching the exact set
     via their ``.scales`` keys. When it is ``None`` (the convert path), every
-    eligible layer is quantized.
+    eligible layer is quantized except modules under a ``keep_unquantized``
+    path prefix.
     """
     quantized_keys = set(state_dict) if state_dict is not None else None
 
@@ -299,7 +301,9 @@ def quantize_qwen3_asr_model(
         if module.weight.shape[-1] % quantization.group_size != 0:
             return False
         if quantized_keys is None:
-            return True
+            return not any(
+                path == prefix or path.startswith(prefix + ".") for prefix in keep_unquantized
+            )
         return f"{path}.scales" in quantized_keys
 
     nn.quantize(

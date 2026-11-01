@@ -73,6 +73,11 @@ class Qwen3ASRTranscriber:
 
         model_dir = Path(model_dir)
         checkpoint = load_qwen3_asr_checkpoint(model_dir)
+        if checkpoint.config.thinker_config.is_forced_aligner:
+            raise ValueError(
+                f"{model_dir} is a Qwen3-ForcedAligner checkpoint; it predicts time "
+                "classes, not tokens. Use mlx_speech.align.load()."
+            )
         model = Qwen3ASRModel(checkpoint.config)
         quantization = get_quantization_config(checkpoint.config)
         if quantization is not None:

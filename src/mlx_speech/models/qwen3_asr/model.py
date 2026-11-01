@@ -24,7 +24,10 @@ class Qwen3ASRModelOutput:
 
 
 class Qwen3ASRModel(nn.Module):
-    """Audio tower plus Qwen3 text decoder for local ASR generation."""
+    """Audio tower plus Qwen3 text decoder.
+
+    Serves ASR generation and, with a time-class head, Qwen3-ForcedAligner.
+    """
 
     def __init__(self, config: Qwen3ASRConfig):
         super().__init__()
@@ -35,7 +38,10 @@ class Qwen3ASRModel(nn.Module):
             )
         self.config = config
         self.audio_tower = Qwen3ASRAudioEncoder(config.audio_config)
-        self.text_decoder = Qwen3ASRTextForCausalLM(config.text_config)
+        self.text_decoder = Qwen3ASRTextForCausalLM(
+            config.text_config,
+            lm_head_size=config.thinker_config.lm_head_size,
+        )
         self.audio_token_id = config.audio_token_id
 
     def get_audio_features(

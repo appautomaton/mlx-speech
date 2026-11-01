@@ -29,6 +29,12 @@ def _resolve_asr_family(model_dir: Path) -> str:
     if model_type == "granite_speech":
         return "granite"
     if model_type == "qwen3_asr":
+        thinker = payload.get("thinker_config")
+        if isinstance(thinker, dict) and "forced_aligner" in str(thinker.get("model_type", "")):
+            raise ValueError(
+                f"{model_dir} is a Qwen3-ForcedAligner checkpoint, not ASR. "
+                "Load it with mlx_speech.align.load()."
+            )
         return "qwen3"
     if model_type == "nemotron_asr":
         return "nemotron"

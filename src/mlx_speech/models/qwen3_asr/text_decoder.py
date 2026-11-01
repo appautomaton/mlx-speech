@@ -27,6 +27,9 @@ class Qwen3ASRDecodeCompute:
 
 
 REFERENCE_DECODE_COMPUTE = Qwen3ASRDecodeCompute()
+FAST_DECODE_COMPUTE = Qwen3ASRDecodeCompute(
+    native_linear=True, native_lm_head=True, fused_attention=True
+)
 
 
 def _resolve_compute(compute: Qwen3ASRDecodeCompute | None) -> Qwen3ASRDecodeCompute:
@@ -442,10 +445,13 @@ class Qwen3ASRTextAttention(nn.Module):
         *,
         attention_mask: mx.array | None = None,
         offset: int = 0,
+        compute: Qwen3ASRDecodeCompute | None = None,
     ) -> mx.array:
+        compute = _resolve_compute(compute)
         query_states, key_states, value_states = self._project_qkv(
             hidden_states,
             offset=offset,
+            native=compute.native_linear,
         )
         return self._apply_attention(
             query_states,
@@ -455,6 +461,7 @@ class Qwen3ASRTextAttention(nn.Module):
             attention_mask=attention_mask,
             query_offset=offset,
             use_causal_mask=True,
+            compute=compute,
         )
 
     def prefill(
@@ -527,13 +534,19 @@ class Qwen3ASRTextDecoderLayer(nn.Module):
         *,
         attention_mask: mx.array | None = None,
         offset: int = 0,
+        compute: Qwen3ASRDecodeCompute | None = None,
     ) -> mx.array:
+        compute = _resolve_compute(compute)
         hidden_states = hidden_states + self.self_attn(
             self.input_layernorm(hidden_states),
             attention_mask=attention_mask,
             offset=offset,
+            compute=compute,
         )
-        hidden_states = hidden_states + self.mlp(self.post_attention_layernorm(hidden_states))
+        hidden_states = hidden_states + self.mlp(
+            self.post_attention_layernorm(hidden_states),
+            native=compute.native_linear,
+        )
         return hidden_states
 
     def prefill(
@@ -595,13 +608,15 @@ class Qwen3ASRTextModel(nn.Module):
         inputs_embeds: mx.array | None = None,
         attention_mask: mx.array | None = None,
         output_hidden_states: bool = False,
+        compute: Qwen3ASRDecodeCompute | None = None,
     ) -> Qwen3ASRTextModelOutput:
+        """Full-sequence forward without a KV cache (the forced aligner's single pass)."""
         hidden_states = self._prepare_inputs(input_ids=input_ids, inputs_embeds=inputs_embeds)
         all_hidden_states: list[mx.array] | None = [] if output_hidden_states else None
         for layer in self.layers:
             if all_hidden_states is not None:
                 all_hidden_states.append(hidden_states)
-            hidden_states = layer(hidden_states, attention_mask=attention_mask)
+            hidden_states = layer(hidden_states, attention_mask=attention_mask, compute=compute)
         hidden_states = self.norm(hidden_states)
         if all_hidden_states is not None:
             all_hidden_states.append(hidden_states)
@@ -683,13 +698,19 @@ class Qwen3ASRTextModel(nn.Module):
 
 
 class Qwen3ASRTextForCausalLM(nn.Module):
-    def __init__(self, config: Qwen3ASRTextConfig):
+    def __init__(self, config: Qwen3ASRTextConfig, *, lm_head_size: int | None = None):
+        """``lm_head_size`` replaces the vocabulary-sized head (the aligner's time classes)."""
         super().__init__()
         self.config = config
         self.model = Qwen3ASRTextModel(config)
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        head_size = config.vocab_size if lm_head_size is None else int(lm_head_size)
+        self.lm_head = nn.Linear(config.hidden_size, head_size, bias=False)
         self.tie_word_embeddings = bool(config.extra.get("tie_word_embeddings", False))
         if self.tie_word_embeddings:
+            if head_size != config.vocab_size:
+                raise ValueError(
+                    f"tie_word_embeddings needs a {config.vocab_size}-row lm_head, got {head_size}."
+                )
             self.lm_head.weight = self.model.embed_tokens.weight
 
     def project_logits(
