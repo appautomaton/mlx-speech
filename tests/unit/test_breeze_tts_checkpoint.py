@@ -6,7 +6,10 @@ import pytest
 from mlx_speech.models.breeze_tts.checkpoint import (
     BACKBONE_AUDIO_EMBED,
     DEPTH_AUDIO_EMBED,
+    BreezeQuantization,
     mlx_codec_weight,
+    quantization_paths,
+    quantize_main_weights,
     select_main_weights,
 )
 
@@ -75,4 +78,47 @@ def test_codec_weight_rejects_an_unknown_rank3_tensor() -> None:
         mlx_codec_weight(
             "decoder.codebook.weight",
             mx.ones((2, 3, 4), dtype=mx.float32),
+        )
+
+
+def test_int8_targets_only_the_layer_projections() -> None:
+    names = [
+        "backbone_model.layers.0.self_attn.q_proj.weight",
+        "backbone_model.layers.27.mlp.down_proj.weight",
+        "depth_decoder.model.layers.3.self_attn.o_proj.weight",
+        "depth_decoder.model.inputs_embeds_projector.weight",
+        "depth_decoder.codebooks_head.weight",
+        "lm_head.weight",
+        "text_encoder.layers.0.self_attn.q_proj.weight",
+        "backbone_model.layers.0.input_layernorm.weight",
+        "embed_text_tokens.weight",
+    ]
+    assert quantization_paths(names) == (
+        "backbone_model.layers.0.self_attn.q_proj",
+        "backbone_model.layers.27.mlp.down_proj",
+        "depth_decoder.model.layers.3.self_attn.o_proj",
+    )
+
+
+def test_int8_packs_targets_and_leaves_the_rest() -> None:
+    target = "backbone_model.layers.0.mlp.up_proj"
+    head = mx.ones((4, 64), dtype=mx.bfloat16)
+    packed, quantization = quantize_main_weights(
+        {f"{target}.weight": mx.ones((8, 64), dtype=mx.bfloat16), "lm_head.weight": head}
+    )
+    assert quantization.paths == (target,)
+    assert packed[f"{target}.weight"].dtype == mx.uint32
+    assert {f"{target}.scales", f"{target}.biases"} <= packed.keys()
+    assert packed["lm_head.weight"] is head
+    assert BreezeQuantization.from_dict(quantization.to_dict()) == quantization
+
+
+def test_int8_metadata_rejects_a_path_outside_the_layers() -> None:
+    with pytest.raises(ValueError, match="may not quantize"):
+        BreezeQuantization.from_dict(
+            {"bits": 8, "group_size": 64, "mode": "affine", "paths": ["lm_head"]}
+        )
+    with pytest.raises(ValueError, match="8-bit"):
+        BreezeQuantization.from_dict(
+            {"bits": 4, "group_size": 64, "mode": "affine", "paths": ["backbone_model.layers.0.mlp.up_proj"]}
         )

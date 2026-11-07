@@ -7,8 +7,10 @@ import mlx.core as mx
 from mlx_speech.generation.breeze_tts import (
     _backbone_scores,
     _guide,
+    _join_branches,
     _prompt_text,
 )
+from mlx_speech.models._cache import BoundedKVCache
 
 
 def test_instruction_prompt_matches_the_official_span() -> None:
@@ -45,3 +47,17 @@ def test_reserved_codec_ids_stay_masked_after_guidance() -> None:
     guided = _backbone_scores(conditional, unconditional, 4.0, [], 1.1)
     assert guided[0, 2048].item() == -1.0e9
     assert guided[0, 2051].item() == 1.0 + 4.0 * (5.0 - 1.0)
+
+
+def test_branches_join_left_padded_with_their_own_positions() -> None:
+    def branch(length: int, fill: float) -> list[BoundedKVCache]:
+        rows = mx.full((1, length, 1, 2), fill, dtype=mx.float32)
+        return [BoundedKVCache.from_values(rows, rows, capacity=8, growth_step=8)]
+
+    joined, positions, pads = _join_branches(branch(5, 1.0), branch(3, 2.0))
+    keys = joined[0].keys[:, : joined[0].offset]
+    assert joined[0].offset == 5
+    assert positions.tolist() == [5, 3]
+    assert pads.tolist() == [0, 2]
+    assert keys[0, :, 0, 0].tolist() == [1.0] * 5
+    assert keys[1, :, 0, 0].tolist() == [0.0, 0.0, 2.0, 2.0, 2.0]

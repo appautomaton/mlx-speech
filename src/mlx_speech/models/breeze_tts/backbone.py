@@ -70,6 +70,7 @@ class BreezeBackbone(nn.Module):
         cache: list[BoundedKVCache],
         *,
         position_ids: mx.array | None = None,
+        pad_lengths: mx.array | None = None,
     ) -> mx.array:
         return run_causal_decoder(
             self.layers,
@@ -78,6 +79,7 @@ class BreezeBackbone(nn.Module):
             inputs_embeds,
             cache,
             position_ids=position_ids,
+            pad_lengths=pad_lengths,
         )
 
 

@@ -22,12 +22,14 @@ import mlx.nn as nn
 from mlx.utils import tree_flatten
 from tokenizers import Tokenizer
 
+from mlx_speech.models._cache import BoundedKVCache
 from mlx_speech.models.breeze_tts.backbone import BreezeBackbone, EmbeddingTable
 from mlx_speech.models.breeze_tts.codec import (
     CodecDecodeStream,
     SpeechCodec,
     codec_parameter_key,
 )
+from mlx_speech.models.breeze_tts.checkpoint import is_quantizable, read_quantization
 from mlx_speech.models.breeze_tts.config import BreezeRuntimeConfig, load_runtime_config
 from mlx_speech.models.breeze_tts.depth import BreezeDepthDecoder
 from mlx_speech.models.breeze_tts.text_encoder import BreezeTextEncoder
@@ -66,6 +68,25 @@ def load_breeze_speech(model_dir: Path) -> tuple[BreezeSpeech, SpeechCodec, Toke
     model_dir = model_dir.expanduser().resolve()
     config = load_runtime_config(model_dir)
     speech = BreezeSpeech(config)
+    quantization = read_quantization(model_dir)
+    if quantization is not None:
+        eligible = tuple(
+            sorted(
+                path
+                for path, module in speech.named_modules()
+                if isinstance(module, nn.Linear) and is_quantizable(path)
+            )
+        )
+        if quantization.paths != eligible:
+            raise ValueError("Breeze int8 metadata does not match the model's projections.")
+        selected = set(quantization.paths)
+        nn.quantize(
+            speech,
+            group_size=quantization.group_size,
+            bits=quantization.bits,
+            mode=quantization.mode,
+            class_predicate=lambda path, module: path in selected,
+        )
     main = mx.load(str(model_dir / "model.safetensors"))
     speech.load_weights(list(main.items()), strict=True)
     codec = SpeechCodec()
@@ -143,6 +164,11 @@ def _iter_code_frames(
         uncond_cache = speech.backbone_model.make_cache(batch_size=1, dtype=plain.dtype)
         uncond_hidden = speech.backbone_model(plain, uncond_cache)[:, -1, :]
     _realize([hidden, uncond_hidden], [cache, uncond_cache])
+    positions = pad_lengths = None
+    if uncond_cache is not None:
+        # The branches decode as one batch of two from here on.
+        cache, positions, pad_lengths = _join_branches(cache, uncond_cache)
+        uncond_cache = None
     first_codes: list[int] = []
     for _ in range(max_frames):
         logits = _backbone_scores(
@@ -167,10 +193,18 @@ def _iter_code_frames(
         first_codes.append(int(first.item()))
         yield frame
         audio = speech.backbone_model.embed_audio(frame.reshape(1, 1, -1))
-        hidden = speech.backbone_model(audio, cache)[:, -1, :]
-        if uncond_cache is not None:
-            uncond_hidden = speech.backbone_model(audio, uncond_cache)[:, -1, :]
-        _realize([frame, hidden, uncond_hidden], [cache, uncond_cache])
+        if positions is None:
+            hidden = speech.backbone_model(audio, cache)[:, -1, :]
+        else:
+            both = speech.backbone_model(
+                mx.broadcast_to(audio, (2, *audio.shape[1:])),
+                cache,
+                position_ids=positions[:, None],
+                pad_lengths=pad_lengths,
+            )[:, -1, :]
+            hidden, uncond_hidden = both[:1], both[1:]
+            positions = positions + 1
+        _realize([frame, hidden, uncond_hidden], [cache])
     else:
         warnings.warn(
             f"Breeze reached the {max_frames}-frame budget "
@@ -361,6 +395,40 @@ def _segment_embeddings(
     return speech.text_encoder_proj(hidden)[0]
 
 
+def _join_branches(
+    conditional: list[BoundedKVCache], unconditional: list[BoundedKVCache]
+) -> tuple[list[BoundedKVCache], mx.array, mx.array]:
+    """One batch-of-two cache from two prefilled branches: row 0 conditional,
+    row 1 unconditional. The shorter prompt is left-padded, and the returned
+    pad lengths mask those slots. Each row keeps its own next position, so
+    rotary phases match the unbatched branches."""
+
+    lengths = (conditional[0].offset, unconditional[0].offset)
+    longest = max(lengths)
+    joined = []
+    for cond, uncond in zip(conditional, unconditional, strict=True):
+        rows = []
+        for layer, length in ((cond, lengths[0]), (uncond, lengths[1])):
+            pad = [(0, 0), (longest - length, 0), (0, 0), (0, 0)]
+            rows.append(
+                (
+                    mx.pad(layer.keys[:, :length], pad),
+                    mx.pad(layer.values[:, :length], pad),
+                )
+            )
+        joined.append(
+            BoundedKVCache.from_values(
+                mx.concatenate([rows[0][0], rows[1][0]], axis=0),
+                mx.concatenate([rows[0][1], rows[1][1]], axis=0),
+                capacity=cond.capacity,
+                max_capacity=cond.max_capacity,
+                growth_step=cond.growth_step,
+            )
+        )
+    positions = mx.array(lengths, dtype=mx.int32)
+    return joined, positions, longest - positions
+
+
 def _depth_frame(
     speech: BreezeSpeech,
     backbone_hidden: mx.array,
@@ -371,31 +439,38 @@ def _depth_frame(
     uncond_hidden: mx.array | None = None,
     cfg_scale: float = 1.0,
 ) -> mx.array:
+    """One frame of residual codebooks.
+
+    Under guidance both branches see the same sampled codes at the same
+    positions and differ only in their backbone state, so they run as one
+    batch of two: row 0 conditional, row 1 unconditional.
+    """
+
     depth = speech.depth_decoder
-    cache = depth.make_cache(batch_size=1, dtype=backbone_hidden.dtype)
-    uncond_cache = None
-    if uncond_hidden is not None:
-        uncond_cache = depth.make_cache(batch_size=1, dtype=uncond_hidden.dtype)
-    codes = [first]
-    logits = _depth_scores(
-        depth.begin_frame(backbone_hidden, depth.embed_code(first, 0), cache),
-        None
-        if uncond_cache is None or uncond_hidden is None
-        else depth.begin_frame(uncond_hidden, depth.embed_code(first, 0), uncond_cache),
-        cfg_scale,
+    hidden = (
+        backbone_hidden
+        if uncond_hidden is None
+        else mx.concatenate([backbone_hidden, uncond_hidden], axis=0)
     )
+    rows = int(hidden.shape[0])
+    cache = depth.make_cache(batch_size=rows, dtype=hidden.dtype)
+
+    def embed(code: mx.array, codebook: int) -> mx.array:
+        embedding = depth.embed_code(code, codebook)
+        return mx.broadcast_to(embedding, (rows, embedding.shape[-1]))
+
+    def scores(logits: mx.array) -> mx.array:
+        return _depth_scores(logits[:1], logits[1:] if rows > 1 else None, cfg_scale)
+
+    codes = [first]
+    logits = scores(depth.begin_frame(hidden, embed(first, 0), cache))
     for codebook in range(1, speech.config.num_codebooks):
         sampled = _sample(logits, temperature=temperature, top_k=top_k)
         codes.append(sampled)
         if codebook == speech.config.num_codebooks - 1:
             break
-        embedding = depth.embed_code(sampled, codebook)
-        logits = _depth_scores(
-            depth.step(embedding, codebook_index=codebook, cache=cache),
-            None
-            if uncond_cache is None
-            else depth.step(embedding, codebook_index=codebook, cache=uncond_cache),
-            cfg_scale,
+        logits = scores(
+            depth.step(embed(sampled, codebook), codebook_index=codebook, cache=cache)
         )
     return mx.concatenate([code.reshape((1,)) for code in codes], axis=0)
 
