@@ -204,3 +204,26 @@ def test_source_imports_without_torch():
     import mlx_speech.models.reuse.mamba.scan as scan_mod  # noqa: F401
 
     assert "torch" not in sys.modules
+
+
+def test_disabled_custom_metal_uses_pure_mlx_recurrence(monkeypatch):
+    # CI sets MLX_SPEECH_DISABLE_CUSTOM_METAL=1 because its runner aborts custom
+    # kernels; the scan must then take the pure-MLX path and still match upstream.
+    from mlx_speech.models.reuse.mamba import scan
+
+    def _kernel_must_not_run(**_kwargs):
+        raise AssertionError("custom Metal kernel launched while disabled")
+
+    monkeypatch.setattr(scan, "_CUSTOM_METAL_AVAILABLE", False)
+    monkeypatch.setattr(scan, "_FUSED_SCAN_KERNEL", _kernel_must_not_run)
+
+    u, delta, A, B, C, D, z, delta_bias = _make_inputs(9)
+    ref = selective_scan_np(
+        u, delta, A, B, C, D=D, z=z,
+        delta_bias=delta_bias, delta_softplus=True,
+    )
+    got = selective_scan(
+        *_to_mx(u, delta, A, B, C), D=mx.array(D), z=mx.array(z),
+        delta_bias=mx.array(delta_bias), delta_softplus=True,
+    )
+    assert _max_abs_diff(got, ref) < 1e-4

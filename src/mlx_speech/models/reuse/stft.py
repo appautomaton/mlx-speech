@@ -25,9 +25,14 @@ param is ``even(base * op_sr // 8000)``. `stft_params_for` exposes that.
 
 from __future__ import annotations
 
+import os
+
 import mlx.core as mx
 
 _EPS = 1e-10
+_CUSTOM_METAL_AVAILABLE = (
+    os.environ.get("MLX_SPEECH_DISABLE_CUSTOM_METAL") != "1" and mx.metal.is_available()
+)
 
 # Config training-rate STFT params (`.references/RE-USE/config.json:stft_cfg`).
 _BASE_SR = 8000
@@ -228,14 +233,61 @@ def _reflect_pad(wave: mx.array, pad: int) -> mx.array:
     return mx.concatenate([left, wave, right], axis=-1)
 
 
+_OLA_KERNEL = mx.fast.metal_kernel(
+    name="overlap_add_1d",
+    input_names=["frames", "n_frames_arr", "frame_len_arr", "hop_arr", "out_len_arr"],
+    output_names=["out"],
+    source="""
+        uint tid = thread_position_in_grid.x;
+        int n_frames = n_frames_arr[0];
+        int frame_len = frame_len_arr[0];
+        int hop = hop_arr[0];
+        int out_len = out_len_arr[0];
+
+        int b = tid / out_len;
+        int t = tid % out_len;
+
+        int first_f = (t - frame_len + hop) / hop;
+        if (first_f < 0) first_f = 0;
+        int last_f = t / hop;
+        if (last_f >= n_frames) last_f = n_frames - 1;
+
+        int base = b * n_frames * frame_len;
+        float acc = 0.0f;
+        for (int f = first_f; f <= last_f; ++f) {
+            int k = t - f * hop;
+            if (k >= 0 && k < frame_len) {
+                acc += frames[base + f * frame_len + k];
+            }
+        }
+        out[tid] = acc;
+    """,
+)
+
+
 def _overlap_add(frames: mx.array, hop: int, out_len: int) -> mx.array:
     """Overlap-add ``(B, n_frames, frame_len)`` into ``(B, out_len)``."""
     b, n_frames, frame_len = frames.shape
-    out = mx.zeros((b, out_len), dtype=frames.dtype)
-    cols = mx.arange(frame_len)
-    for i in range(n_frames):
-        out[:, i * hop + cols] += frames[:, i]
-    return out
+    if not _CUSTOM_METAL_AVAILABLE:
+        out = mx.zeros((b, out_len), dtype=mx.float32)
+        cols = mx.arange(frame_len)
+        for i in range(n_frames):
+            out[:, i * hop + cols] += frames[:, i].astype(mx.float32)
+        return out
+    frames_c = mx.contiguous(frames.astype(mx.float32))
+    shapes = (
+        mx.array([n_frames], dtype=mx.int32),
+        mx.array([frame_len], dtype=mx.int32),
+        mx.array([hop], dtype=mx.int32),
+        mx.array([out_len], dtype=mx.int32),
+    )
+    return _OLA_KERNEL(
+        inputs=[frames_c, *shapes],
+        grid=(b * out_len, 1, 1),
+        threadgroup=(min(256, b * out_len), 1, 1),
+        output_shapes=[(b, out_len)],
+        output_dtypes=[mx.float32],
+    )[0]
 
 
 def sweep_artifact_filter(amp: mx.array) -> mx.array:
@@ -325,6 +377,7 @@ def chunked_hann_ola(
 
         out = process(chunk)
         out = _pad_or_trim_to_match(chunk, out, pad_value)
+        mx.eval(out)
 
         seg = out.shape[-1]
         w_slice = window[:seg]

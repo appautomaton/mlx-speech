@@ -189,3 +189,22 @@ def test_chunked_hann_ola_pads_short_output():
     # Drop the last 5 samples of each chunk; OLA must still produce full length.
     rec = chunked_hann_ola(lambda chunk: chunk[:, :-5], wave, chunk_size=1000)
     assert rec.shape == sig.shape
+
+
+def test_disabled_custom_metal_uses_pure_mlx_overlap_add(monkeypatch):
+    # CI sets MLX_SPEECH_DISABLE_CUSTOM_METAL=1 because its runner aborts custom
+    # kernels; iSTFT must then overlap-add in pure MLX and still reconstruct.
+    from mlx_speech.models.reuse import stft
+
+    def _kernel_must_not_run(**_kwargs):
+        raise AssertionError("custom Metal kernel launched while disabled")
+
+    monkeypatch.setattr(stft, "_CUSTOM_METAL_AVAILABLE", False)
+    monkeypatch.setattr(stft, "_OLA_KERNEL", _kernel_must_not_run)
+
+    n_fft, hop, win = stft_params_for(8000)
+    rng = np.random.default_rng(1)
+    sig = (rng.standard_normal(8000) * 0.3).astype(np.float32)
+    mag, pha = mag_phase_stft(mx.array(sig)[None, :], n_fft, hop, win, "relu_log1p")
+    rec = np.asarray(mag_phase_istft(mag, pha, n_fft, hop, win, "relu_log1p"))[0]
+    assert _interior_max_err(sig, rec, guard=n_fft) < 1e-3
