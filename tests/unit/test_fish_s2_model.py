@@ -200,3 +200,23 @@ def test_kv_cache_rejects_overflow_past_max_length():
     one_more = mx.zeros((1, 2, 1, 8), dtype=mx.float32)
     with pytest.raises(ValueError, match="KV cache overflow"):
         cache.update(0, one_more, one_more)
+
+
+def test_prefill_continued_from_cached_prefix_matches_single_prefill():
+    # A cached voice prefix followed by a text tail must attend over the whole
+    # cache. Grouped KV heads exercise the GQA path as well as the mask.
+    config = _tiny_config()
+    config.text_config.n_head = 4
+    config.text_config.n_local_heads = 2
+    model = DualARTransformer(config)
+    mx.random.seed(3)
+    tokens = mx.random.randint(0, 8, (1, 4, 7)).astype(mx.int32)
+
+    whole = model(tokens, cache=KVCache(num_layers=2, dim=16, max_length=16))
+
+    cache = KVCache(num_layers=2, dim=16, max_length=16)
+    model(tokens[:, :, :4], cache=cache)
+    tail = model(tokens[:, :, 4:], cache=cache)
+
+    assert tail.logits.shape == (1, 3, 32)
+    assert mx.allclose(tail.logits, whole.logits[:, 4:], atol=1e-5).item()

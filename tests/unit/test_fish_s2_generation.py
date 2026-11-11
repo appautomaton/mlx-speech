@@ -349,9 +349,8 @@ def test_generate_codes_avoids_semantic_collapse_with_fallback_sample(monkeypatc
 
     monkeypatch.setattr(
         fish_generation,
-        "_sample_token_id",
-        lambda *args, **kwargs: next(sampled_ids),
-        raising=False,
+        "_sample_token",
+        lambda *args, **kwargs: mx.array([next(sampled_ids)], dtype=mx.int32),
     )
 
     codes = runtime._generate_codes(mx.zeros((4, 2), dtype=mx.int32), max_new_tokens=2)

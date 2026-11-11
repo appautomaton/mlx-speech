@@ -167,4 +167,7 @@ def load_checkpoint_into_model(
         raise ValueError("\n".join(lines))
 
     model.load_weights(list(checkpoint.state_dict.items()), strict=strict)
+    # Materialize now. Weights left lazy are copied into every graph that
+    # mx.compile traces: one copy of the fast stack per codebook shape.
+    mx.eval(model.parameters())
     return report
