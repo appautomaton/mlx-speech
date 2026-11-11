@@ -102,6 +102,19 @@ class KVCache:
             values[..., :offset, :],
         )
 
+    def copy(self, max_length: int) -> "KVCache":
+        """An independent, materialized copy that can grow to ``max_length``.
+
+        Writes land in place on the layer buffers, so a cache kept for reuse
+        must never share them with one that keeps decoding.
+        """
+        out = KVCache(self.num_layers, self.dim, max_length=max_length)
+        for layer_idx in range(self.num_layers):
+            if self._keys[layer_idx] is not None:
+                out.update(layer_idx, *self.get(layer_idx))
+        mx.eval([a for a in (*out._keys, *out._values) if a is not None])
+        return out
+
     def reset(self):
         """Reset logical offsets while keeping allocated storage."""
         self._offsets = [0] * self.num_layers

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import mlx.core as mx
+import numpy as np
 
 from ..audio import load_audio
 from ..models.fish_s2_pro import (
@@ -106,6 +107,29 @@ class PreparedReference:
     reference_text: str
 
 
+@dataclass(frozen=True)
+class _PromptHead:
+    """Slow-AR cache after the system turn, which holds the voice reference.
+
+    Every prompt for one voice shares those rows, so a later prompt that starts
+    with them prefills only its own user turn.
+    """
+
+    rows: np.ndarray  # (num_codebooks + 1, head_length)
+    cache: KVCache
+
+    def matches(self, rows: np.ndarray) -> bool:
+        length = self.rows.shape[1]
+        return rows.shape[1] > length and np.array_equal(rows[:, :length], self.rows)
+
+
+def _head_length(rows: np.ndarray, turn_start_id: int) -> int:
+    """Columns before the user turn. The prompt ends with the user turn and the
+    assistant opening, each starting with <|im_start|>; 0 if nothing precedes them."""
+    starts = np.flatnonzero(rows[0] == turn_start_id)
+    return int(starts[-2]) if len(starts) >= 2 else 0
+
+
 @dataclass
 class FishS2ProRuntime:
     model: DualARTransformer
@@ -126,6 +150,7 @@ class FishS2ProRuntime:
         }
         self._semantic_bias: mx.array | None = None
         self._fast_forward = None
+        self._head: _PromptHead | None = None
 
     def _build_generation_prompt(
         self,
@@ -306,6 +331,30 @@ class FishS2ProRuntime:
         )
         return mx.concatenate([primary, fallback])
 
+    def _prefill(self, prompt: mx.array, max_new_tokens: int):
+        """Fill a fresh cache with the prompt and return it with the last forward.
+
+        The system turn is prefilled apart and kept. A later prompt with the
+        same system turn, meaning the same voice reference, copies that cache
+        and prefills only its user turn.
+        """
+        rows = np.array(prompt)
+        head_length = _head_length(rows, self.tokenizer.im_start_id)
+        capacity = rows.shape[1] + max_new_tokens
+        head = self._head
+        if head is not None and head.rows.shape[1] == head_length and head.matches(rows):
+            cache = head.cache.copy(capacity)
+        else:
+            cache = self._make_cache(rows.shape[1], max_new_tokens)
+            if head_length:
+                self.model(prompt[None, :, :head_length], cache=cache)
+                self._head = _PromptHead(
+                    rows=rows[:, :head_length].copy(),
+                    cache=cache.copy(head_length),
+                )
+        forward = self.model(prompt[None, :, head_length:], cache=cache)
+        return cache, forward
+
     def _generate_codes(
         self,
         prompt: mx.array,
@@ -313,13 +362,12 @@ class FishS2ProRuntime:
         max_new_tokens: int = 256,
     ) -> mx.array:
         num_codebooks = self.config.audio_decoder_config.num_codebooks
-        cache = self._make_cache(int(prompt.shape[1]), max_new_tokens)
+        cache, forward = self._prefill(prompt, max_new_tokens)
         fast_forward = self._compiled_fast_forward()
 
         # Each step reads the host once: the semantic pair is sampled on device
         # right after the forward that produces its logits, and codebook draws
         # never leave the device. Random draws keep their original order.
-        forward = self.model(prompt[None, :, :], cache=cache)
         semantic_pair = self._sample_semantic_pair(forward)
         mx.eval(semantic_pair, forward.hidden_states)
 

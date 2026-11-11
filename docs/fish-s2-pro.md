@@ -99,6 +99,13 @@ The handle carries its own transcript, so leave `reference_text` unset when
 passing one. The original path-based form still works unchanged for one-off
 generations.
 
+The runtime also keeps the prefilled system turn, which holds the reference.
+A later call with the same reference copies that cache and prefills only the
+new line, so the reference costs nothing after the first clip. Reuse gives the
+same codes as a fresh prefill, bit for bit. On an M5 Max under load, prefill
+for a 15 s reference fell from 354 to 68 ms, and for a 40 s reference from 726
+to 82 ms.
+
 ## Generation Parameters
 
 | Parameter | Default | Notes |
@@ -122,10 +129,11 @@ If generation cuts off mid-sentence, increase `max_new_tokens`.
 
 ## Performance
 
-- KV cache enabled — O(n) generation, not O(n^2)
-- Fast AR compiled via `mx.compile` for reduced dispatch overhead
-- Precomputed semantic logit bias and token mappings
-- ~21 tokens/second on Apple Silicon with int8 weights
+- KV cache, with the prefilled system turn reused across calls
+- One host read per token: semantic and codebook sampling stay on device
+- Fast AR compiled via `mx.compile`; weights are materialized at load
+- On an idle M5 Max with int8 weights: about 38 tokens/s without a reference
+  and 35 with a 15 s reference, at 6.4 and 7.1 GB peak memory
 
 ## HuggingFace
 

@@ -48,15 +48,28 @@ class _FakeTokenizer:
 
 
 class _FakeModel:
+    """Scripts one semantic token per logits read: each prefill, then each decode step.
+
+    A prefill may span several calls (the system turn, then the rest), and only
+    the last one's logits are read, so its calls share one scripted token.
+    """
+
     def __init__(self, semantic_token_ids, codebook_tokens):
         self.semantic_token_ids = list(semantic_token_ids)
         self.codebook_tokens = list(codebook_tokens)
         self.calls = []
         self.fast_calls = []
+        self._step = 0
+        self._decoding = False
 
     def __call__(self, cur, **kwargs):
+        decode = cur.shape[2] == 1
+        if self.calls and (decode or self._decoding):
+            self._step += 1
+        self._decoding = decode
         self.calls.append(cur)
-        token_id = self.semantic_token_ids.pop(0) if self.semantic_token_ids else 0
+        scripted = self.semantic_token_ids
+        token_id = scripted[self._step] if self._step < len(scripted) else 0
         vocab_size = max(token_id + 1, 2000)
         logits = mx.full((1, 1, vocab_size), -1e9, dtype=mx.float32)
         logits[:, :, token_id] = 0
@@ -100,6 +113,16 @@ class _StopOnlyModel:
         del hidden_state, previous_codebooks
         self.fast_calls.append(True)
         raise AssertionError("fast_forward should not run after stop token")
+
+
+def _prefill_input(model) -> mx.array:
+    """Everything the model was fed before the first decode step."""
+    prefill = []
+    for call in model.calls:
+        if call.shape[2] == 1:
+            break
+        prefill.append(call)
+    return mx.concatenate(prefill, axis=2)
 
 
 def _config(num_codebooks: int = 3, eos_token_id: int = 9999) -> FishS2ProConfig:
@@ -391,7 +414,7 @@ def test_synthesize_builds_prompt_and_decodes_codes():
         ]
     ).encode_for_inference(tokenizer, runtime.config.audio_decoder_config.num_codebooks)
 
-    assert model.calls[0].tolist() == expected_prompt[None, :, :].tolist()
+    assert _prefill_input(model).tolist() == expected_prompt[None, :, :].tolist()
     assert codec.decoded_codes.tolist() == [[7], [5], [1]]
     assert out.waveform.tolist() == [1.0] * 8
     assert out.sample_rate == 44100
@@ -656,7 +679,7 @@ def test_prepared_reference_matches_inline_path_prompt(monkeypatch):
     rt_handle.synthesize("hello", reference_audio=handle, max_new_tokens=2)
 
     # Both routes must feed the model an identical prompt.
-    assert rt_path.model.calls[0].tolist() == rt_handle.model.calls[0].tolist()
+    assert _prefill_input(rt_path.model).tolist() == _prefill_input(rt_handle.model).tolist()
 
 
 def test_synthesize_rejects_reference_text_with_prepared_handle(monkeypatch):
@@ -703,3 +726,118 @@ def test_adapter_prepare_reference_rejects_array():
 
     with pytest.raises(TypeError, match="file path, not mx.array"):
         adapter.prepare_reference(mx.zeros((4,)), reference_text="x")
+
+
+def _user_turn_column(prompt: mx.array, tokenizer) -> int:
+    starts = [i for i, t in enumerate(prompt[0].tolist()) if t == tokenizer.im_start_id]
+    return starts[-2]
+
+
+def test_same_reference_prefills_only_the_user_turn_on_reuse():
+    tokenizer = _FakeTokenizer()
+    model = _FakeModel([1001, 9999, 1001, 9999], [5, 1, 5, 1])
+    runtime = FishS2ProRuntime(
+        model=model, tokenizer=tokenizer, codec=_FakeCodec(), config=_config()
+    )
+    reference = PreparedReference(
+        reference_codes=mx.array([[7, 3], [1, 2], [4, 5]], dtype=mx.int32),
+        reference_text="ref",
+    )
+
+    runtime.synthesize("first", reference_audio=reference, max_new_tokens=2)
+    first_calls = len(model.calls)
+    runtime.synthesize("second", reference_audio=reference, max_new_tokens=2)
+
+    prompt = runtime._build_generation_prompt(
+        "second", reference_text="ref", reference_codes=reference.reference_codes
+    )
+    user_turn = _user_turn_column(prompt, tokenizer)
+    assert model.calls[first_calls].tolist() == prompt[None, :, user_turn:].tolist()
+
+
+def test_new_reference_prefills_its_system_turn_again():
+    tokenizer = _FakeTokenizer()
+    model = _FakeModel([1001, 9999, 1001, 9999], [5, 1, 5, 1])
+    runtime = FishS2ProRuntime(
+        model=model, tokenizer=tokenizer, codec=_FakeCodec(), config=_config()
+    )
+    codes = mx.array([[7, 3], [1, 2], [4, 5]], dtype=mx.int32)
+
+    runtime.synthesize(
+        "line", reference_audio=PreparedReference(codes, "one"), max_new_tokens=2
+    )
+    first_calls = len(model.calls)
+    runtime.synthesize(
+        "line", reference_audio=PreparedReference(codes, "two"), max_new_tokens=2
+    )
+
+    prompt = runtime._build_generation_prompt(
+        "line", reference_text="two", reference_codes=codes
+    )
+    user_turn = _user_turn_column(prompt, tokenizer)
+    assert model.calls[first_calls].tolist() == prompt[None, :, :user_turn].tolist()
+
+
+class _TinyTokenizer(_FakeTokenizer):
+    """Ids inside the tiny model's 32-token vocabulary. Stop ids sit outside it,
+    so sampling never stops early and every step yields codes."""
+
+    def __init__(self):
+        self.semantic_token_ids = {code: 20 + code for code in range(8)}
+        self._ids = {"<|im_start|>": 1, "<|im_end|>": 99, "<|voice|>": 3}
+
+    def encode(self, text: str, add_special_tokens: bool = False, **kwargs):
+        del add_special_tokens, kwargs
+        return [4 + ord(ch) % 16 for ch in text]
+
+
+def test_reused_system_turn_generates_the_same_codes_as_a_fresh_prefill():
+    from mlx_speech.models.fish_s2_pro.config import FishTextConfig
+    from mlx_speech.models.fish_s2_pro.model import DualARTransformer
+
+    config = FishS2ProConfig(
+        text_config=FishTextConfig(
+            vocab_size=32, n_layer=2, n_head=4, n_local_heads=2, head_dim=8,
+            dim=16, intermediate_size=32, max_seq_len=128,
+        ),
+        audio_decoder_config=FishAudioDecoderConfig(
+            vocab_size=8, n_layer=2, n_head=2, n_local_heads=2, head_dim=8,
+            dim=16, intermediate_size=32, max_seq_len=4, text_dim=16,
+            num_codebooks=3,
+        ),
+        semantic_start_token_id=20,
+        semantic_end_token_id=27,
+        eos_token_id=98,
+    )
+    mx.random.seed(11)
+    model = DualARTransformer(config)
+    mx.eval(model.parameters())
+    tokenizer = _TinyTokenizer()
+
+    def make_runtime():
+        return FishS2ProRuntime(
+            model=model, tokenizer=tokenizer, codec=_FakeCodec(), config=config
+        )
+
+    voice_a = mx.array([[1, 5, 2, 7], [0, 3, 3, 1], [6, 2, 4, 0]], dtype=mx.int32)
+    voice_b = mx.array([[4, 4, 1, 2], [7, 0, 5, 3], [2, 6, 1, 5]], dtype=mx.int32)
+
+    def codes(runtime, text, voice):
+        prompt = runtime._build_generation_prompt(
+            text, reference_text="voice", reference_codes=voice
+        )
+        mx.random.seed(5)
+        return runtime._generate_codes(prompt, max_new_tokens=6).tolist()
+
+    fresh = codes(make_runtime(), "second line", voice_a)
+
+    # The kept system turn must survive other voices and the decoding that
+    # follows each reuse; a cache that shares buffers would be overwritten.
+    runtime = make_runtime()
+    codes(runtime, "first line", voice_a)
+    codes(runtime, "other voice", voice_b)
+    codes(runtime, "first line", voice_a)
+    reused = codes(runtime, "second line", voice_a)
+
+    assert len(fresh[0]) == 6
+    assert reused == fresh
