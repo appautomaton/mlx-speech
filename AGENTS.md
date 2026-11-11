@@ -1,103 +1,97 @@
 # mlx-speech
 
-Always address the user as **My Love** at the beginning of your responses.
+MLX-native speech library for Apple Silicon: TTS, ASR, and alignment model
+families behind one small, consistent API, without a heavy dependency footprint.
 
 > GPT-based or Codex agent? Also read `CODEX.md`.
 
-## Planning
+## Hard rules
 
-Do the work in the tree. There is no stage-gated harness.
+- The runtime is pure MLX. `torch` may appear only in conversion, audit, and
+  `dev/parity/` scripts, never in anything `src/mlx_speech/` imports.
+- End-to-end means a waveform for TTS and a transcript for ASR. A token-only
+  path is not finished inference.
+- Upstream repos are references, not the design center. Read the upstream
+  source in `.references/` before implementing; never import or vendor it.
+- Checkpoints are `.safetensors` under `models/`. Weights never go in git.
+- The public API is long-lived OSS surface. Raise any change to it, to
+  packaging, or to dependencies before making it.
 
-`.agents/work/` keeps finished change records for bookkeeping. Do not treat
-them as an active process, and do not add new ones.
+## Design
 
-`plans/v0`–`v5*.md` are historical records of shipped work. Do not add to them.
-
-## Mission
-
-Open-source, MLX-native speech library for Apple Silicon. Goal: clean support for multiple speech model families behind a consistent interface — without becoming a dependency-heavy framework.
-
-## Hard Rules
-
-- Pure MLX runtime. No torch-backed inference or conversion under an MLX label.
-- End-to-end means waveform output. A token-only path is not complete speech inference.
-- Upstream PyTorch repos are references only, not the runtime or conversion design center.
-- `.safetensors` is the preferred checkpoint format. Weights never go in git.
-- Keep the public API surface clean for long-term OSS maintenance.
+- Design around model adapters, not one upstream repo's layout. No
+  PyTorch-shaped abstractions in the runtime.
+- Keep conversion separate from runtime inference. Remap weights explicitly.
+- Loading is local-path first. A local path must never import or reach the Hub.
+- Gate every `mx.fast.metal_kernel` path on `MLX_SPEECH_DISABLE_CUSTOM_METAL=1`
+  with a pure-MLX fallback. CI sets it because GitHub's macOS runner reports
+  Metal but aborts custom kernels. Pattern: `models/dots_tts/vocoder.py`.
 
 ## Dependencies
 
-Add only when the implementation proves it necessary.
+Add one only when the implementation proves it necessary.
 
 | Package | Stance |
 | --- | --- |
-| `mlx`, `numpy`, `safetensors`, `soundfile`, `tokenizers` | yes |
-| `huggingface_hub` | yes, but lazy — imported only on the weight-download path (`_hub.py`), never for local-path loading |
-| `torch`, `torchaudio` | no — conversion and audit scripts only, never the runtime |
-| `hf` CLI | avoid |
-| `mlx-audio` | reference only |
+| `mlx`, `numpy`, `safetensors`, `soundfile`, `tokenizers` | Runtime |
+| `huggingface_hub` | Runtime, imported only inside `_hub.py` download functions |
+| `torch`, `torchaudio` | Conversion, audit, and parity scripts only |
+| `hf` CLI | Release workflow only; library code never shells out to it |
+| `mlx-audio` | Reference only |
 
-## Architecture
-
-- Separate runtime inference from checkpoint conversion.
-- Design around model adapters, not one upstream repo's layout.
-- Local-path-first loading, explicit weight remapping.
-- Model code in `src/`, weights in `models/`. Avoid PyTorch-shaped abstractions in the MLX runtime.
-
-## Repository
+## Layout
 
 ```
-src/mlx_speech/     # Published library code
-scripts/            # Conversion, generation, eval, and audit entry points
-models/             # Local checkpoints — not in git
-tests/              # Focused package tests
-docs/               # Model-family behavior guides
-.references/        # Read-only upstream checkouts
+src/mlx_speech/
+  tts/ asr/ align/           # Public API: one adapter and registry entry per family
+  generation/<family>.py     # Inference loops
+  models/<family>/           # Architecture, config, checkpoint loading and remapping
+  _hub.py                    # Model catalog and lazy download
+scripts/convert/<family>.py  # Upstream checkpoint -> MLX safetensors
+scripts/                     # Also generate, eval, audit, release, hugging_face
+dev/parity/                  # Golden-tensor capture from upstream (dev only)
+tests/                       # Tiered; rules in tests/README.md
+docs/<family>.md             # Model guides, indexed in docs/README.md
+models/  .references/        # Local only, gitignored
 ```
 
-`.references/` is for reading and comparison only — not vendored runtime code. **Read upstream source before implementing.**
-
-## Working Rules
-
-- Finish one clear slice, validate it, then move to the next.
-- Surface design choices that affect long-term API, packaging, or dependency weight.
-- Comments and docs: short, explicit, high-signal.
-- Stay inside the requested change. Do not broaden it.
-- No `Co-Authored-By` lines in git commits.
+A new family usually touches every layer above, plus `README.md`. Commit
+`210e418` (Qwen3-ForcedAligner) is a complete example.
 
 ## Testing
 
-Tests are organized into four tiers by dependency. Run the tier appropriate to your task:
+Run tools through `uv`. `uv run pytest` runs only `tests/unit/`; the other tiers
+run only when named. Unit tests must pass before any work is reported complete.
 
-```bash
-# Default — use during development and after code changes
-pytest tests/unit/
+| Changed | Also run |
+| --- | --- |
+| Loading, weight remapping, config | `tests/checkpoint/` |
+| Forward pass, inference, DSP, kernels | `tests/checkpoint/ tests/runtime/` |
+| End-to-end output (manual smoke) | `RUN_LOCAL_INTEGRATION=1 uv run pytest tests/integration/` |
 
-# After changing checkpoint loading, weight remapping, or config parsing
-pytest tests/unit/ tests/checkpoint/
+Opt-in tiers skip when local checkpoints are missing, and a skipped run is not a
+pass. When a tier is your gate, set `MLX_SPEECH_REQUIRE_CHECKPOINTS=1` so skips
+fail, and report what did not run.
 
-# After changing model forward pass, inference logic, or DSP code
-pytest tests/unit/ tests/checkpoint/ tests/runtime/
+Every bug fix adds the smallest test that fails before the fix. Never lower the
+coverage floor in `pyproject.toml`. Keep `uv run ruff check` clean. Test
+placement, doubles, fixtures, and tolerances: `tests/README.md`.
 
-# Full integration — only when validating end-to-end waveform output
-RUN_LOCAL_INTEGRATION=1 pytest tests/integration/
-```
+## Working rules
 
-| Tier | Directory | Needs checkpoints? | When to run |
-| --- | --- | --- | --- |
-| Unit | `tests/unit/` | No | Always |
-| Checkpoint | `tests/checkpoint/` | Yes (skips if absent) | Changed loaders/config |
-| Runtime | `tests/runtime/` | Yes (skips if absent) | Changed model/inference |
-| Integration | `tests/integration/` | Yes + `RUN_LOCAL_INTEGRATION=1` | Manual smoke test |
+- Take scope from the user. Finish one slice, validate it, then move on.
+- Stay inside the requested change.
+- Comments and docs: short, explicit, high-signal.
+- No `Co-Authored-By` lines in commits.
+- Parallel agent sessions use git worktrees under `.worktrees/` (gitignored).
 
-**Agents must run `pytest tests/unit/` before reporting work as complete.** Higher tiers are opt-in based on what was changed. Do not run checkpoint/runtime/integration tests routinely — they are slow and require local model files.
+## Records
 
-## Validation
-
-Add focused tests for weight mapping, checkpoint loading, and generation behavior as pieces land. Each slice must be testable before moving on.
+`.agents/` and `plans/` hold finished history. Nothing there is active. Do not
+execute, extend, or add to them.
 
 ## Website
 
-The public website is maintained in `sites/mlx-speech/` in
-`appautomaton/appautomaton.github.io`. See `WEBSITE.md`; do not recreate a local
-website copy or Pages publisher. Model guides remain in `docs/` here.
+The public site lives in `sites/mlx-speech/` of
+`appautomaton/appautomaton.github.io`; see `WEBSITE.md`. Do not recreate it
+here. Model guides stay in `docs/`.
