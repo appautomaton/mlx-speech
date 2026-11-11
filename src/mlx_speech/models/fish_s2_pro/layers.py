@@ -9,12 +9,6 @@ from .cache import KVCache
 from .config import FishAudioDecoderConfig, FishTextConfig
 
 
-def _repeat_kv(x: mx.array, repeats: int) -> mx.array:
-    if repeats == 1:
-        return x
-    return mx.repeat(x, repeats, axis=1)
-
-
 class FishRotaryEmbedding(nn.Module):
     def __init__(self, dim: int, *, base: float):
         super().__init__()
@@ -93,7 +87,6 @@ class FishSelfAttention(nn.Module):
         self.n_head = n_head
         self.n_local_heads = n_local_heads
         self.head_dim = head_dim
-        self.kv_repeat = n_head // n_local_heads
         self.scale = 1.0 / math.sqrt(head_dim)
         self.q_size = n_head * head_dim
         self.kv_size = n_local_heads * head_dim
@@ -145,17 +138,16 @@ class FishSelfAttention(nn.Module):
             cache.update(layer_idx, k, v)
             k, v = cache.get(layer_idx)
 
-        k = _repeat_kv(k, self.kv_repeat)
-        v = _repeat_kv(v, self.kv_repeat)
-
-        mask = None
-        if seq_len > 1:
-            mask = nn.MultiHeadAttention.create_additive_causal_mask(
-                seq_len, dtype=x.dtype
-            )
-            mask = mask[None, None, :, :]
-
-        out = mx.fast.scaled_dot_product_attention(q, k, v, scale=self.scale, mask=mask)
+        # SDPA groups query heads over the KV heads itself, and its causal mask is
+        # bottom-right aligned, so a prefill that continues a cached prefix
+        # attends to the whole cache.
+        out = mx.fast.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            scale=self.scale,
+            mask="causal" if seq_len > 1 else None,
+        )
         out = out.transpose(0, 2, 1, 3).reshape(
             batch_size, seq_len, self.n_head * self.head_dim
         )

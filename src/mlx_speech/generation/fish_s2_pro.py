@@ -67,20 +67,21 @@ def _apply_top_p(logits: mx.array, top_p: float) -> mx.array:
     )
 
 
-def _sample_token_id(
+def _sample_token(
     logits: mx.array,
     *,
     temperature: float,
     top_p: float,
     top_k: int,
-) -> int:
+) -> mx.array:
+    """Sample one token id per row as a lazy ``(batch,)`` int32 array."""
     warped = logits.astype(mx.float32)
     if temperature <= 0.0:
-        return int(mx.argmax(warped, axis=-1)[0])
+        return mx.argmax(warped, axis=-1).astype(mx.int32)
     warped = warped / float(temperature)
     warped = _apply_top_k(warped, top_k)
     warped = _apply_top_p(warped, top_p)
-    return int(mx.random.categorical(warped, axis=-1)[0])
+    return mx.random.categorical(warped, axis=-1).astype(mx.int32)
 
 
 @dataclass
@@ -124,6 +125,7 @@ class FishS2ProRuntime:
             for code, tid in self.tokenizer.semantic_token_ids.items()
         }
         self._semantic_bias: mx.array | None = None
+        self._fast_forward = None
 
     def _build_generation_prompt(
         self,
@@ -277,6 +279,33 @@ class FishS2ProRuntime:
             max_length=prompt_len + max_new_tokens,
         )
 
+    def _compiled_fast_forward(self):
+        # Compile once per runtime; a fresh mx.compile per call would retrace.
+        if self._fast_forward is None:
+            self._fast_forward = (
+                mx.compile(self.model.fast_forward)
+                if isinstance(self.model, DualARTransformer)
+                else self.model.fast_forward
+            )
+        return self._fast_forward
+
+    def _sample_semantic_pair(self, forward) -> mx.array:
+        """Primary and repetition-fallback draws for the next semantic token."""
+        logits = self._apply_semantic_logit_bias(forward.logits[:, -1, :])
+        primary = _sample_token(
+            logits,
+            temperature=_DEFAULT_TEMPERATURE,
+            top_p=_DEFAULT_TOP_P,
+            top_k=_DEFAULT_TOP_K,
+        )
+        fallback = _sample_token(
+            logits,
+            temperature=_RAS_HIGH_TEMPERATURE,
+            top_p=_RAS_HIGH_TOP_P,
+            top_k=_DEFAULT_TOP_K,
+        )
+        return mx.concatenate([primary, fallback])
+
     def _generate_codes(
         self,
         prompt: mx.array,
@@ -285,36 +314,20 @@ class FishS2ProRuntime:
     ) -> mx.array:
         num_codebooks = self.config.audio_decoder_config.num_codebooks
         cache = self._make_cache(int(prompt.shape[1]), max_new_tokens)
+        fast_forward = self._compiled_fast_forward()
 
-        # Prefill: process entire prompt, populate KV cache
+        # Each step reads the host once: the semantic pair is sampled on device
+        # right after the forward that produces its logits, and codebook draws
+        # never leave the device. Random draws keep their original order.
         forward = self.model(prompt[None, :, :], cache=cache)
-        mx.eval(forward.logits, forward.hidden_states)
-
-        # Compile the fast AR forward — pure computation, no cache state
-        _compiled_fast = (
-            mx.compile(self.model.fast_forward)
-            if isinstance(self.model, DualARTransformer)
-            else self.model.fast_forward
-        )
+        semantic_pair = self._sample_semantic_pair(forward)
+        mx.eval(semantic_pair, forward.hidden_states)
 
         generated = []
         recent_semantic_token_ids: list[int] = []
 
-        for _ in range(max_new_tokens):
-            semantic_logits = forward.logits[:, -1, :]
-            semantic_logits = self._apply_semantic_logit_bias(semantic_logits)
-            next_semantic_token_id = _sample_token_id(
-                semantic_logits,
-                temperature=_DEFAULT_TEMPERATURE,
-                top_p=_DEFAULT_TOP_P,
-                top_k=_DEFAULT_TOP_K,
-            )
-            fallback_semantic_token_id = _sample_token_id(
-                semantic_logits,
-                temperature=_RAS_HIGH_TEMPERATURE,
-                top_p=_RAS_HIGH_TOP_P,
-                top_k=_DEFAULT_TOP_K,
-            )
+        for step in range(max_new_tokens):
+            next_semantic_token_id, fallback_semantic_token_id = semantic_pair.tolist()
             if next_semantic_token_id in recent_semantic_token_ids:
                 next_semantic_token_id = fallback_semantic_token_id
             if next_semantic_token_id in self._stop_ids:
@@ -323,42 +336,34 @@ class FishS2ProRuntime:
             semantic_code = self._semantic_code_from_token_id(next_semantic_token_id)
             recent_semantic_token_ids.append(next_semantic_token_id)
             recent_semantic_token_ids = recent_semantic_token_ids[-_RAS_WINDOW:]
-            previous_codebooks = mx.array([[semantic_code]], dtype=mx.int32)
-            step_codes = [mx.array([semantic_code], dtype=mx.int32)]
 
+            hidden_state = forward.hidden_states[:, -1:, :]
+            codebooks = mx.array([[semantic_code]], dtype=mx.int32)
             for _codebook_idx in range(1, num_codebooks):
-                fast_logits = _compiled_fast(
-                    forward.hidden_states[:, -1:, :], previous_codebooks
+                next_codebook = _sample_token(
+                    fast_forward(hidden_state, codebooks),
+                    temperature=_DEFAULT_TEMPERATURE,
+                    top_p=_DEFAULT_TOP_P,
+                    top_k=_DEFAULT_TOP_K,
                 )
-                next_codebook = mx.array(
-                    [
-                        _sample_token_id(
-                            fast_logits,
-                            temperature=_DEFAULT_TEMPERATURE,
-                            top_p=_DEFAULT_TOP_P,
-                            top_k=_DEFAULT_TOP_K,
-                        )
-                    ],
-                    dtype=mx.int32,
-                )
-                previous_codebooks = mx.concatenate(
-                    [previous_codebooks, next_codebook[:, None]], axis=1
-                )
-                step_codes.append(next_codebook)
+                codebooks = mx.concatenate([codebooks, next_codebook[:, None]], axis=1)
+            generated.append(codebooks)
+            if step == max_new_tokens - 1:
+                break  # The budget is spent; no later step reads another forward.
 
-            generated.append(mx.stack(step_codes, axis=0))
-
-            # Decode: single-token forward with cached KV
-            next_frame = mx.zeros((1, num_codebooks + 1, 1), dtype=mx.int32)
-            next_frame[:, 0, 0] = mx.array([next_semantic_token_id], dtype=mx.int32)
-            next_frame[:, 1:, 0] = previous_codebooks
+            # Decode: single-token forward with cached KV.
+            next_frame = mx.concatenate(
+                [mx.array([[next_semantic_token_id]], dtype=mx.int32), codebooks],
+                axis=1,
+            )[:, :, None]
             forward = self.model(next_frame, cache=cache)
-            mx.eval(forward.logits, forward.hidden_states)
+            semantic_pair = self._sample_semantic_pair(forward)
+            mx.eval(semantic_pair, forward.hidden_states, codebooks)
 
         if not generated:
             return mx.zeros((num_codebooks, 0), dtype=mx.int32)
 
-        return mx.stack(generated, axis=1).squeeze(2)
+        return mx.concatenate(generated, axis=0).T
 
 
 def generate_fish_s2_pro(
