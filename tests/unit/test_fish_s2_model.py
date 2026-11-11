@@ -220,3 +220,18 @@ def test_prefill_continued_from_cached_prefix_matches_single_prefill():
 
     assert tail.logits.shape == (1, 3, 32)
     assert mx.allclose(tail.logits, whole.logits[:, 4:], atol=1e-5).item()
+
+
+def test_kv_cache_copy_is_independent_and_can_grow():
+    cache = KVCache(num_layers=1, dim=16, max_length=8)
+    first = mx.ones((1, 2, 3, 8))
+    cache.update(0, first, first)
+
+    copy = cache.copy(max_length=16)
+    copy.update(0, 2 * mx.ones((1, 2, 1, 8)), 2 * mx.ones((1, 2, 1, 8)))
+    cache.update(0, 3 * mx.ones((1, 2, 1, 8)), 3 * mx.ones((1, 2, 1, 8)))
+
+    keys, _ = copy.get(0)
+    assert copy.max_length == 16
+    assert keys[0, 0, :, 0].tolist() == [1.0, 1.0, 1.0, 2.0]
+    assert cache.get(0)[0][0, 0, :, 0].tolist() == [1.0, 1.0, 1.0, 3.0]
