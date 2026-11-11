@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import partial
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -17,6 +18,9 @@ from mlx_speech.models._cache import BoundedKVCache
 from .config import BreezeDecoderConfig
 
 
+# Small elementwise kernels are compiled: each fuses into one launch, which
+# matters in the depth decoder's sixteen short steps per frame.
+@partial(mx.compile, shapeless=True)
 def rms_norm(x: mx.array, weight: mx.array, eps: float) -> mx.array:
     dtype = x.dtype
     centered = x.astype(mx.float32)
@@ -87,6 +91,7 @@ class RotaryEmbedding:
         return mx.cos(angles).astype(dtype), mx.sin(angles).astype(dtype)
 
 
+@mx.compile
 def apply_rope(
     query: mx.array, key: mx.array, cos: mx.array, sin: mx.array
 ) -> tuple[mx.array, mx.array]:
@@ -144,6 +149,7 @@ class DecoderAttention(nn.Module):
         hidden_states: mx.array,
         position_embeddings: tuple[mx.array, mx.array],
         cache: BoundedKVCache,
+        key_mask: mx.array | None = None,
     ) -> mx.array:
         batch, length, _ = hidden_states.shape
         query = self.q_proj(hidden_states).reshape(
@@ -166,12 +172,11 @@ class DecoderAttention(nn.Module):
         cache.append(key.transpose(0, 2, 1, 3), value.transpose(0, 2, 1, 3))
         cached_key = cache.keys[:, : cache.offset].transpose(0, 2, 1, 3)
         cached_value = cache.values[:, : cache.offset].transpose(0, 2, 1, 3)
+        mask = causal_mask(length, cache.offset, hidden_states.dtype)
+        if key_mask is not None:
+            mask = key_mask if mask is None else mask + key_mask
         output = mx.fast.scaled_dot_product_attention(
-            query,
-            cached_key,
-            cached_value,
-            scale=self.scale,
-            mask=causal_mask(length, cache.offset, hidden_states.dtype),
+            query, cached_key, cached_value, scale=self.scale, mask=mask
         )
         output = output.transpose(0, 2, 1, 3).reshape(batch, length, -1)
         return self.o_proj(output)
@@ -190,9 +195,10 @@ class DecoderLayer(nn.Module):
         hidden_states: mx.array,
         position_embeddings: tuple[mx.array, mx.array],
         cache: BoundedKVCache,
+        key_mask: mx.array | None = None,
     ) -> mx.array:
         hidden_states = hidden_states + self.self_attn(
-            self.input_layernorm(hidden_states), position_embeddings, cache
+            self.input_layernorm(hidden_states), position_embeddings, cache, key_mask
         )
         return hidden_states + self.mlp(self.post_attention_layernorm(hidden_states))
 
@@ -211,7 +217,12 @@ class _SwiGLU(nn.Module):
         )
 
     def __call__(self, x: mx.array) -> mx.array:
-        return self.down_proj(nn.silu(self.gate_proj(x)) * self.up_proj(x))
+        return self.down_proj(_swiglu(self.gate_proj(x), self.up_proj(x)))
+
+
+@partial(mx.compile, shapeless=True)
+def _swiglu(gate: mx.array, up: mx.array) -> mx.array:
+    return nn.silu(gate) * up
 
 
 def make_decoder_cache(
@@ -240,7 +251,13 @@ def run_causal_decoder(
     cache: list[BoundedKVCache],
     *,
     position_ids: mx.array | None = None,
+    pad_lengths: mx.array | None = None,
 ) -> mx.array:
+    """Run the stack over new positions.
+
+    ``pad_lengths`` (batch,) counts leading key slots each row ignores: rows
+    whose prompts were shorter, left-padded to share one cache.
+    """
     if len(cache) != len(layers):
         raise ValueError(f"Expected {len(layers)} cache layers, got {len(cache)}.")
     batch, length, _ = inputs_embeds.shape
@@ -250,7 +267,14 @@ def run_causal_decoder(
             mx.arange(offset, offset + length)[None, :], (batch, length)
         )
     embeddings = rope.embeddings(position_ids, inputs_embeds.dtype)
+    key_mask = None
+    if pad_lengths is not None:
+        slots = mx.arange(offset + length)
+        blocked = slots[None, :] < pad_lengths[:, None]
+        minimum = mx.array(mx.finfo(inputs_embeds.dtype).min, dtype=inputs_embeds.dtype)
+        key_mask = mx.where(blocked, minimum, mx.array(0, dtype=inputs_embeds.dtype))
+        key_mask = key_mask[:, None, None, :]
     hidden_states = inputs_embeds
     for layer, layer_cache in zip(layers, cache, strict=True):
-        hidden_states = layer(hidden_states, embeddings, layer_cache)
+        hidden_states = layer(hidden_states, embeddings, layer_cache, key_mask)
     return norm(hidden_states)

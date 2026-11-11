@@ -18,9 +18,11 @@ none was installed or executed. Known hybrid PyTorch paths are excluded.
 
 ## Inference
 
-Load the gitignored `mlx-bf16/` package through the shared TTS API. The
-runtime family is `breeze_tts`. The codec is `audio_tokenizer`, not the Mimi
-block in `config.json`. Main weights stay BF16 and the codec stays FP32.
+Load the gitignored `mlx-bf16/` or `mlx-int8/` package through the shared TTS
+API. The runtime family is `breeze_tts`. The codec is `audio_tokenizer`, not
+the Mimi block in `config.json`. Main weights stay BF16 and the codec stays
+FP32; `mlx-int8/` packs the backbone and depth decoder projections as affine
+int8 and is the faster choice.
 `guidance_scale` and `cfg_scale` are the same control. Scale `1` keeps the
 conditional branch. Any other scale requires `instruction`. A reference clip
 requires its transcript. `max_new_tokens` is the codec-frame budget; the
@@ -93,11 +95,32 @@ physical footprint to about 9.2 GiB.
 | Peggy clone, no CFG, seed 42 | 0.51 s | 2.08 s, 26 frames, EOS | 1.21 |
 | Peggy direction, CFG 4, seed 42 | 0.73 s | 2.00 s, 25 frames, EOS | 1.78 |
 
-Warmed generation does not keep up with playback. No-CFG real-time factor is
-about 1.1 to 1.2. CFG scale 4 is about 1.6 to 1.8 on utterances that reach EOS.
-First audio on these short lines is still under a second. Quantization,
-`mx.compile`, batched CFG, and specialized kernels are not enabled. The gap
-is not large enough to justify that complexity on the current eager path.
+Those runs predate the speed work below. No-CFG real-time factor was about
+1.1 to 1.2, and CFG scale 4 about 1.6 to 1.8, on these short lines.
+
+### Batched guidance, compiled kernels and int8
+
+Under guidance the conditional and unconditional branches run as one batch of
+two, in the backbone and the depth decoder alike. The shorter prompt is
+left-padded and masked, and each row keeps its own rotary positions. Norm,
+rotary and SwiGLU kernels are compiled (`mx.compile`, about 0.35 s on first
+use in a process). Without guidance, output is bit-identical to the eager
+path. With guidance, batched kernels round differently in BF16, so a seed
+samples a different, equally valid take.
+
+Measured on 2026-11-06 in one warmed process: three narration lines, five
+seeds each, a cloned reference, temperature 0.9. English used an instruction
+at CFG 4; Chinese used none.
+
+| Build | English, CFG 4 RTF | Chinese, no CFG RTF | Peak memory |
+| --- | --- | --- | --- |
+| Before, BF16 | 0.863 | 0.632 | 11.08 GiB |
+| After, BF16 | 0.593 | 0.564 | 11.08 GiB |
+| After, int8 | 0.475 | 0.444 | 9.01 GiB |
+
+Audio8 ASR heard the same words from every build: no English errors in BF16
+and 3 of 835 characters in int8 ("big estates" heard as "biggest states"),
+and one Chinese take in five with 3 of 160 characters wrong in each build.
 
 ## Known limitations
 
@@ -154,7 +177,10 @@ repository's `requirements.txt`. Their archive SHA-256 values are:
 All source snapshots and weights are gitignored. The existing
 `.references/transformers/` checkout is independent and remains unchanged.
 Keep original weights intact and separate from the converted package.
-`scripts/convert/breeze_tts.py` writes `models/breezeblue/breeze_tts_2/mlx-bf16/`.
+`scripts/convert/breeze_tts.py` writes `models/breezeblue/breeze_tts_2/mlx-bf16/`;
+with `--int8` it writes `mlx-int8/`, whose `config.json` names each of the 280
+int8 projections. Embeddings, norms, output heads, the depth input projector
+and the text encoder stay BF16 there.
 Main tensors stay BF16. The bundled codec stays FP32, with convolution kernels
 in MLX layout. Mimi `codec_model` weights are left out of that package.
 Retain the nested `original/audio_tokenizer/` directory: the official loader

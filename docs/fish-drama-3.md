@@ -16,7 +16,7 @@ mono audio.
 | Audio decoder | 4 shared + 9 residual layers that complete the 10 codebooks of each frame |
 | Codec | Fish S2 Pro codec, byte-identical: 10 codebooks, 2048 samples per frame (21.5 frames/s) |
 | MLX checkpoint | Routed experts affine 8-bit (group 64); every other weight bf16, as released |
-| Memory | About 41 GiB of weights; 44–46 GiB peak while generating |
+| Memory | About 41 GiB of weights (38.4 GiB with `dense_int8`); 44–46 GiB peak while generating |
 
 ## Converting the Release
 
@@ -152,7 +152,31 @@ frames/s), with a 178-row prompt prefilled in about 0.18 s. Low Power Mode halve
 that to about 22 frames/s, just real time. Decoding a frame runs every layer on a
 single row, so the elementwise chains are compiled into fused kernels. The codec
 decodes in time tiles that reproduce a whole pass exactly, so its memory stays near
-5 GB whatever the audio length.
+5 GB whatever the audio length. Freed codec buffers stay in MLX's cache until
+`mx.clear_cache()`, so the process footprint can read 50–56 GB in between.
+
+Everything before the current user turn (the system turn, references and history)
+is prefilled apart and kept on the runtime. A later prompt that starts with the
+same rows reuses it and prefills only its own turn: same reference, same history,
+new line. Reuse gives the same frames as a fresh prefill, bit for bit.
+
+`FishDrama3Runtime.from_dir(path, dense_int8=True)` packs the dense bf16
+projections as affine int8 once loaded; the checkpoint is unchanged. That is
+every backbone attention, Gated DeltaNet and shared-expert projection, and every
+audio-decoder tower layer. The routers, the DeltaNet decay gates (`in_proj_a`,
+`in_proj_b`), embeddings, `lm_head` and the codebook heads stay bf16.
+
+Measured on 2026-11-06, one warmed process voicing one script line after another
+with the same reference and history, three lines by five seeds:
+
+| Build | RTF | Per line | Active memory |
+| --- | --- | --- | --- |
+| Before | 0.563 | 2.34 s | 40.5 GiB |
+| Shared head reused | 0.453 | 1.86 s | 40.5 GiB |
+| Shared head reused, `dense_int8` | 0.381 | 1.58 s | 38.4 GiB |
+
+Audio8 ASR heard the same words from both precisions: over twenty seeds of the one
+line where it ever erred, it heard 估 as 雇 in 13 BF16 takes and 11 int8 takes.
 
 ## Validation
 

@@ -3,15 +3,20 @@
 The public inference path decodes with the bundled Qwen audio tokenizer.
 Mimi weights stored under ``codec_model.*`` are not part of the MLX package.
 Main tensors stay BF16. Codec tensors stay FP32. Convolution kernels are
-stored in MLX layout.
+stored in MLX layout. The int8 package quantizes only the per-frame matmuls:
+every attention and MLP projection in the backbone and depth decoder layers.
+Embeddings, norms, output heads, the depth input projector and the
+once-per-utterance text encoder stay BF16.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import mlx.core as mx
 
@@ -21,6 +26,17 @@ CODEC_DTYPE = "float32"
 SKIPPED_PREFIX = "codec_model."
 DEPTH_AUDIO_EMBED = "depth_decoder.model.embed_tokens.weight"
 BACKBONE_AUDIO_EMBED = "backbone_model.embed_tokens.embed_audio_tokens.weight"
+
+QUANT_PREFIXES = ("backbone_model.layers.", "depth_decoder.model.layers.")
+QUANT_SUFFIXES = (
+    ".self_attn.q_proj",
+    ".self_attn.k_proj",
+    ".self_attn.v_proj",
+    ".self_attn.o_proj",
+    ".mlp.gate_proj",
+    ".mlp.up_proj",
+    ".mlp.down_proj",
+)
 
 _MAIN_FILES = (
     "generation_config.json",
@@ -36,6 +52,93 @@ _CODEC_FILES = (
 )
 
 
+def is_quantizable(path: str) -> bool:
+    """Whether int8 targets this module path."""
+
+    return path.startswith(QUANT_PREFIXES) and path.endswith(QUANT_SUFFIXES)
+
+
+def quantization_paths(weight_names: Iterable[str]) -> tuple[str, ...]:
+    """Sorted module paths int8 targets, from weight names."""
+
+    return tuple(
+        sorted(
+            {
+                name.removesuffix(".weight")
+                for name in weight_names
+                if name.endswith(".weight") and is_quantizable(name.removesuffix(".weight"))
+            }
+        )
+    )
+
+
+@dataclass(frozen=True)
+class BreezeQuantization:
+    bits: int
+    group_size: int
+    mode: str
+    paths: tuple[str, ...]
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "BreezeQuantization":
+        config = cls(
+            bits=int(payload.get("bits", 0)),
+            group_size=int(payload.get("group_size", 0)),
+            mode=str(payload.get("mode", "")),
+            paths=tuple(str(path) for path in payload.get("paths", ())),
+        )
+        config.validate()
+        return config
+
+    def validate(self) -> None:
+        if (self.bits, self.group_size, self.mode) != (8, 64, "affine"):
+            raise ValueError("Breeze int8 requires affine 8-bit groups of 64.")
+        if not self.paths:
+            raise ValueError("Breeze int8 metadata must name every quantized path.")
+        if tuple(sorted(set(self.paths))) != self.paths:
+            raise ValueError("Breeze quantized paths must be unique and sorted.")
+        outside = [path for path in self.paths if not is_quantizable(path)]
+        if outside:
+            raise ValueError(f"Breeze int8 may not quantize {outside[0]}.")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "bits": self.bits,
+            "group_size": self.group_size,
+            "mode": self.mode,
+            "paths": list(self.paths),
+        }
+
+
+def quantize_main_weights(
+    weights: dict[str, mx.array], *, bits: int = 8, group_size: int = 64
+) -> tuple[dict[str, mx.array], BreezeQuantization]:
+    """Pack the targeted projections as affine int8; leave every other tensor."""
+
+    quantization = BreezeQuantization(
+        bits=bits, group_size=group_size, mode="affine", paths=quantization_paths(weights)
+    )
+    quantization.validate()
+    packed = dict(weights)
+    for path in quantization.paths:
+        weight, scales, biases = mx.quantize(
+            weights[f"{path}.weight"], group_size=group_size, bits=bits, mode="affine"
+        )
+        packed[f"{path}.weight"] = weight
+        packed[f"{path}.scales"] = scales
+        packed[f"{path}.biases"] = biases
+    return packed, quantization
+
+
+def read_quantization(model_dir: Path) -> BreezeQuantization | None:
+    """The package's int8 metadata, or None for the BF16 package."""
+
+    payload = json.loads((model_dir / "config.json").read_text(encoding="utf-8"))
+    marker = payload.get("mlx_speech")
+    block = marker.get("quantization") if isinstance(marker, dict) else None
+    return None if block is None else BreezeQuantization.from_dict(block)
+
+
 @dataclass(frozen=True)
 class BreezeConversion:
     output_dir: Path
@@ -43,6 +146,7 @@ class BreezeConversion:
     codec_tensors: int
     transposed_codec_tensors: int
     tied_audio_embedding: str
+    quantized_modules: int = 0
 
 
 def select_main_weights(weights: dict[str, mx.array]) -> dict[str, mx.array]:
@@ -86,8 +190,11 @@ def mlx_codec_weight(key: str, value: mx.array) -> tuple[mx.array, bool]:
     raise ValueError(f"Unexpected rank-3 codec tensor {key} with shape {tuple(value.shape)}.")
 
 
-def convert_breeze_checkpoint(input_dir: Path, output_dir: Path) -> BreezeConversion:
-    """Write the MLX package next to the original snapshot."""
+def convert_breeze_checkpoint(
+    input_dir: Path, output_dir: Path, *, int8: bool = False
+) -> BreezeConversion:
+    """Write the MLX package next to the original snapshot; ``int8`` packs the
+    per-frame projections."""
 
     input_dir = input_dir.expanduser().resolve()
     output_dir = output_dir.expanduser().resolve()
@@ -98,6 +205,9 @@ def convert_breeze_checkpoint(input_dir: Path, output_dir: Path) -> BreezeConver
         raise FileNotFoundError(f"Missing bundled audio tokenizer in {codec_input}.")
 
     main = select_main_weights(_load_weights(input_dir))
+    quantization = None
+    if int8:
+        main, quantization = quantize_main_weights(main)
     codec: dict[str, mx.array] = {}
     transposed: list[str] = []
     for key, value in _load_weights(codec_input).items():
@@ -120,7 +230,7 @@ def convert_breeze_checkpoint(input_dir: Path, output_dir: Path) -> BreezeConver
         codec,
         metadata={"format": "mlx", "dtype": CODEC_DTYPE},
     )
-    _write_config(input_dir / "config.json", output_dir / "config.json")
+    _write_config(input_dir / "config.json", output_dir / "config.json", quantization)
     for name in _MAIN_FILES:
         source = input_dir / name
         if source.is_file():
@@ -135,6 +245,7 @@ def convert_breeze_checkpoint(input_dir: Path, output_dir: Path) -> BreezeConver
         codec_tensors=len(codec),
         transposed_codec_tensors=len(transposed),
         tied_audio_embedding=BACKBONE_AUDIO_EMBED,
+        quantized_modules=0 if quantization is None else len(quantization.paths),
     )
 
 
@@ -154,7 +265,9 @@ def _load_weights(model_dir: Path) -> dict[str, mx.array]:
     return weights
 
 
-def _write_config(source: Path, destination: Path) -> None:
+def _write_config(
+    source: Path, destination: Path, quantization: BreezeQuantization | None = None
+) -> None:
     payload = json.loads(source.read_text(encoding="utf-8"))
     payload["mlx_speech"] = {
         "family": FAMILY,
@@ -162,6 +275,8 @@ def _write_config(source: Path, destination: Path) -> None:
         "codec_dtype": CODEC_DTYPE,
         "codec": "audio_tokenizer",
     }
+    if quantization is not None:
+        payload["mlx_speech"]["quantization"] = quantization.to_dict()
     destination.write_text(
         json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",

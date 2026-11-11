@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -63,6 +63,44 @@ class Drama3Chunk:
     finish_reason: FinishReason
 
 
+@dataclass(frozen=True)
+class _PromptHead:
+    """Model state after the rows every prompt of one voice setup shares.
+
+    ``rows`` is the head plus the next row, the opening of the current user
+    turn: the audio decoder labels each row with the row after it, so the last
+    head row needs that one to match too.
+    """
+
+    rows: np.ndarray
+    backbone: list[BoundedKVCache | DeltaNetState]
+    decoder: list[BoundedKVCache]
+
+    def matches(self, prompt: np.ndarray) -> bool:
+        return len(prompt) > len(self.rows) - 1 and np.array_equal(
+            prompt[: len(self.rows)], self.rows
+        )
+
+
+def _head_length(prompt: np.ndarray, turn_start_id: int) -> int:
+    """Rows before the current user turn: the system turn, references and
+    history. The prompt ends with that turn and the assistant opening, each
+    starting with <|im_start|>; 0 when there is nothing before them."""
+    starts = np.flatnonzero(prompt[:, 0] == turn_start_id)
+    return int(starts[-2]) if len(starts) >= 2 else 0
+
+
+def _copy_layer(
+    state: BoundedKVCache | DeltaNetState, capacity: int
+) -> BoundedKVCache | DeltaNetState:
+    """An independent copy that can grow to capacity rows. DeltaNet states are
+    replaced, never written in place, so sharing their arrays is safe."""
+    if isinstance(state, DeltaNetState):
+        return DeltaNetState(conv=state.conv, recurrent=state.recurrent)
+    keys, values = state.fetch()
+    return BoundedKVCache.from_values(keys, values, capacity=capacity)
+
+
 def _cache_arrays(caches: Sequence[BoundedKVCache | DeltaNetState]) -> list[mx.array]:
     arrays = []
     for cache in caches:
@@ -78,12 +116,16 @@ class FishDrama3Runtime:
     model: FishDrama3Model
     tokenizer: Tokenizer
     codec: FishS2Codec
+    # The shared head of the last prompt, reused while prompts keep it.
+    _head: _PromptHead | None = field(default=None, init=False, repr=False)
 
     @classmethod
-    def from_dir(cls, model_dir: str | Path) -> FishDrama3Runtime:
+    def from_dir(cls, model_dir: str | Path, *, dense_int8: bool = False) -> FishDrama3Runtime:
+        """dense_int8 packs the dense BF16 projections as int8 once loaded,
+        for faster decoding; see load_fish_drama_3_model."""
         resolved = Path(model_dir)
         return cls(
-            model=load_fish_drama_3_model(resolved),
+            model=load_fish_drama_3_model(resolved, dense_int8=dense_int8),
             tokenizer=Tokenizer.from_file(str(resolved / "tokenizer.json")),
             # Drama 3 ships the S2 Pro codec, byte for byte.
             codec=FishS2Codec.from_dir(resolved / "codec-mlx"),
@@ -131,31 +173,30 @@ class FishDrama3Runtime:
 
         The audio decoder cache of prompt row p is filled with frame p + 1 as its
         label; the last prompt row has none yet, so the first decode step writes it.
+        Everything before the current user turn is prefilled apart and kept: a
+        later prompt that starts with the same rows reuses it, with the same result.
         """
         backbone, decoder = self.model.backbone, self.model.audio_decoder
         rows = mx.array(prompt)
         prompt_rows = len(prompt)
         capacity = prompt_rows + max_new_tokens
-        backbone_cache = backbone.make_cache(capacity=capacity)
-        decoder_cache = decoder.make_cache(capacity=capacity)
-
-        for start in range(0, prompt_rows, PREFILL_CHUNK_ROWS):
-            end = min(start + PREFILL_CHUNK_ROWS, prompt_rows)
-            chunk = rows[start:end]
-            embeddings = decoder.embed_backbone(
-                chunk, backbone.embed_tokens(chunk[:, 0])
-            )
-            hidden = backbone(embeddings[None], backbone_cache)[0]
-            paired_end = min(end, prompt_rows - 1)
-            if paired_end > start:
-                decoder.prefill(
-                    hidden[: paired_end - start],
-                    chunk[: paired_end - start],
-                    rows[start + 1 : paired_end + 1],
-                    decoder_cache,
+        head_rows = _head_length(prompt, self._turn_start_id)
+        head = self._head
+        if head_rows and head is not None and len(head.rows) == head_rows + 1 and head.matches(prompt):
+            backbone_cache = [_copy_layer(state, capacity) for state in head.backbone]
+            decoder_cache = [_copy_layer(state, capacity) for state in head.decoder]
+        else:
+            backbone_cache = backbone.make_cache(capacity=capacity)
+            decoder_cache = decoder.make_cache(capacity=capacity)
+            if head_rows:
+                self._prefill(rows, 0, head_rows, backbone_cache, decoder_cache)
+                self._head = _PromptHead(
+                    rows=np.array(prompt[: head_rows + 1]),
+                    backbone=[_copy_layer(state, head_rows) for state in backbone_cache],
+                    decoder=[_copy_layer(state, head_rows) for state in decoder_cache],
                 )
-            mx.eval(hidden, _cache_arrays(backbone_cache), _cache_arrays(decoder_cache))
-
+                mx.eval(_cache_arrays(self._head.backbone), _cache_arrays(self._head.decoder))
+        hidden = self._prefill(rows, head_rows, prompt_rows, backbone_cache, decoder_cache)
         hidden = hidden[-1:]
         frame = rows[-1:]
         history = rows[-RAS_WINDOW_FRAMES:, 0]
@@ -190,6 +231,38 @@ class FishDrama3Runtime:
             return np.zeros((num_codebooks, 0), dtype=np.int32), finish_reason
         codes = np.array(mx.concatenate(frames)[:, 1:], dtype=np.int32).T
         return np.ascontiguousarray(codes), finish_reason
+
+    @property
+    def _turn_start_id(self) -> int:
+        return self.tokenizer.token_to_id("<|im_start|>")
+
+    def _prefill(
+        self,
+        rows: mx.array,
+        start: int,
+        end: int,
+        backbone_cache: list[BoundedKVCache | DeltaNetState],
+        decoder_cache: list[BoundedKVCache],
+    ) -> mx.array:
+        """Run prompt rows start..end-1 through the backbone, and label each of them
+        but the prompt's last for the audio decoder. Returns the last row's hidden."""
+        backbone, decoder = self.model.backbone, self.model.audio_decoder
+        last_labelled = len(rows) - 1
+        for chunk_start in range(start, end, PREFILL_CHUNK_ROWS):
+            chunk_end = min(chunk_start + PREFILL_CHUNK_ROWS, end)
+            chunk = rows[chunk_start:chunk_end]
+            embeddings = decoder.embed_backbone(chunk, backbone.embed_tokens(chunk[:, 0]))
+            hidden = backbone(embeddings[None], backbone_cache)[0]
+            paired_end = min(chunk_end, last_labelled)
+            if paired_end > chunk_start:
+                decoder.prefill(
+                    hidden[: paired_end - chunk_start],
+                    chunk[: paired_end - chunk_start],
+                    rows[chunk_start + 1 : paired_end + 1],
+                    decoder_cache,
+                )
+            mx.eval(hidden, _cache_arrays(backbone_cache), _cache_arrays(decoder_cache))
+        return hidden
 
     def synthesize(
         self,

@@ -24,8 +24,57 @@ Recurrence over the L axis:
 
 from __future__ import annotations
 
+import os
+
 import mlx.core as mx
 import mlx.nn as nn
+
+_CUSTOM_METAL_AVAILABLE = (
+    os.environ.get("MLX_SPEECH_DISABLE_CUSTOM_METAL") != "1" and mx.metal.is_available()
+)
+
+# One thread per (batch, channel) carries its state in registers, so d_state
+# must fit the fixed 32-slot arrays below.
+_FUSED_SCAN_MAX_DSTATE = 32
+
+_FUSED_SCAN_KERNEL = mx.fast.metal_kernel(
+    name="selective_scan_fused",
+    input_names=["u", "delta", "A", "B_t", "C_t", "L_arr", "D_arr", "N_arr"],
+    output_names=["out"],
+    source="""
+        uint tid = thread_position_in_grid.x;
+        int L = L_arr[0];
+        int D = D_arr[0];
+        int N = N_arr[0];
+        int b = tid / D;
+        int d = tid % D;
+
+        int u_base = tid * L;
+        int a_base = d * N;
+        int bc_base = b * L * N;
+
+        float a_reg[32];
+        float x[32];
+        for (int n = 0; n < N; ++n) {
+            a_reg[n] = A[a_base + n];
+            x[n] = 0.0f;
+        }
+
+        for (int i = 0; i < L; ++i) {
+            float dt = delta[u_base + i];
+            float dt_u = dt * u[u_base + i];
+            int bc_idx = bc_base + i * N;
+            float acc = 0.0f;
+            for (int n = 0; n < N; ++n) {
+                float da = metal::exp(dt * a_reg[n]);
+                float s = da * x[n] + dt_u * B_t[bc_idx + n];
+                x[n] = s;
+                acc += s * C_t[bc_idx + n];
+            }
+            out[u_base + i] = acc;
+        }
+    """,
+)
 
 
 def selective_scan(
@@ -70,29 +119,42 @@ def selective_scan(
     if delta_bias is not None:
         delta = delta + delta_bias.astype(mx.float32)[None, :, None]
     if delta_softplus:
-        delta = nn.softplus(delta)
+        delta = mx.contiguous(nn.softplus(delta))
 
     batch, dim, length = u.shape
     dstate = A.shape[1]
 
-    # deltaA: exp(delta[b,d,l] * A[d,n]) -> [B, d_inner, L, d_state]
-    deltaA = mx.exp(delta[..., None] * A[None, :, None, :])
-    # deltaB_u: delta[b,d,l] * B[b,n,l] * u[b,d,l] -> [B, d_inner, L, d_state]
-    # B is [B, d_state, L]; bring it to [B, 1, L, d_state] to broadcast over dim.
-    B_t = mx.transpose(B, (0, 2, 1))[:, None, :, :]  # [B, 1, L, d_state]
-    deltaB_u = delta[..., None] * B_t * u[..., None]  # [B, d_inner, L, d_state]
-
-    # C as [B, L, d_state] for per-step einsum('bdn,bn->bd').
-    C_t = mx.transpose(C, (0, 2, 1))  # [B, L, d_state]
-
-    x = mx.zeros((batch, dim, dstate), dtype=mx.float32)
-    ys = []
-    for i in range(length):
-        x = deltaA[:, :, i] * x + deltaB_u[:, :, i]  # [B, d_inner, d_state]
-        # y[b,d] = sum_n x[b,d,n] * C[b,i,n]
-        y = mx.sum(x * C_t[:, None, i, :], axis=-1)  # [B, d_inner]
-        ys.append(y)
-    y = mx.stack(ys, axis=2)  # [B, d_inner, L]
+    if (
+        _CUSTOM_METAL_AVAILABLE
+        and dstate <= _FUSED_SCAN_MAX_DSTATE
+        and batch * dim > 0
+        and length > 0
+    ):
+        B_t = mx.contiguous(mx.transpose(B, (0, 2, 1)))  # [B, L, d_state]
+        C_t = mx.contiguous(mx.transpose(C, (0, 2, 1)))  # [B, L, d_state]
+        shapes = (
+            mx.array([length], dtype=mx.int32),
+            mx.array([dim], dtype=mx.int32),
+            mx.array([dstate], dtype=mx.int32),
+        )
+        y = _FUSED_SCAN_KERNEL(
+            inputs=[u, delta, A, B_t, C_t, *shapes],
+            grid=(batch * dim, 1, 1),
+            threadgroup=(min(256, batch * dim), 1, 1),
+            output_shapes=[(batch, dim, length)],
+            output_dtypes=[mx.float32],
+        )[0]
+    else:
+        deltaA = mx.exp(delta[..., None] * A[None, :, None, :])
+        B_t = mx.transpose(B, (0, 2, 1))[:, None, :, :]
+        deltaB_u = delta[..., None] * B_t * u[..., None]
+        C_t = mx.transpose(C, (0, 2, 1))
+        x = mx.zeros((batch, dim, dstate), dtype=mx.float32)
+        ys = []
+        for i in range(length):
+            x = deltaA[:, :, i] * x + deltaB_u[:, :, i]
+            ys.append(mx.sum(x * C_t[:, None, i, :], axis=-1))
+        y = mx.stack(ys, axis=2)
 
     if D is not None:
         y = y + u * D.astype(mx.float32)[None, :, None]
