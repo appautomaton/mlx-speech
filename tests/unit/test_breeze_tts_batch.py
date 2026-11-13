@@ -1,0 +1,185 @@
+"""Independent EOS, random streams and padded attention in Breeze batches."""
+
+from types import SimpleNamespace
+from dataclasses import replace
+
+import mlx.core as mx
+import pytest
+
+from mlx_speech.generation.breeze_tts_batch import (
+    _decode_audio,
+    _frame_keys,
+    _generate_codes,
+    _prefill,
+    _sample_rows,
+    generate_breeze_batch,
+)
+from mlx_speech.models.breeze_tts.backbone import BreezeBackbone
+from mlx_speech.models.breeze_tts.config import BreezeDecoderConfig
+from mlx_speech.models.breeze_tts.depth import BreezeDepthDecoder
+
+
+def _config():
+    decoder = BreezeDecoderConfig(
+        hidden_size=8,
+        intermediate_size=16,
+        num_hidden_layers=2,
+        num_attention_heads=2,
+        num_key_value_heads=1,
+        head_dim=4,
+        rms_norm_eps=1e-5,
+        rope_theta=1000.0,
+        max_position_embeddings=32,
+        qk_norm=False,
+        cache_growth=4,
+    )
+    return SimpleNamespace(
+        backbone=decoder,
+        depth=decoder,
+        audio_embed_size=8,
+        audio_embedding_rows=3 * 2051,
+        num_codebooks=3,
+        vocab_size=2051,
+        backbone_eos_id=2051,
+    )
+
+
+def test_padded_prefill_and_cached_decode_match_individual_rows():
+    # Compare float32 math without Metal's different batched attention rounding.
+    with mx.stream(mx.cpu):
+        _check_padded_decode()
+
+
+def test_metal_bfloat16_padding_queries_do_not_poison_valid_hidden_states():
+    config = _config()
+    config.backbone = replace(
+        config.backbone,
+        hidden_size=128,
+        intermediate_size=256,
+        head_dim=128,
+        num_attention_heads=16,
+        num_key_value_heads=8,
+        max_position_embeddings=512,
+        qk_norm=True,
+    )
+    config.audio_embed_size = 128
+    backbone = BreezeBackbone(config)
+    backbone.set_dtype(mx.bfloat16)
+    speech = SimpleNamespace(config=config, backbone_model=backbone)
+    prompts = [
+        mx.random.normal((length, 128)).astype(mx.bfloat16)
+        for length in (224, 225, 220)
+    ]
+    hidden, cache, _, _ = _prefill(speech, prompts, 4)
+    assert mx.all(mx.isfinite(hidden)).item()
+    assert all(mx.all(mx.isfinite(layer.values)).item() for layer in cache)
+
+
+def _check_padded_decode():
+    config = _config()
+    backbone = BreezeBackbone(config)
+    speech = SimpleNamespace(config=config, backbone_model=backbone)
+    prompts = [mx.random.normal((2, 8)), mx.random.normal((5, 8))]
+    hidden, cache, positions, pads = _prefill(speech, prompts, 4)
+    next_input = mx.random.normal((2, 1, 8))
+    next_hidden = backbone(
+        next_input, cache, position_ids=positions[:, None], pad_lengths=pads
+    )
+    for i, prompt in enumerate(prompts):
+        individual = backbone.make_cache(batch_size=1, dtype=prompt.dtype)
+        expected = backbone(prompt[None], individual)
+        assert mx.allclose(hidden[i], expected[0, -1], atol=1e-5).item()
+        expected_next = backbone(next_input[i : i + 1], individual)
+        assert mx.allclose(next_hidden[i], expected_next[0], atol=1e-5).item()
+
+
+def test_request_random_keys_survive_batch_reordering_and_keep_top_k_candidates():
+    keys = mx.stack([mx.random.key(i) for i in range(64)])
+    logits = mx.broadcast_to(mx.array([0.0, 1.0, 1.0, -2.0]), (64, 4))
+    draws = _sample_rows(logits, keys, 1.0, 2)
+    kept = mx.array([31, 2, 49, 0])
+    reordered = _sample_rows(logits[kept], keys[kept], 1.0, 2)
+    assert mx.array_equal(draws[kept], reordered).item()
+    assert set(draws.tolist()) == {1, 2}
+    split = _frame_keys(keys, 4)
+    assert mx.array_equal(split[kept], _frame_keys(keys[kept], 4)).item()
+
+
+@pytest.mark.parametrize("guided", [False, True])
+def test_eos_removes_only_its_request_and_does_not_touch_global_random_state(guided):
+    config = _config()
+
+    class Head:
+        calls = 0
+
+        def __call__(self, hidden):
+            count = len(hidden) // (2 if guided else 1)
+            tokens = [2051, 4] if self.calls == 0 else [2051]
+            self.calls += 1
+            logits = mx.full((count, 2052), -1000.0)
+            logits[mx.arange(count), mx.array(tokens)] = 1000.0
+            return mx.concatenate([logits, logits]) if guided else logits
+
+    speech = SimpleNamespace(
+        config=config,
+        backbone_model=BreezeBackbone(config),
+        depth_decoder=BreezeDepthDecoder(config),
+        lm_head=Head(),
+    )
+    prompts = [mx.ones((2, 8)), mx.ones((4, 8))]
+    if guided:
+        prompts += [mx.ones((1, 8)), mx.ones((3, 8))]
+    mx.random.seed(123)
+    expected_random = mx.random.normal((8,))
+    mx.eval(expected_random)
+    mx.random.seed(123)
+    codes = _generate_codes(
+        speech,
+        prompts,
+        [1, 2],
+        max_frames=3,
+        temperature=0.9,
+        top_k=1,
+        repetition_penalty=1.1,
+        cfg_scale=4.0 if guided else 1.0,
+    )
+    assert [row.shape for row in codes] == [(0, 3), (1, 3)]
+    assert codes[1][0, 0].item() == 4
+    assert mx.array_equal(mx.random.normal((8,)), expected_random).item()
+
+
+@pytest.mark.parametrize(
+    "controls, message",
+    [
+        ({"seeds": [1]}, "seeds"),
+        ({"batch_size": 0}, "batch_size"),
+        ({"cfg_scale": 4}, "instruction"),
+        ({"top_k": -1}, "top_k"),
+        ({"max_frames": 0}, "max_frames"),
+    ],
+)
+def test_invalid_batch_controls_fail_before_loading_or_inference(controls, message):
+    with pytest.raises(ValueError, match=message):
+        generate_breeze_batch(None, None, None, ["one", "two"], **controls)
+
+
+def test_empty_batch_is_empty_and_single_string_is_rejected():
+    assert generate_breeze_batch(None, None, None, []) == []
+    with pytest.raises(ValueError, match="sequence"):
+        generate_breeze_batch(None, None, None, "not a batch")
+
+
+def test_codec_batches_bound_padded_frames_for_mixed_output_lengths():
+    class Codec:
+        calls = []
+
+        def decode(self, codes):
+            self.calls.append((codes.shape[0], codes.shape[2]))
+            return mx.zeros((codes.shape[0], 1, codes.shape[2] * 1920))
+
+    codec = Codec()
+    lengths = [1, 120, 3, 100, 2, 119]
+    output = _decode_audio(codec, [mx.zeros((n, 16), mx.int32) for n in lengths])
+    assert [item.frames for item in output] == lengths
+    assert all(rows * frames <= 256 for rows, frames in codec.calls)
+    assert [item.samples.size for item in output] == [n * 1920 for n in lengths]

@@ -274,6 +274,12 @@ def run_causal_decoder(
         minimum = mx.array(mx.finfo(inputs_embeds.dtype).min, dtype=inputs_embeds.dtype)
         key_mask = mx.where(blocked, minimum, mx.array(0, dtype=inputs_embeds.dtype))
         key_mask = key_mask[:, None, None, :]
+        # Padding queries are discarded, but an all-masked softmax can produce
+        # NaNs that poison later layers even when their padding keys are masked.
+        padding_queries = (
+            mx.arange(offset, offset + length)[None, :] < pad_lengths[:, None]
+        )
+        key_mask = mx.where(padding_queries[:, None, :, None], 0, key_mask)
     hidden_states = inputs_embeds
     for layer, layer_cache in zip(layers, cache, strict=True):
         hidden_states = layer(hidden_states, embeddings, layer_cache, key_mask)

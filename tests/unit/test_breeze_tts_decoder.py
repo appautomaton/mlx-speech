@@ -189,6 +189,26 @@ def test_codebook_head_uses_the_previous_position() -> None:
     assert mx.allclose(logits[0], mx.sum(heads.weight[0], axis=0))
 
 
+def test_codebook_head_keeps_requests_and_positions_separate() -> None:
+    heads = CodebookHeads(hidden_size=3, num_codebooks=4, vocab_size=5)
+    heads.weight = mx.arange(45, dtype=mx.float32).reshape(3, 3, 5)
+    hidden = mx.arange(24, dtype=mx.float32).reshape(4, 2, 3)
+    positions = [1, 3]
+    actual = heads(hidden, mx.array(positions))
+    expected = mx.stack(
+        [
+            mx.stack(
+                [
+                    hidden[row, col] @ heads.weight[position - 1]
+                    for col, position in enumerate(positions)
+                ]
+            )
+            for row in range(4)
+        ]
+    )
+    assert mx.array_equal(actual, expected).item()
+
+
 def test_audio_embeddings_sum_codebook_offsets() -> None:
     backbone = BreezeBackbone(_runtime())
     backbone.embed_tokens.embed_audio_tokens.weight = mx.arange(
