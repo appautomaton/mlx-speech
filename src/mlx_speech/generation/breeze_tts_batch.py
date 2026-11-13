@@ -21,6 +21,8 @@ from .breeze_tts import (
     _validated_reference,
 )
 
+_COMPACT_FINISHED_FRACTION = 0.25
+
 
 def generate_breeze_batch(
     speech,
@@ -325,6 +327,7 @@ def _generate_codes(
     )
     size = len(seeds)
     active = list(range(size))
+    finished: set[int] = set()
     lengths = list(budgets)
     keys = mx.stack([mx.random.key(int(seed)) for seed in seeds])
     seen = mx.zeros((size, speech.config.vocab_size + 1), mx.bool_)
@@ -344,18 +347,20 @@ def _generate_codes(
         draw_keys = _frame_keys(keys, speech.config.num_codebooks + 1)
         first = _sample_rows(logits, draw_keys[:, 1], temperature, top_k)
         tokens = first.tolist()  # One host read per frame, for independent EOS.
-        # A request leaves at EOS or once it has its budget's frames.
-        keep = [
-            i
-            for i, token in enumerate(tokens)
-            if token != speech.config.backbone_eos_id and step < budgets[active[i]]
-        ]
-        for i in set(range(count)) - set(keep):
-            lengths[active[i]] = step
+        keep = []
+        for i, token in enumerate(tokens):
+            request = active[i]
+            if request in finished:
+                continue
+            if token == speech.config.backbone_eos_id or step >= budgets[request]:
+                lengths[request] = step
+                finished.add(request)
+            else:
+                keep.append(i)
         if not keep:
             active = []
             break
-        if len(keep) != count:
+        if len(keep) < count and count - len(keep) >= count * _COMPACT_FINISHED_FRACTION:
             rows = mx.array(keep, mx.int32)
             branches = mx.concatenate([rows, rows + count]) if guided else rows
             hidden, positions, pads = (
@@ -367,6 +372,11 @@ def _generate_codes(
             _select_cache(depth_cache, branches)
             first, draw_keys, seen = first[rows], draw_keys[rows], seen[rows]
             active = [active[i] for i in keep]
+            keep = list(range(len(active)))
+        elif len(keep) != count:
+            # Retained finished slots must never embed EOS or produce output.
+            live = mx.array([request not in finished for request in active])
+            first = mx.where(live, first, 0)
         keys = draw_keys[:, 0]
         frame = _depth_frame(
             speech,
@@ -378,7 +388,10 @@ def _generate_codes(
             temperature,
             top_k,
         )
-        generated[mx.array(active), step] = frame
+        requests = mx.array([active[i] for i in keep])
+        generated[requests, step] = (
+            frame if len(keep) == len(active) else frame[mx.array(keep)]
+        )
         seen = seen.at[mx.arange(len(active)), first].add(True)
         if step + 1 < max_frames:
             audio = speech.backbone_model.embed_audio(frame[:, None])
