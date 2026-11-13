@@ -10,9 +10,22 @@ from mlx_speech.models.breeze_tts.codec import (
     DecoderBlock,
     PreTransformer,
     UpsampleConv,
+    _snake,
     _upsample_step,
     _WindowKV,
 )
+
+
+def test_snake_fusion_is_bit_identical_across_shapes() -> None:
+    for i, shape in enumerate(((2, 50, 96), (3, 17, 768))):
+        x = mx.random.normal(shape, key=mx.random.key(10 + i))
+        alpha = mx.random.normal((shape[-1],), key=mx.random.key(20 + i))
+        beta = mx.random.normal((shape[-1],), key=mx.random.key(30 + i))
+        expected = x + mx.square(mx.sin(x * mx.exp(alpha))) / (mx.exp(beta) + 1e-9)
+        mx.eval(expected)
+        actual = _snake(x, alpha, beta)
+        assert actual.dtype == mx.float32
+        assert mx.array_equal(actual, expected).item()
 
 
 def _decode_chunks(
