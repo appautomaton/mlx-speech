@@ -545,7 +545,8 @@ def _penalize(logits: mx.array, tokens: list[int], penalty: float) -> mx.array:
 def _sample(logits: mx.array, *, temperature: float, top_k: int) -> mx.array:
     values = logits / temperature
     if top_k > 0 and top_k < values.shape[-1]:
-        cutoff = mx.topk(values, top_k)[..., -1:]
+        # mx.topk does not sort its result; the threshold is its minimum.
+        cutoff = mx.min(mx.topk(values, top_k), axis=-1, keepdims=True)
         values = mx.where(values < cutoff, mx.array(-1.0e9, dtype=values.dtype), values)
     token = mx.random.categorical(nn.log_softmax(values, axis=-1))
     return token.reshape((1,))
