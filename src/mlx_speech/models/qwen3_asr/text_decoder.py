@@ -156,6 +156,13 @@ class Qwen3ASRTextKVCache:
         for layer in self.layers:
             layer.reserve(max_length)
 
+    def select_rows(self, rows: mx.array) -> None:
+        """Compact batch rows, preserving offsets and capacity for later growth."""
+        for layer in self.layers:
+            layer.keys = layer.keys[rows]
+            layer.values = layer.values[rows]
+            layer.batch_size = int(rows.size)
+
 
 @dataclass(frozen=True)
 class Qwen3ASRTextModelOutput:
@@ -201,6 +208,7 @@ class Qwen3ASRTextRotaryEmbedding(nn.Module):
         seq_len: int,
         offset: int = 0,
         dtype: mx.Dtype = mx.float32,
+        position_ids: mx.array | None = None,
     ) -> tuple[mx.array, mx.array]:
         inv_freq = 1.0 / (
             self.base
@@ -209,6 +217,13 @@ class Qwen3ASRTextRotaryEmbedding(nn.Module):
                 / mx.array(self.head_dim, dtype=mx.float32)
             )
         )
+        if position_ids is not None:
+            if position_ids.ndim != 2 or int(position_ids.shape[1]) != seq_len:
+                raise ValueError(f"Expected position_ids [B, {seq_len}], got {position_ids.shape}.")
+            positions = position_ids.astype(mx.float32)[..., None]
+            freqs = positions * inv_freq[None, None, :]
+            emb = mx.concatenate([freqs, freqs], axis=-1)[:, None, :, :]
+            return mx.cos(emb).astype(dtype), mx.sin(emb).astype(dtype)
         positions = mx.arange(offset, offset + seq_len, dtype=mx.float32)[:, None]
         freqs = positions * inv_freq[None, :]
         emb = mx.concatenate([freqs, freqs], axis=-1)
@@ -220,11 +235,15 @@ class Qwen3ASRTextRotaryEmbedding(nn.Module):
         key: mx.array,
         *,
         offset: int = 0,
+        position_ids: mx.array | None = None,
     ) -> tuple[mx.array, mx.array]:
         seq_len = int(query.shape[-2])
-        cos, sin = self.cos_sin(seq_len=seq_len, offset=offset, dtype=query.dtype)
-        cos = cos[None, None, :, :]
-        sin = sin[None, None, :, :]
+        cos, sin = self.cos_sin(
+            seq_len=seq_len, offset=offset, dtype=query.dtype, position_ids=position_ids
+        )
+        if position_ids is None:
+            cos = cos[None, None, :, :]
+            sin = sin[None, None, :, :]
         return (
             (query * cos) + (_rotate_half(query) * sin),
             (key * cos) + (_rotate_half(key) * sin),
@@ -307,6 +326,7 @@ class Qwen3ASRTextAttention(nn.Module):
         *,
         offset: int,
         native: bool = False,
+        position_ids: mx.array | None = None,
     ) -> tuple[mx.array, mx.array, mx.array]:
         batch_size, seq_len, _ = hidden_states.shape
         query_states = _linear_forward(
@@ -344,6 +364,7 @@ class Qwen3ASRTextAttention(nn.Module):
             query_states,
             key_states,
             offset=offset,
+            position_ids=position_ids,
         )
         return query_states, key_states, value_states
 
@@ -444,6 +465,7 @@ class Qwen3ASRTextAttention(nn.Module):
         hidden_states: mx.array,
         *,
         attention_mask: mx.array | None = None,
+        position_ids: mx.array | None = None,
         offset: int = 0,
         compute: Qwen3ASRDecodeCompute | None = None,
     ) -> mx.array:
@@ -451,6 +473,7 @@ class Qwen3ASRTextAttention(nn.Module):
         query_states, key_states, value_states = self._project_qkv(
             hidden_states,
             offset=offset,
+            position_ids=position_ids,
             native=compute.native_linear,
         )
         return self._apply_attention(
@@ -470,11 +493,12 @@ class Qwen3ASRTextAttention(nn.Module):
         *,
         layer_cache: Qwen3ASRTextLayerKVCache,
         attention_mask: mx.array | None = None,
+        position_ids: mx.array | None = None,
         compute: Qwen3ASRDecodeCompute | None = None,
     ) -> mx.array:
         compute = _resolve_compute(compute)
         query_states, key_states, value_states = self._project_qkv(
-            hidden_states, offset=0, native=compute.native_linear
+            hidden_states, offset=0, native=compute.native_linear, position_ids=position_ids
         )
         layer_cache.append(key_states, value_states)
         cached_keys, cached_values = layer_cache.get()
@@ -494,6 +518,8 @@ class Qwen3ASRTextAttention(nn.Module):
         hidden_states: mx.array,
         *,
         layer_cache: Qwen3ASRTextLayerKVCache,
+        attention_mask: mx.array | None = None,
+        position_ids: mx.array | None = None,
         compute: Qwen3ASRDecodeCompute | None = None,
     ) -> mx.array:
         compute = _resolve_compute(compute)
@@ -501,6 +527,7 @@ class Qwen3ASRTextAttention(nn.Module):
         query_states, key_states, value_states = self._project_qkv(
             hidden_states,
             offset=offset,
+            position_ids=position_ids,
             native=compute.native_linear,
         )
         layer_cache.append(key_states, value_states)
@@ -510,7 +537,7 @@ class Qwen3ASRTextAttention(nn.Module):
             cached_keys,
             cached_values,
             output_dtype=hidden_states.dtype,
-            attention_mask=None,
+            attention_mask=attention_mask,
             query_offset=offset,
             use_causal_mask=True,
             compute=compute,
@@ -533,6 +560,7 @@ class Qwen3ASRTextDecoderLayer(nn.Module):
         hidden_states: mx.array,
         *,
         attention_mask: mx.array | None = None,
+        position_ids: mx.array | None = None,
         offset: int = 0,
         compute: Qwen3ASRDecodeCompute | None = None,
     ) -> mx.array:
@@ -540,6 +568,7 @@ class Qwen3ASRTextDecoderLayer(nn.Module):
         hidden_states = hidden_states + self.self_attn(
             self.input_layernorm(hidden_states),
             attention_mask=attention_mask,
+            position_ids=position_ids,
             offset=offset,
             compute=compute,
         )
@@ -555,6 +584,7 @@ class Qwen3ASRTextDecoderLayer(nn.Module):
         *,
         layer_cache: Qwen3ASRTextLayerKVCache,
         attention_mask: mx.array | None = None,
+        position_ids: mx.array | None = None,
         compute: Qwen3ASRDecodeCompute | None = None,
     ) -> mx.array:
         compute = _resolve_compute(compute)
@@ -562,6 +592,7 @@ class Qwen3ASRTextDecoderLayer(nn.Module):
             self.input_layernorm(hidden_states),
             layer_cache=layer_cache,
             attention_mask=attention_mask,
+            position_ids=position_ids,
             compute=compute,
         )
         hidden_states = hidden_states + self.mlp(
@@ -575,12 +606,16 @@ class Qwen3ASRTextDecoderLayer(nn.Module):
         hidden_states: mx.array,
         *,
         layer_cache: Qwen3ASRTextLayerKVCache,
+        attention_mask: mx.array | None = None,
+        position_ids: mx.array | None = None,
         compute: Qwen3ASRDecodeCompute | None = None,
     ) -> mx.array:
         compute = _resolve_compute(compute)
         hidden_states = hidden_states + self.self_attn.decode_step(
             self.input_layernorm(hidden_states),
             layer_cache=layer_cache,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
             compute=compute,
         )
         hidden_states = hidden_states + self.mlp(
@@ -607,6 +642,7 @@ class Qwen3ASRTextModel(nn.Module):
         input_ids: mx.array | None = None,
         inputs_embeds: mx.array | None = None,
         attention_mask: mx.array | None = None,
+        position_ids: mx.array | None = None,
         output_hidden_states: bool = False,
         compute: Qwen3ASRDecodeCompute | None = None,
     ) -> Qwen3ASRTextModelOutput:
@@ -616,7 +652,10 @@ class Qwen3ASRTextModel(nn.Module):
         for layer in self.layers:
             if all_hidden_states is not None:
                 all_hidden_states.append(hidden_states)
-            hidden_states = layer(hidden_states, attention_mask=attention_mask, compute=compute)
+            hidden_states = layer(
+                hidden_states, attention_mask=attention_mask,
+                position_ids=position_ids, compute=compute
+            )
         hidden_states = self.norm(hidden_states)
         if all_hidden_states is not None:
             all_hidden_states.append(hidden_states)
@@ -631,6 +670,7 @@ class Qwen3ASRTextModel(nn.Module):
         input_ids: mx.array | None = None,
         inputs_embeds: mx.array | None = None,
         attention_mask: mx.array | None = None,
+        position_ids: mx.array | None = None,
         kv_cache: Qwen3ASRTextKVCache,
         output_hidden_states: bool = False,
         compute: Qwen3ASRDecodeCompute | None = None,
@@ -644,6 +684,7 @@ class Qwen3ASRTextModel(nn.Module):
                 hidden_states,
                 layer_cache=kv_cache.layers[layer_idx],
                 attention_mask=attention_mask,
+                position_ids=position_ids,
                 compute=compute,
             )
         hidden_states = self.norm(hidden_states)
@@ -663,6 +704,8 @@ class Qwen3ASRTextModel(nn.Module):
         inputs_embeds: mx.array | None = None,
         kv_cache: Qwen3ASRTextKVCache,
         output_hidden_states: bool = False,
+        attention_mask: mx.array | None = None,
+        position_ids: mx.array | None = None,
         compute: Qwen3ASRDecodeCompute | None = None,
     ) -> Qwen3ASRTextModelOutput:
         hidden_states = self._prepare_inputs(input_ids=input_ids, inputs_embeds=inputs_embeds)
@@ -673,6 +716,8 @@ class Qwen3ASRTextModel(nn.Module):
             hidden_states = layer.decode_step(
                 hidden_states,
                 layer_cache=kv_cache.layers[layer_idx],
+                attention_mask=attention_mask,
+                position_ids=position_ids,
                 compute=compute,
             )
         hidden_states = self.norm(hidden_states)
@@ -734,11 +779,13 @@ class Qwen3ASRTextForCausalLM(nn.Module):
         input_ids: mx.array | None = None,
         inputs_embeds: mx.array | None = None,
         attention_mask: mx.array | None = None,
+        position_ids: mx.array | None = None,
     ) -> Qwen3ASRTextCausalLMOutput:
         model_output = self.model(
             input_ids=input_ids,
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
+            position_ids=position_ids,
         )
         logits = _linear_forward(self.lm_head, model_output.last_hidden_state, output_dtype=mx.float32)
         return Qwen3ASRTextCausalLMOutput(
@@ -753,6 +800,7 @@ class Qwen3ASRTextForCausalLM(nn.Module):
         input_ids: mx.array | None = None,
         inputs_embeds: mx.array | None = None,
         attention_mask: mx.array | None = None,
+        position_ids: mx.array | None = None,
         kv_cache: Qwen3ASRTextKVCache,
         compute: Qwen3ASRDecodeCompute | None = None,
         last_logits_only: bool = False,
@@ -763,6 +811,7 @@ class Qwen3ASRTextForCausalLM(nn.Module):
             input_ids=input_ids,
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
+            position_ids=position_ids,
             kv_cache=kv_cache,
             compute=compute,
         )
@@ -782,6 +831,8 @@ class Qwen3ASRTextForCausalLM(nn.Module):
         input_ids: mx.array | None = None,
         inputs_embeds: mx.array | None = None,
         kv_cache: Qwen3ASRTextKVCache,
+        attention_mask: mx.array | None = None,
+        position_ids: mx.array | None = None,
         compute: Qwen3ASRDecodeCompute | None = None,
         last_logits_only: bool = False,
     ) -> Qwen3ASRTextCausalLMOutput:
@@ -791,6 +842,8 @@ class Qwen3ASRTextForCausalLM(nn.Module):
             input_ids=input_ids,
             inputs_embeds=inputs_embeds,
             kv_cache=kv_cache,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
             compute=compute,
         )
         hidden = model_output.last_hidden_state
@@ -950,6 +1003,9 @@ def _sliding_window_attention(
                 allowed,
                 valid_keys[:, None, None, key_start:global_end],
             )
+        if valid_keys is not None:
+            padding_queries = ~valid_keys[:, global_start:global_end]
+            allowed = mx.logical_or(allowed, padding_queries[:, None, :, None])
         outputs.append(
             mx.fast.scaled_dot_product_attention(
                 query_block,
@@ -977,7 +1033,7 @@ def _make_additive_attention_mask(
     use_causal_mask: bool,
     sliding_window: int | None = None,
 ) -> mx.array | None:
-    mask: mx.array | None = None
+    blocked: mx.array | None = None
     if use_causal_mask:
         query_positions = mx.arange(query_offset, query_offset + query_len, dtype=mx.int32)
         key_positions = mx.arange(key_len, dtype=mx.int32)
@@ -987,11 +1043,7 @@ def _make_additive_attention_mask(
                 query_positions[:, None] - sliding_window
             )
             blocked = mx.logical_or(blocked, too_old)
-        mask = mx.where(
-            blocked,
-            mx.array(mx.finfo(dtype).min, dtype=dtype),
-            mx.array(0, dtype=dtype),
-        )[None, None, :, :]
+        blocked = blocked[None, None, :, :]
 
     if attention_mask is not None:
         valid = attention_mask.astype(mx.bool_)
@@ -1001,10 +1053,16 @@ def _make_additive_attention_mask(
             raise ValueError(
                 f"attention_mask sequence length {valid.shape[1]} does not match key length {key_len}."
             )
-        pad_mask = mx.where(
-            valid[:, None, None, :],
-            mx.array(0, dtype=dtype),
-            mx.array(mx.finfo(dtype).min, dtype=dtype),
-        )
-        mask = pad_mask if mask is None else mask + pad_mask
-    return mask
+        padding_keys = ~valid[:, None, None, :]
+        blocked = padding_keys if blocked is None else mx.logical_or(blocked, padding_keys)
+        # Discarded padding queries must stay finite across layers: masked NaN
+        # keys/values would still poison real queries through NaN * 0.
+        padding_queries = ~valid[:, query_offset : query_offset + query_len]
+        blocked = mx.logical_and(blocked, ~padding_queries[:, None, :, None])
+    if blocked is None:
+        return None
+    return mx.where(
+        blocked,
+        mx.array(mx.finfo(dtype).min, dtype=dtype),
+        mx.array(0, dtype=dtype),
+    )

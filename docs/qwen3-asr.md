@@ -118,6 +118,71 @@ mlx-speech asr \
 A local path such as `models/qwen3_asr_1_7b/mlx-int8` works in place of the
 alias everywhere below.
 
+## Batch transcription
+
+The Qwen3-ASR adapter exposes an ordered batch API (not part of the shared ASR
+protocol):
+
+```python
+def generate_batch(
+    self,
+    audios: Sequence[np.ndarray | mx.array | str | Path],
+    *,
+    sample_rate: int = 16000,
+    language: str | None | Sequence[str | None] = None,
+    batch_size: int | None = None,
+    max_new_tokens: int | None = None,
+) -> list[ASROutput]: ...
+```
+
+```python
+asr = mlx_speech.asr.load("qwen3-asr-1.7b")
+results = asr.generate_batch(
+    ["english.wav", "chinese.wav", "unknown.wav"],
+    language=["English", "Chinese", None],
+)
+for result in results:
+    print(result.language, result.text)
+```
+
+- `audios` must be a list or tuple; an empty input returns `[]`. Results retain
+  input order. Internally, clips are sorted by sample count and processed in
+  groups to reduce padding.
+- A language string broadcasts to every clip. A language sequence must contain
+  exactly one entry per clip. `None`, `""`, and `"auto"` select auto-detection
+  for that clip.
+- Array inputs must already be **1-D mono at 16 kHz** and are **not resampled**;
+  `sample_rate` is checked and a mismatch raises. Path inputs use `load_audio`,
+  which downmixes to mono and resamples to 16 kHz; `sample_rate` does not apply
+  to paths.
+- Every path, array, language, prompt, and context-window budget is validated
+  before model inference. One bad input fails the whole call with its input
+  index, before any decoding. Batch transcription has no `context` argument;
+  single-clip `generate` still accepts it.
+- `max_new_tokens=None` means **448 tokens per clip**. `batch_size=None` means
+  **32**; an explicit batch size must be a positive integer. Output stops at
+  each clip's first EOS. Completed rows are removed together when they reach
+  one quarter of the current batch, or before growing the KV cache.
+- KV storage starts with the padded prompt plus up to 64 decode positions.
+  Decode capacity doubles only when needed, capped at `max_new_tokens`.
+  Decoding queues the next prediction before reading the current tokens back;
+  finished rows may do ignored work until compaction. Features and audio
+  encoding remain serial per clip; model math is unchanged.
+
+On an M5 Max, one pass over 128 English crops (2–15 seconds), with the 1.7B int8
+model and a 448-token budget, measured 4.88 clips/s at B=32 versus 1.56 serial
+and 3.69 at B=64. Peak MLX allocations were 4.47 GiB at B=32 and 5.67 GiB at
+B=64, including weights. B=32 remains the default: B=64 still did not improve
+throughput and used more memory. These are single-pass measurements, not a
+threshold sweep. Leave headroom beyond these MLX allocations for retained
+buffers, CPU audio, and other applications. Longer prompts increase memory;
+longer outputs grow the cache toward the token budget. Reduce `batch_size`
+or the token budget on smaller machines. Reproduce with
+`uv run python scripts/eval/benchmark_qwen3_asr_batch.py`.
+
+Single and batch transcription share the native-projection, fused-attention
+greedy decoder. Batched output may differ slightly from single-clip output.
+
 ## Language Behavior
 
 The CLI default omits `--language`, which lets Qwen3-ASR infer the language from

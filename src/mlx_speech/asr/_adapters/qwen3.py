@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import mlx.core as mx
@@ -34,3 +35,22 @@ class Qwen3ASRAdapter:
             **kwargs,
         )
         return ASROutput(text=result.text, language=result.language)
+
+    def generate_batch(
+        self,
+        audios: Sequence[np.ndarray | mx.array | str | Path],
+        *,
+        sample_rate: int = 16000,
+        language: str | None | Sequence[str | None] = None,
+        batch_size: int | None = None,
+        max_new_tokens: int | None = None,
+    ) -> list[ASROutput]:
+        """Transcribe a list/tuple in input order; see ``transcribe_batch`` for input rules."""
+        results = self._runtime.transcribe_batch(
+            audios,
+            sample_rate=sample_rate,
+            language=language,
+            batch_size=batch_size,
+            max_new_tokens=max_new_tokens,
+        )
+        return [ASROutput(text=result.text, language=result.language) for result in results]

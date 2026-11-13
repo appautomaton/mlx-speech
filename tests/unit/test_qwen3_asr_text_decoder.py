@@ -200,3 +200,121 @@ def test_qwen3_asr_text_model_rejects_ambiguous_inputs():
 
     with pytest.raises(ValueError, match="exactly one"):
         model()
+
+
+@pytest.mark.parametrize("fast", [False, True])
+@pytest.mark.parametrize("window", [None, 3])
+def test_left_padded_prefill_is_finite(fast, window):
+    from mlx_speech.models.qwen3_asr.text_decoder import FAST_DECODE_COMPUTE
+
+    mx.random.seed(17)
+    extra = {} if window is None else {
+        "use_sliding_window": True, "sliding_window": window, "max_window_layers": 0
+    }
+    config = _tiny_config(extra=extra)
+    model = Qwen3ASRTextForCausalLM(config)
+    cache = Qwen3ASRTextKVCache.allocate(config, batch_size=2, max_length=8)
+    output = model.prefill(
+        input_ids=mx.array([[0, 0, 1, 2], [1, 2, 3, 4]]),
+        attention_mask=mx.array([[0, 0, 1, 1], [1, 1, 1, 1]]),
+        kv_cache=cache,
+        compute=FAST_DECODE_COMPUTE if fast else None,
+    )
+    assert bool(mx.all(mx.isfinite(output.logits)).item())
+    for layer in cache.layers:
+        assert bool(mx.all(mx.isfinite(layer.get()[0])).item())
+
+
+def test_left_padding_mask_is_finite_and_unblocks_discarded_queries():
+    mask = _make_additive_attention_mask(
+        query_len=4, key_len=4, query_offset=0, dtype=mx.float32,
+        attention_mask=mx.array([[0, 0, 1, 1]]), use_causal_mask=True,
+    )
+    assert bool(mx.all(mx.isfinite(mask)).item())
+    np.testing.assert_array_equal(np.asarray(mask)[0, 0, :2], np.zeros((2, 4)))
+
+
+@pytest.mark.parametrize("offset", [0, 7])
+def test_explicit_rope_positions_match_scalar_offset_exactly(offset):
+    mx.random.seed(19)
+    rope = Qwen3ASRTextRotaryEmbedding(_tiny_config())
+    positions = mx.broadcast_to(mx.arange(3)[None, :] + offset, (2, 3))
+    scalar = rope.cos_sin(seq_len=3, offset=offset)
+    batched = rope.cos_sin(seq_len=3, position_ids=positions)
+    for expected, actual in zip(scalar, batched, strict=True):
+        assert actual.shape == (2, 1, 3, 4)
+        np.testing.assert_array_equal(np.asarray(actual), np.broadcast_to(expected, (2, 1, 3, 4)))
+    query = mx.random.normal((2, 4, 3, 4))
+    key = mx.random.normal((2, 2, 3, 4))
+    for expected, actual in zip(
+        rope.apply(query, key, offset=offset),
+        rope.apply(query, key, position_ids=positions), strict=True,
+    ):
+        np.testing.assert_array_equal(np.asarray(actual), np.asarray(expected))
+
+
+@pytest.mark.parametrize("fast", [False, True])
+@pytest.mark.parametrize("window", [None, 3])
+def test_left_padded_decoder_matches_each_row_through_decode(fast, window):
+    # A float32 oracle: Metal's optional TF32 GEMM changes rounding with B.
+    with mx.stream(mx.cpu):
+        from mlx_speech.models.qwen3_asr.text_decoder import FAST_DECODE_COMPUTE
+
+        mx.random.seed(23)
+        extra = {} if window is None else {
+            "use_sliding_window": True, "sliding_window": window, "max_window_layers": 0
+        }
+        config = _tiny_config(extra=extra)
+        model = Qwen3ASRTextForCausalLM(config)
+        compute = FAST_DECODE_COMPUTE if fast else None
+        sequences = [[1, 2], [3, 4, 5, 6, 7]]
+        caches = [Qwen3ASRTextKVCache.allocate(config, batch_size=1, max_length=12) for _ in sequences]
+        batch_cache = Qwen3ASRTextKVCache.allocate(config, batch_size=2, max_length=12)
+        mask = mx.array([[0, 0, 0, 1, 1], [1, 1, 1, 1, 1]])
+        positions = mx.maximum(mx.arange(5)[None, :] - mx.array([3, 0])[:, None], 0)
+        batch = model.prefill(
+            input_ids=mx.array([[0, 0, 0, 1, 2], sequences[1]]), attention_mask=mask,
+            position_ids=positions, kv_cache=batch_cache, compute=compute,
+        )
+        for row, (ids, cache) in enumerate(zip(sequences, caches, strict=True)):
+            single = model.prefill(input_ids=mx.array([ids]), kv_cache=cache, compute=compute)
+            for name in ("logits", "last_hidden_state"):
+                np.testing.assert_allclose(
+                    np.asarray(getattr(batch, name))[row, -len(ids):],
+                    np.asarray(getattr(single, name))[0], atol=3e-6, rtol=3e-6,
+                )
+        for step in range(3):
+            tokens = mx.array([[8 + step], [12 + step]])
+            validity = mx.concatenate([mask, mx.ones((2, step + 1), dtype=mx.int32)], axis=1)
+            batch = model.decode_step(
+                input_ids=tokens, attention_mask=validity,
+                position_ids=mx.array([[2 + step], [5 + step]]),
+                kv_cache=batch_cache, compute=compute,
+            )
+            for row, cache in enumerate(caches):
+                single = model.decode_step(input_ids=tokens[row:row + 1], kv_cache=cache, compute=compute)
+                for name in ("logits", "last_hidden_state"):
+                    np.testing.assert_allclose(
+                        np.asarray(getattr(batch, name))[row], np.asarray(getattr(single, name))[0],
+                        atol=3e-6, rtol=3e-6,
+                    )
+
+
+def test_cache_row_selection_preserves_live_prefix_when_growing():
+    config = _tiny_config()
+    cache = Qwen3ASRTextKVCache.allocate(config, batch_size=3, max_length=4)
+    keys = mx.arange(3 * 2 * 3 * 4, dtype=mx.float32).reshape(3, 2, 3, 4)
+    for layer in cache.layers:
+        layer.append(keys, -keys)
+    cache.prompt_length = 3
+    cache.select_rows(mx.array([2, 0], dtype=mx.int32))
+    cache.reserve(8)
+    assert cache.current_length == cache.prompt_length == 3
+    assert cache.max_length == 8
+    for layer in cache.layers:
+        assert layer.batch_size == 2
+        assert layer.keys.shape == layer.values.shape == (2, 2, 8, 4)
+        np.testing.assert_array_equal(np.asarray(layer.get()[0]), np.asarray(keys)[[2, 0]])
+        np.testing.assert_array_equal(np.asarray(layer.get()[1]), -np.asarray(keys)[[2, 0]])
+        layer.append(mx.ones((2, 2, 1, 4)), mx.zeros((2, 2, 1, 4)))
+    assert cache.current_length == 4

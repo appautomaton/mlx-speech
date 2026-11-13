@@ -145,3 +145,18 @@ def test_qwen3_asr_model_rejects_audio_text_width_mismatch():
                 )
             )
         )
+
+
+def test_qwen3_asr_replace_audio_embeddings_handles_per_row_lengths():
+    ids = mx.array([[0, 1, 31, 2], [1, 31, 31, 2]])
+    embeddings = mx.zeros((2, 4, 16))
+    features = [mx.full((1, 16), 7.0), mx.full((2, 16), 8.0)]
+    actual = np.asarray(replace_audio_embeddings(ids, embeddings, features, audio_token_id=31))
+    np.testing.assert_array_equal(actual[0, 2], np.full(16, 7.0))
+    np.testing.assert_array_equal(actual[1, 1:3], np.full((2, 16), 8.0))
+    assert count_audio_tokens(ids, audio_token_id=31) == 3
+    assert not actual[0, :2].any()
+    with pytest.raises(ValueError, match="one audio_features array per prompt row"):
+        replace_audio_embeddings(ids, embeddings, features[:1], audio_token_id=31)
+    with pytest.raises(ValueError, match="list of per-row"):
+        replace_audio_embeddings(ids, embeddings, features[0], audio_token_id=31)
