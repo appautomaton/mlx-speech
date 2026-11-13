@@ -330,18 +330,48 @@ class ResidualUnit(nn.Module):
         return x + hidden
 
 
+def _phase_matmul(x: mx.array, weight: mx.array) -> mx.array:
+    """Each frame times kernel taps ``(out, stride, in)``, interleaved in time."""
+
+    out_dim, stride, in_dim = weight.shape
+    hidden = x @ weight.transpose(2, 1, 0).reshape(in_dim, stride * out_dim)
+    return hidden.reshape(x.shape[0], x.shape[1] * stride, out_dim)
+
+
+def _transposed_upsample(
+    conv: nn.ConvTranspose1d, x: mx.array, carry: mx.array | None = None
+) -> tuple[mx.array, mx.array | None]:
+    """``conv`` for kernel ``stride`` or ``2 * stride``, without zero insertion.
+
+    Returns ``frames * stride`` samples. A ``2 * stride`` kernel also spills its
+    second half into the next frame: that is returned as the carry, and a
+    given ``carry`` from earlier frames is added to the first output frame.
+    """
+
+    stride, kernel = conv.stride, conv.weight.shape[1]
+    if kernel not in (stride, 2 * stride):
+        raise ValueError(f"Unsupported transposed kernel {kernel} at stride {stride}.")
+    hidden = _phase_matmul(x, conv.weight[:, :stride])
+    if "bias" in conv:
+        hidden = hidden + conv.bias
+    if kernel == stride:
+        return hidden, None
+    spill = _phase_matmul(x, conv.weight[:, stride:])
+    if carry is None:
+        carry = mx.zeros_like(spill[:, :stride])
+    shifted = mx.concatenate([carry, spill[:, :-stride]], axis=1)
+    return hidden + shifted, spill[:, -stride:]
+
+
 class UpsampleConv(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, rate: int) -> None:
         super().__init__()
-        kernel = 2 * rate
-        self.trim = kernel - rate
-        self.conv = nn.ConvTranspose1d(in_dim, out_dim, kernel, stride=rate, padding=0)
+        self.conv = nn.ConvTranspose1d(
+            in_dim, out_dim, 2 * rate, stride=rate, padding=0
+        )
 
     def __call__(self, x: mx.array) -> mx.array:
-        hidden = self.conv(x)
-        if self.trim:
-            hidden = hidden[:, : -self.trim, :]
-        return hidden
+        return _transposed_upsample(self.conv, x)[0]
 
 
 class DecoderBlock(nn.Module):
@@ -372,7 +402,7 @@ class _Transpose(nn.Module):
         )
 
     def __call__(self, x: mx.array) -> mx.array:
-        return self.conv(x)
+        return _transposed_upsample(self.conv, x)[0]
 
 
 class CodecDecoder(nn.Module):
@@ -426,22 +456,9 @@ def _causal_conv_step(
 def _upsample_step(
     layer: UpsampleConv, hidden: mx.array, tail: mx.array | None
 ) -> tuple[mx.array, mx.array | None]:
-    """Overlap-add transposed-convolution tails without counting bias twice."""
+    """Carry each chunk's spill into the next, so bias is added once."""
 
-    raw = layer.conv(hidden)
-    bias = layer.conv.bias
-    if bias is not None:
-        raw = raw - bias
-    if layer.trim == 0:
-        return raw if bias is None else raw + bias, None
-    if tail is not None:
-        raw = mx.concatenate(
-            [raw[:, : layer.trim, :] + tail, raw[:, layer.trim :, :]], axis=1
-        )
-    emitted = raw[:, : -layer.trim, :]
-    if bias is not None:
-        emitted = emitted + bias
-    return emitted, raw[:, -layer.trim :, :]
+    return _transposed_upsample(layer.conv, hidden, tail)
 
 
 def _convnext_step(

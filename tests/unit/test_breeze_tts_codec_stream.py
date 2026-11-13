@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import mlx.core as mx
+import mlx.nn as nn
+import pytest
 
 from mlx_speech.models.breeze_tts.codec import (
     CodecDecodeStream,
@@ -10,6 +12,7 @@ from mlx_speech.models.breeze_tts.codec import (
     DecoderBlock,
     PreTransformer,
     UpsampleConv,
+    _transposed_upsample,
     _snake,
     _upsample_step,
     _WindowKV,
@@ -138,3 +141,15 @@ def test_upsample_overlap_includes_bias_once() -> None:
     difference = mx.max(mx.abs(offline - mx.concatenate(parts, axis=1)))
     mx.eval(difference)
     assert float(difference.item()) < 1e-5
+
+
+@pytest.mark.parametrize("kernel, stride", [(2, 2), (6, 3), (16, 8)])
+def test_transposed_upsample_matches_transposed_convolution(kernel, stride) -> None:
+    mx.random.seed(3)
+    conv = nn.ConvTranspose1d(12, 5, kernel, stride=stride, padding=0)
+    conv.bias = mx.random.normal(conv.bias.shape)
+    hidden = mx.random.normal((2, 7, 12))
+    expected = conv(hidden)[:, : 7 * stride]
+    actual, _ = _transposed_upsample(conv, hidden)
+    assert actual.shape == expected.shape
+    assert mx.allclose(actual, expected, atol=1e-5).item()
