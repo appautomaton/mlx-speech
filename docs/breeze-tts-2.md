@@ -80,155 +80,68 @@ USE_TORCH=0 .venv/bin/python -m mlx_speech.tts.generate \
 
 ## Batch generation
 
-`generate_batch` generates independent utterances together and returns their
-waveforms in input order. The default targets 256 compute branches: 256 requests
-at `guidance_scale=1`, or 128 requests at any other scale. `batch_size` counts
-requests and can override that target. Longer input lists are partitioned.
+`generate_batch` renders independent lines together and returns
+`list[TTSOutput]` in input order, each 24 kHz mono PCM.
 
 ```python
 import mlx.core as mx
 
-mx.set_cache_limit(4 * 1024**3)
+mx.set_cache_limit(4 * 1024**3)  # Once per process; see Memory below.
 model = mlx_speech.tts.load("models/breezeblue/breeze_tts_2/mlx-int8")
 clips = model.generate_batch(
     lines,
     reference_audio="outputs/source/peggy_hill_ref.wav",
     reference_text=reference_text,
-    instruction="自然、清晰地朗读，语气温和。",
-    guidance_scale=4.0,
-    max_new_tokens=120,
-    seed=42,
+    max_new_tokens=[60, 120, 90],  # One frame budget per line, or one for all.
+    seeds=[42] * len(lines),
 )
 ```
 
-The voice reference, instruction and sampling controls are shared. Each request
-has its own random key, repetition history and EOS; finished requests leave the
-decode batch. Seeds default to `seed + input_index`; pass `seeds=[...]` to set
-them explicitly. The reference is encoded once per call. Text encoding and
-prefill handle unequal prompt lengths with masks and per-row positions. The
-codec groups variable-length outputs into bounded batches and trims causal
-padding before returning 24 kHz mono PCM.
+- Shared per call: reference, instruction, guidance scale and sampling
+  controls.
+- Per request: frame budget, random key, repetition history and EOS. A
+  request leaves the decode batch at EOS or at its budget. Seeds default to
+  `seed + input_index`.
+- `batch_size` counts requests per decode batch. Longer inputs are partitioned
+  in budget order, so short lines do not reserve a long line's cache. The
+  default is 256, or 128 under guidance, which runs two branches per request.
+- Frames are `waveform.size // 1920`. A request with exactly its budget's
+  frames was cut off; the call warns once, naming those input indices.
+- Equal seeds do not reproduce `generate()` takes; the random streams differ.
+- There is no silence stopping, finish metadata, streaming or work queue. For
+  host-side monitoring of one line, use `generate_stream`.
 
-MLX active allocation is only part of process memory. Its allocator can retain
-freed buffers, especially as EOS compaction creates different KV-cache shapes.
-Configure the process-wide pool explicitly as above when hosting batches; the
-library leaves this shared allocator policy to the caller. On this M5 Max the
-default free-cache limit was 121.6 GiB. Retaining different buffer sizes under
-that default caused excessive process memory despite much smaller active peaks.
+**Memory.** Each decode batch reserves 112 KiB of BF16 K/V per backbone row
+and position, for its longest prompt plus its largest budget. Guidance doubles
+the rows. 256 requests with a 200-position prompt and 1,500-frame budgets need
+about 46 GiB, so lower `batch_size` for long budgets. EOS compaction also frees
+K/V buffers of many sizes, and MLX's default free-buffer cache can grow close
+to system memory before reusing them. Set a cache limit once per process, as
+above; the library leaves that process-wide policy to the caller.
 
-The benchmark defaults to that 4 GiB free-cache limit, clears unused warmup
-buffers, and aborts if macOS reports a physical footprint above 48 GiB.
-`--cache-limit-gib` and `--memory-guard-gib` control those values. Its JSON reports
-active allocation, retained cache, current process footprint and lifetime peak
-footprint separately. The process-footprint figures below include warmup; MLX
-active peaks alone exclude retained cache and are not process-memory bounds.
+Measured on an M5 Max (128 GiB) with the int8 package, the Peggy reference,
+three Mandarin lines repeated, temperature 0.9, a 120-frame budget and a 4 GiB
+cache limit. Times include reference encoding, prefill, decoding and the codec.
 
-One cache-size comparison at CFG 1, batch 256 and temperature 0.9 measured
-29.01 s (25.59× real time, 21.38 GiB process peak) with a 4 GiB cache, versus
-32.30 s (22.98×, 24.57 GiB) with an 8 GiB cache. At batch 512, an 8 GiB cache
-measured 60.83 s (24.66×, 36.52 GiB), versus 62.60 s (23.97×, 32.18 GiB) at
-4 GiB: about 2.9% higher throughput and 4.34 GiB more peak footprint in that
-single comparison. Frame counts matched request by request, including the
-capped take. These runs do not establish one universally optimal cache size;
-4 GiB remains the benchmark default. The larger-cache records are
-`cache8-no-cfg-{256,512}.json`.
+| CFG | Requests | Wall time | Aggregate real time | Peak process footprint |
+| --- | --- | --- | --- | --- |
+| 1 | 256 | 29.0 s | 25.6× | 21.4 GiB |
+| 4 | 128 | 32.8 s | 14.6× | 21.8 GiB |
+| 4 | 256 | 60.1 s | 16.1× | 33.5 GiB |
 
-Batching uses explicit random keys and the actual top-k threshold. Equal seeds
-do not promise equal takes across the single-request and batch APIs; they use
-different random streams, and batched kernels can round differently.
-`generate_stream` continues to stream one utterance; `generate_batch` returns
-complete waveforms.
-
-### Host integration
-
-Use the loaded model's public `generate_batch` method from a source checkout
-that includes it. Keep one model loaded in the worker, configure the MLX cache
-once at process startup, and submit independent script lines together. There is
-no requirement for a helper process, JSON protocol or HTTP service.
-
-The call returns `list[TTSOutput]` in input order. Each item contains an MLX
-`waveform` array and `sample_rate` (24,000). Convert with
-`np.asarray(item.waveform, dtype=np.float32)` when the host uses NumPy, or pass
-the array directly to `mlx_speech.audio.write_wav`.
-
-| Host requirement | Current batch contract |
-| --- | --- |
-| One voice and delivery per render | Shared `reference_audio`, `reference_text`, `instruction` and `guidance_scale` |
-| Explicit seed for each line | `seeds=[...]`; a shared round seed is `seeds=[seed] * len(lines)` |
-| A ceiling for each line | One `max_new_tokens`/`max_frames` ceiling per call; group equal budgets into separate calls when needed |
-| Per-line frame count | `item.waveform.size // 1920` at 24 kHz |
-| Completion metadata | `TTSOutput` has no finish-reason field; reaching the common frame ceiling warns and can be detected from the frame count |
-| Silence detection while speaking | The existing single-line `generate_stream` supports host-side monitoring; the offline batch API does not stop on silence |
-| A queue that admits more work as lines finish | Not part of this API; inputs are supplied per call and partitioned by `batch_size` |
-
-Retry selection, ASR checks, text preparation, trimming, loudness normalization,
-joining and manifests remain host responsibilities. Batch generation returns
-every result without rerolling it. Existing host model locks should surround
-model ownership as before. Calls from multiple threads are not a supported
-replacement for `generate_batch`.
-
-Batch memory grows with the longest prompt and the frame ceiling. The measured
-256-request profile below used short lines and a 120-frame ceiling; grouping
-different ceilings avoids reserving a long line's budget for every short line.
-
-For a host with separate ANE and MLX backends, adapt each backend to the host's
-existing multi-line method. The ANE runtime can keep its resident queue and
-per-line options; MLX can use this in-process batch call. Their execution engines
-do not need a common server protocol. Production code that requires per-line
-ceilings and real-time silence stopping must account for the differences above;
-the offline batch call is not a drop-in replacement for that streaming path.
-
-Reproduce a target-size end-to-end measurement, including reference encoding,
-prefill, autoregressive decoding and codec output:
+512 requests without guidance were no faster than 256 (24.0×, 32.2 GiB). The
+same 256 requests rendered one at a time ran at 1.2× real time. Reproduce with:
 
 ```bash
 uv run python scripts/eval/benchmark_breeze_batch.py \
   --reference-audio outputs/source/peggy_hill_ref.wav \
   --reference-text outputs/source/peggy_hill_ref.txt \
-  --output /tmp/breeze-tts-2-mlx/batching/no-guidance.json
+  --output /tmp/breeze-batch.json
 ```
 
-For 128 guided requests, add `--guidance-scale 4`. `--serial` renders the entire
-same workload with `batch_size=1` for a measured comparison. The JSON retains
-per-request frame counts and truncation warnings; timing summaries alone do not
-establish that every take reached EOS. Selected WAVs are saved next to the JSON.
-Throughput measurements retain every result, including capped takes, under the
-fixed workload and frame budget. The benchmark does not run ASR, retry takes or
-discard outputs based on their content.
-
-Measured on 2026-11-13 on this M5 Max with 128 GiB memory and the int8 package:
-three Mandarin lines repeated across the input batch, Peggy reference, temperature
-0.9, top-k 50, repetition penalty 1.1, seeds starting at zero, and a 120-frame
-budget. The guided run used the instruction above. These runs use a 4 GiB
-free-cache limit and a 48 GiB process-footprint guard. Loading and warmup are
-excluded from time; reference preparation, prefill, decoding and PCM output are
-included.
-
-| CFG | Request batch | Wall time | Audio | Aggregate throughput | Peak process footprint | Natural EOS |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 | 256 | 29.01 s | 742.48 s | 25.59× real time | 21.38 GiB | 256/256 |
-| 1 | 512 | 62.60 s | 1500.24 s | 23.97× real time | 32.18 GiB | 511/512 |
-| 4 | 128 | 32.79 s | 479.44 s | 14.62× real time | 21.81 GiB | 128/128 |
-| 4 | 256 | 60.10 s | 969.68 s | 16.13× real time | 33.52 GiB | 256/256 |
-
-Aggregate throughput sums audio duration across requests. Keep the default 256
-requests without guidance for this workload: 512 did not improve throughput and
-one take hit its budget. With guidance, explicitly setting `batch_size=256`
-improved throughput over 128 by about 10%, at a higher memory cost. These are
-workload-specific measurements, not hard batch limits. The earlier serial
-baseline (256 requests, 605.13 s, 1.23× real time) was measured once without a
-cache limit and reused; it was not rerun.
-
-The four selected batch-256 no-guidance WAVs were byte-identical before and after
-the cache-policy change, preserving their earlier exact Qwen3-ASR transcriptions.
-Larger-batch spot checks are retained separately. The model can still stall or
-misread words on other inputs or seeds; frame-budget warnings remain enabled.
-
-TTS and ASR validation ran in separate, sequential processes. Raw measurements
-and selected WAVs are under `/tmp/breeze-tts-2-mlx/batching/`:
-`bounded-no-cfg-{256,512}.json`, `bounded-cfg4-{128,256}.json`,
-`bounded-quality.json`, and `final-no-cfg-256.json` (serial baseline). Earlier
-probes marked invalid after the padded-prefill NaN diagnosis are excluded.
+Add `--guidance-scale 4` for guided batches. The JSON keeps per-request frame
+counts, budget warnings, MLX active and cached memory, and the process
+footprint.
 
 ## Measured runtime
 

@@ -27,13 +27,13 @@ def test_public_batch_api_returns_real_waveforms(model, scale):
             ["你好。", "今天的天气很好。"],
             guidance_scale=scale,
             instruction="自然、清晰地朗读。" if scale != 1 else None,
-            max_new_tokens=4,
+            max_new_tokens=[3, 4],
             seeds=[11, 12],
             temperature=0.9,
         )
     assert len(output) == 2
-    for item in output:
+    for item, frames in zip(output, (3, 4), strict=True):
         assert item.sample_rate == 24_000
-        assert item.waveform.shape == (4 * 1920,)
+        assert item.waveform.shape == (frames * 1920,)
         assert mx.all(mx.isfinite(item.waveform)).item()
         assert mx.max(mx.abs(item.waveform)).item() > 1e-5

@@ -137,7 +137,7 @@ def test_eos_removes_only_its_request_and_does_not_touch_global_random_state(gui
         speech,
         prompts,
         [1, 2],
-        max_frames=3,
+        budgets=[3, 3],
         temperature=0.9,
         top_k=1,
         repetition_penalty=1.1,
@@ -183,3 +183,71 @@ def test_codec_batches_bound_padded_frames_for_mixed_output_lengths():
     assert [item.frames for item in output] == lengths
     assert all(rows * frames <= 256 for rows, frames in codec.calls)
     assert [item.samples.size for item in output] == [n * 1920 for n in lengths]
+
+
+def test_budget_warning_names_input_indices_across_partitions(monkeypatch):
+    from mlx_speech.generation import breeze_tts_batch as batch
+
+    def codes(speech, prompts, seeds, *, budgets, **_):
+        frames = budgets[0] if seeds == [8] else 1  # Only the second input is capped.
+        return [mx.zeros((frames, 16), mx.int32)]
+
+    monkeypatch.setattr(batch, "_prepare_prompts", lambda *args: [None])
+    monkeypatch.setattr(batch, "_generate_codes", codes)
+    monkeypatch.setattr(batch, "_decode_audio", lambda codec, rows: rows)
+    with pytest.warns(RuntimeWarning, match=r"requests \[1\] reached their frame"):
+        generate_breeze_batch(
+            None, None, None, ["one", "two"], seeds=[7, 8], max_frames=3, batch_size=1
+        )
+
+
+def test_each_request_stops_at_its_own_frame_budget():
+    config = _config()
+
+    class Head:
+        def __call__(self, hidden):  # Never EOS: every request runs to its budget.
+            logits = mx.full((len(hidden), 2052), -1000.0)
+            logits[:, 4] = 1000.0
+            return logits
+
+    speech = SimpleNamespace(
+        config=config,
+        backbone_model=BreezeBackbone(config),
+        depth_decoder=BreezeDepthDecoder(config),
+        lm_head=Head(),
+    )
+    codes = _generate_codes(
+        speech,
+        [mx.ones((2, 8)), mx.ones((4, 8)), mx.ones((3, 8))],
+        [1, 2, 3],
+        budgets=[3, 1, 2],
+        temperature=0.9,
+        top_k=1,
+        repetition_penalty=1.1,
+        cfg_scale=1.0,
+    )
+    assert [row.shape for row in codes] == [(3, 3), (1, 3), (2, 3)]
+
+
+def test_partitions_follow_budgets_and_results_keep_input_order(monkeypatch):
+    from mlx_speech.generation import breeze_tts_batch as batch
+
+    calls = []
+
+    def codes(speech, prompts, seeds, *, budgets, **_):
+        calls.append((seeds, budgets))
+        return [mx.zeros((b - 1, 16), mx.int32) for b in budgets]
+
+    monkeypatch.setattr(batch, "_prepare_prompts", lambda *args: [None])
+    monkeypatch.setattr(batch, "_generate_codes", codes)
+    monkeypatch.setattr(batch, "_decode_audio", lambda codec, rows: rows)
+    output = generate_breeze_batch(
+        None, None, None, ["a", "b", "c"], max_frames=[5, 2, 3], batch_size=2
+    )
+    assert calls == [([1, 2], [2, 3]), ([0], [5])]
+    assert [len(row) for row in output] == [4, 1, 2]
+
+
+def test_frame_budgets_must_match_the_texts():
+    with pytest.raises(ValueError, match="one per text"):
+        generate_breeze_batch(None, None, None, ["a", "b"], max_frames=[3])

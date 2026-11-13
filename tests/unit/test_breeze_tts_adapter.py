@@ -102,3 +102,23 @@ def test_registry_detects_the_mlx_package_and_model_type(tmp_path: Path) -> None
     (plain / "config.json").write_text('{"model_type":"breeze"}', encoding="utf-8")
     assert _resolve_tts_family(package) == "breeze_tts"
     assert _resolve_tts_family(plain) == "breeze_tts"
+
+
+def test_batch_adapter_passes_one_frame_budget_per_text(monkeypatch) -> None:
+    captured = {}
+
+    def generate_batch(*args, **kwargs):
+        captured.update(kwargs)
+        return [BreezeAudio(mx.ones((4,), dtype=mx.float32), 24_000, 2)] * 2
+
+    monkeypatch.setattr(
+        "mlx_speech.tts._adapters.breeze_tts.generate_breeze_batch", generate_batch
+    )
+    adapter = _Adapter()
+    output = adapter.generate_batch(["一", "二"], max_new_tokens=(30, 90))
+    assert captured["max_frames"] == [30, 90]
+    assert len(output) == 2 and output[0].sample_rate == 24_000
+    adapter.generate_batch(["一", "二"], max_new_tokens=40)
+    assert captured["max_frames"] == 40
+    with pytest.raises(ValueError, match="not both"):
+        adapter.generate_batch(["一", "二"], max_new_tokens=[1, 2], max_frames=[1, 2])

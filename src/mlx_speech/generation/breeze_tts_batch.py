@@ -31,7 +31,7 @@ def generate_breeze_batch(
     speaker: str = "S0",
     instruction: str | None = None,
     cfg_scale: float = 1.0,
-    max_frames: int = 80,
+    max_frames: int | Sequence[int] = 80,
     temperature: float = 0.9,
     top_k: int = 50,
     repetition_penalty: float = 1.1,
@@ -44,19 +44,24 @@ def generate_breeze_batch(
 ) -> list[BreezeAudio]:
     """Generate independent utterances, sharing reference and sampling controls.
 
-    The default is 256 backbone rows: 256 requests without guidance, 128 with
-    guidance. Larger inputs are partitioned without changing request seeds.
+    ``max_frames`` is one budget or one per text. The default is 256 backbone
+    rows: 256 requests without guidance, 128 with guidance. Larger inputs are
+    partitioned in budget order, so short requests do not reserve a long
+    request's cache; results keep input order and request seeds.
     """
     if isinstance(texts, str) or any(
         not isinstance(t, str) or not t.strip() for t in texts
     ):
         raise ValueError("texts must be a sequence of non-empty strings.")
-    if (
-        not isinstance(max_frames, Integral)
-        or isinstance(max_frames, bool)
-        or max_frames <= 0
+    budgets = (
+        [max_frames] * len(texts)
+        if isinstance(max_frames, Integral)
+        else list(max_frames)
+    )
+    if len(budgets) != len(texts) or any(
+        not isinstance(b, Integral) or isinstance(b, bool) or b <= 0 for b in budgets
     ):
-        raise ValueError("max_frames must be a positive integer.")
+        raise ValueError("max_frames must be a positive integer, or one per text.")
     for name, value in (
         ("temperature", temperature),
         ("cfg_scale", cfg_scale),
@@ -105,29 +110,46 @@ def generate_breeze_batch(
         prefix = mx.concatenate([ref_hidden, embeddings, end])
         mx.eval(prefix)
     elapsed["prepare_seconds"] += time.perf_counter() - started
-    results: list[BreezeAudio] = []
-    for start in range(0, len(texts), batch_size):
-        chunk = texts[start : start + batch_size]
+    results: list[BreezeAudio | None] = [None] * len(texts)
+    capped: list[int] = []
+    order = sorted(range(len(texts)), key=budgets.__getitem__)
+    for start in range(0, len(order), batch_size):
+        chunk = order[start : start + batch_size]
         started = time.perf_counter()
         prompts = _prepare_prompts(
-            speech, tokenizer, chunk, speaker, direction, cfg_scale != 1.0, prefix
+            speech,
+            tokenizer,
+            [texts[i] for i in chunk],
+            speaker,
+            direction,
+            cfg_scale != 1.0,
+            prefix,
         )
         elapsed["prepare_seconds"] += time.perf_counter() - started
         started = time.perf_counter()
         codes = _generate_codes(
             speech,
             prompts,
-            request_seeds[start : start + len(chunk)],
-            max_frames=max_frames,
+            [request_seeds[i] for i in chunk],
+            budgets=[budgets[i] for i in chunk],
             temperature=temperature,
             top_k=top_k,
             repetition_penalty=repetition_penalty,
             cfg_scale=cfg_scale,
         )
         elapsed["decode_seconds"] += time.perf_counter() - started
+        capped += [i for i, row in zip(chunk, codes) if len(row) == budgets[i]]
         started = time.perf_counter()
-        results.extend(_decode_audio(codec, codes))
+        for i, audio in zip(chunk, _decode_audio(codec, codes), strict=True):
+            results[i] = audio
         elapsed["codec_seconds"] += time.perf_counter() - started
+    if capped:
+        warnings.warn(
+            f"Breeze batch requests {sorted(capped)} reached their frame budget "
+            "before EOS; their speech may be cut off.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
     if timings is not None:
         timings.update(elapsed)
     return results
@@ -277,16 +299,17 @@ def _generate_codes(
     prompts,
     seeds,
     *,
-    max_frames,
+    budgets,
     temperature,
     top_k,
     repetition_penalty,
     cfg_scale,
 ):
+    max_frames = max(budgets)
     hidden, cache, positions, pads = _prefill(speech, prompts, max_frames)
     size = len(seeds)
     active = list(range(size))
-    lengths = [max_frames] * size
+    lengths = list(budgets)
     keys = mx.stack([mx.random.key(int(seed)) for seed in seeds])
     seen = mx.zeros((size, speech.config.vocab_size + 1), mx.bool_)
     generated = mx.zeros((size, max_frames, speech.config.num_codebooks), mx.int32)
@@ -305,14 +328,14 @@ def _generate_codes(
         draw_keys = _frame_keys(keys, speech.config.num_codebooks + 1)
         first = _sample_rows(logits, draw_keys[:, 1], temperature, top_k)
         tokens = first.tolist()  # One host read per frame, for independent EOS.
+        # A request leaves at EOS or once it has its budget's frames.
         keep = [
             i
             for i, token in enumerate(tokens)
-            if token != speech.config.backbone_eos_id
+            if token != speech.config.backbone_eos_id and step < budgets[active[i]]
         ]
-        for i, token in enumerate(tokens):
-            if token == speech.config.backbone_eos_id:
-                lengths[active[i]] = step
+        for i in set(range(count)) - set(keep):
+            lengths[active[i]] = step
         if not keep:
             active = []
             break
@@ -356,13 +379,6 @@ def _generate_codes(
             hidden,
             _cache_arrays(cache),
             _cache_arrays(depth_cache),
-        )
-    if active:
-        warnings.warn(
-            f"Breeze batch requests {active} reached the {max_frames}-frame budget "
-            f"({max_frames / FRAME_RATE:.1f} s) before EOS; their speech may be cut off.",
-            RuntimeWarning,
-            stacklevel=2,
         )
     codes = [generated[i, :length] for i, length in enumerate(lengths)]
     mx.eval(codes)
