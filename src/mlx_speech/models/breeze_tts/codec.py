@@ -9,6 +9,7 @@ the official decoder config and its streaming cache.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import partial
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -77,6 +78,11 @@ class CausalConv1d(nn.Module):
         return self.conv(x)
 
 
+@partial(mx.compile, shapeless=True)
+def _snake(x: mx.array, alpha: mx.array, beta: mx.array) -> mx.array:
+    return x + mx.square(mx.sin(x * mx.exp(alpha))) / (mx.exp(beta) + 1e-9)
+
+
 class SnakeBeta(nn.Module):
     def __init__(self, channels: int) -> None:
         super().__init__()
@@ -84,9 +90,7 @@ class SnakeBeta(nn.Module):
         self.beta = mx.zeros((channels,))
 
     def __call__(self, x: mx.array) -> mx.array:
-        alpha = mx.exp(self.alpha)
-        beta = mx.exp(self.beta)
-        return x + mx.square(mx.sin(x * alpha)) / (beta + 1e-9)
+        return _snake(x, self.alpha, self.beta)
 
 
 class ConvNeXtBlock(nn.Module):
