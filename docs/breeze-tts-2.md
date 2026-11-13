@@ -78,6 +78,71 @@ USE_TORCH=0 .venv/bin/python -m mlx_speech.tts.generate \
   --output /tmp/breeze-tts-2-mlx/wav/peggy.wav
 ```
 
+## Batch generation
+
+`generate_batch` renders independent lines together and returns
+`list[TTSOutput]` in input order, each 24 kHz mono PCM.
+
+```python
+import mlx.core as mx
+
+mx.set_cache_limit(4 * 1024**3)  # Once per process; see Memory below.
+model = mlx_speech.tts.load("models/breezeblue/breeze_tts_2/mlx-int8")
+clips = model.generate_batch(
+    lines,
+    reference_audio="outputs/source/peggy_hill_ref.wav",
+    reference_text=reference_text,
+    max_new_tokens=[60, 120, 90],  # One frame budget per line, or one for all.
+    seeds=[42] * len(lines),
+)
+```
+
+- Shared per call: reference, instruction, guidance scale and sampling
+  controls.
+- Per request: frame budget, random key, repetition history and EOS. A
+  request leaves the decode batch at EOS or at its budget. Seeds default to
+  `seed + input_index`.
+- `batch_size` counts requests per decode batch. Longer inputs are partitioned
+  in budget order, so short lines do not reserve a long line's cache. The
+  default is 256, or 128 under guidance, which runs two branches per request.
+- Frames are `waveform.size // 1920`. A request with exactly its budget's
+  frames was cut off; the call warns once, naming those input indices.
+- Equal seeds do not reproduce `generate()` takes; the random streams differ.
+- There is no silence stopping, finish metadata, streaming or work queue. For
+  host-side monitoring of one line, use `generate_stream`.
+
+**Memory.** Each decode batch reserves 112 KiB of BF16 K/V per backbone row
+and position, for its longest prompt plus its largest budget. Guidance doubles
+the rows. 256 requests with a 200-position prompt and 1,500-frame budgets need
+about 46 GiB, so lower `batch_size` for long budgets. EOS compaction also frees
+K/V buffers of many sizes, and MLX's default free-buffer cache can grow close
+to system memory before reusing them. Set a cache limit once per process, as
+above; the library leaves that process-wide policy to the caller.
+
+Measured on an M5 Max (128 GiB) with the int8 package, the Peggy reference,
+three Mandarin lines repeated, temperature 0.9, a 120-frame budget and a 4 GiB
+cache limit. Times include reference encoding, prefill, decoding and the codec.
+
+| CFG | Requests | Wall time | Aggregate real time | Peak process footprint |
+| --- | --- | --- | --- | --- |
+| 1 | 256 | 29.0 s | 25.6× | 21.4 GiB |
+| 4 | 128 | 32.8 s | 14.6× | 21.8 GiB |
+| 4 | 256 | 60.1 s | 16.1× | 33.5 GiB |
+
+512 requests without guidance were no faster than 256 (24.0×, 32.2 GiB). The
+same 256 requests rendered one at a time ran at 1.2× real time. Reproduce with:
+
+```bash
+uv run python scripts/eval/benchmark_breeze_batch.py \
+  --reference-audio outputs/source/peggy_hill_ref.wav \
+  --reference-text outputs/source/peggy_hill_ref.txt \
+  --output /tmp/breeze-batch.json
+```
+
+Add `--guidance-scale 4` for guided batches. The JSON keeps per-request frame
+counts, budget warnings, MLX active and cached memory, and the process
+footprint.
+
 ## Measured runtime
 
 These numbers are from one warmed process on this Mac. Loading the package

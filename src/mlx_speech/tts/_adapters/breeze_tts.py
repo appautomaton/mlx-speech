@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from numbers import Integral
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from ...generation.breeze_tts import (
     generate_breeze_stream,
     load_breeze_speech,
 )
+from ...generation.breeze_tts_batch import generate_breeze_batch
 from .._adapter import TTSOutput
 
 
@@ -120,6 +122,73 @@ class BreezeTTSAdapter:
         )
         for chunk in chunks:
             yield TTSOutput(waveform=chunk, sample_rate=SAMPLE_RATE)
+
+    def generate_batch(
+        self,
+        texts: Sequence[str],
+        *,
+        reference_audio: str | Path | mx.array | None = None,
+        reference_text: str | None = None,
+        reference_sample_rate: int | None = None,
+        max_new_tokens: int | Sequence[int] | None = None,
+        max_frames: int | Sequence[int] | None = None,
+        instruction: str | None = None,
+        cfg_scale: float | None = None,
+        guidance_scale: float | None = None,
+        speaker: str = "S0",
+        temperature: float = 0.9,
+        top_k: int = 50,
+        repetition_penalty: float = 1.1,
+        seed: int = 0,
+        seeds: Sequence[int] | None = None,
+        batch_size: int | None = None,
+    ) -> list[TTSOutput]:
+        """Generate independent utterances together, in input order.
+
+        Reference, instruction and sampling controls are shared. The frame
+        budget is one value or one per text; a request whose output has exactly
+        its budget's frames was cut off. Seeds default to ``seed + input_index``.
+        The default batch uses 256 compute branches: 256 utterances without
+        guidance, 128 with guidance.
+        """
+        budgets = None
+        if not isinstance(max_new_tokens, Integral | None) or not isinstance(
+            max_frames, Integral | None
+        ):
+            if max_new_tokens is not None and max_frames is not None:
+                raise ValueError("Set max_new_tokens or max_frames, not both.")
+            budgets = list(max_frames if max_frames is not None else max_new_tokens)
+            max_new_tokens = max_frames = None
+        controls = self._controls(
+            reference_audio=reference_audio,
+            reference_text=reference_text,
+            reference_sample_rate=reference_sample_rate,
+            max_new_tokens=max_new_tokens,
+            max_frames=max_frames,
+            instruction=instruction,
+            cfg_scale=cfg_scale,
+            guidance_scale=guidance_scale,
+            speaker=speaker,
+            temperature=temperature,
+            top_k=top_k,
+            repetition_penalty=repetition_penalty,
+            seed=seed,
+        )
+        if budgets is not None:
+            controls["max_frames"] = budgets
+        audio = generate_breeze_batch(
+            self._speech,
+            self._codec,
+            self._tokenizer,
+            texts,
+            seeds=seeds,
+            batch_size=batch_size,
+            **controls,
+        )
+        return [
+            TTSOutput(waveform=item.samples, sample_rate=item.sample_rate)
+            for item in audio
+        ]
 
     def _controls(
         self,

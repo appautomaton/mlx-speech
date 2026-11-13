@@ -34,9 +34,8 @@ class CodebookHeads(nn.Module):
                 f"{tuple(cache_position.shape)} vs {tuple(hidden_states.shape)}."
             )
         selected = self.weight[cache_position - 1]
-        return mx.matmul(hidden_states[:, :, None, :], selected[None, :, :, :]).squeeze(
-            axis=2
-        )
+        # Put requests on the matrix rows so one GEMM reuses each codebook head.
+        return mx.matmul(hidden_states.transpose(1, 0, 2), selected).transpose(1, 0, 2)
 
 
 class _DepthModel(nn.Module):

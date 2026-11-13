@@ -85,3 +85,13 @@ def test_eos_before_the_budget_does_not_warn() -> None:
             _iter_code_frames(_Speech(EOS), object(), object(), "hello", max_frames=3)
         )
     assert frames == []
+
+
+def test_top_k_keeps_k_candidates_not_only_the_maximum() -> None:
+    # mx.topk returns its k values unsorted; the last one is not the threshold.
+    logits = mx.array([[0.0, 3.0, 1.0, 2.0, -1.0]])
+    draws = set()
+    for seed in range(64):
+        mx.random.seed(seed)
+        draws.add(breeze_tts._sample(logits, temperature=10.0, top_k=3).item())
+    assert draws == {1, 2, 3}
