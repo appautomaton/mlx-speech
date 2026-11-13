@@ -87,7 +87,7 @@ USE_TORCH=0 .venv/bin/python -m mlx_speech.tts.generate \
 import mlx.core as mx
 
 mx.set_cache_limit(4 * 1024**3)  # Once per process; see Memory below.
-model = mlx_speech.tts.load("models/breezeblue/breeze_tts_2/mlx-int8")
+model = mlx_speech.tts.load("models/breezeblue/breeze_tts_2/mlx-bf16")
 clips = model.generate_batch(
     lines,
     reference_audio="outputs/source/peggy_hill_ref.wav",
@@ -98,7 +98,8 @@ clips = model.generate_batch(
 ```
 
 - Shared per call: reference, instruction, guidance scale and sampling
-  controls.
+  controls. The reference is encoded once per call; its backbone prefix is
+  prefilled once per decode batch and reused across requests.
 - Per request: frame budget, random key, repetition history and EOS. A
   request leaves the decode batch at EOS or at its budget. Seeds default to
   `seed + input_index`.
@@ -121,7 +122,8 @@ above; the library leaves that process-wide policy to the caller.
 
 Measured on an M5 Max (128 GiB) with the int8 package, the Peggy reference,
 three Mandarin lines repeated, temperature 0.9, a 120-frame budget and a 4 GiB
-cache limit. Times include reference encoding, prefill, decoding and the codec.
+cache limit, before shared-prefix prefill reuse. Times include reference
+encoding, prefill, decoding and the codec.
 
 | CFG | Requests | Wall time | Aggregate real time | Peak process footprint |
 | --- | --- | --- | --- | --- |

@@ -136,6 +136,7 @@ def generate_breeze_batch(
             top_k=top_k,
             repetition_penalty=repetition_penalty,
             cfg_scale=cfg_scale,
+            prefix_length=len(prefix) if prefix is not None else 0,
         )
         elapsed["decode_seconds"] += time.perf_counter() - started
         capped += [i for i, row in zip(chunk, codes) if len(row) == budgets[i]]
@@ -203,7 +204,7 @@ def _prepare_prompts(speech, tokenizer, texts, speaker, instruction, guided, pre
     return prompts
 
 
-def _prefill(speech, prompts, max_frames):
+def _prefill(speech, prompts, max_frames, *, prefix_length=0):
     lengths = mx.array([len(row) for row in prompts], mx.int32)
     longest = max(len(row) for row in prompts)
     config = speech.config.backbone
@@ -228,7 +229,19 @@ def _prefill(speech, prompts, max_frames):
     padded = mx.stack(
         [mx.pad(row, [(longest - len(row), 0), (0, 0)]) for row in prompts]
     )
-    for start in range(0, longest, 128):
+    start = 0
+    if prefix_length and len(prompts) > 1:
+        _, shared, _, _ = _prefill(speech, [prompts[0][:prefix_length]], 1)
+        # Preserve the existing left-padding layout and rotary positions. Shorter
+        # rows replay the small prefix tail that falls beyond this shared offset.
+        slots = mx.maximum(mx.arange(prefix_length)[None, :] - pads[:, None], 0)
+        for layer, source in zip(cache, shared, strict=True):
+            layer.keys[:, :prefix_length] = source.keys[0, slots]
+            layer.values[:, :prefix_length] = source.values[0, slots]
+            layer.offset = prefix_length
+        mx.eval(_cache_arrays(cache))
+        start = prefix_length
+    for start in range(start, longest, 128):
         end = min(start + 128, longest)
         positions = mx.maximum(mx.arange(start, end)[None, :] - pads[:, None], 0)
         hidden = speech.backbone_model(
@@ -304,9 +317,12 @@ def _generate_codes(
     top_k,
     repetition_penalty,
     cfg_scale,
+    prefix_length=0,
 ):
     max_frames = max(budgets)
-    hidden, cache, positions, pads = _prefill(speech, prompts, max_frames)
+    hidden, cache, positions, pads = _prefill(
+        speech, prompts, max_frames, prefix_length=prefix_length
+    )
     size = len(seeds)
     active = list(range(size))
     lengths = list(budgets)

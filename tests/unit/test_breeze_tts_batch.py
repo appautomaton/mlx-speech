@@ -50,7 +50,36 @@ def test_padded_prefill_and_cached_decode_match_individual_rows():
         _check_padded_decode()
 
 
-def test_metal_bfloat16_padding_queries_do_not_poison_valid_hidden_states():
+def test_shared_prefix_prefill_preserves_padding_and_next_decode():
+    with mx.stream(mx.cpu):
+        config = _config()
+        backbone = BreezeBackbone(config)
+        speech = SimpleNamespace(config=config, backbone_model=backbone)
+        prefix = mx.random.normal((3, 8))
+        # Include a padding gap longer than the prefix itself.
+        prompts = [
+            mx.concatenate([prefix, mx.random.normal((length, 8))])
+            for length in (1, 3, 7)
+        ]
+        expected, original, positions, pads = _prefill(speech, prompts, 4)
+        actual, reused, reused_positions, reused_pads = _prefill(
+            speech, prompts, 4, prefix_length=len(prefix)
+        )
+        assert mx.allclose(actual, expected, atol=1e-5).item()
+        assert mx.array_equal(positions, reused_positions).item()
+        assert mx.array_equal(pads, reused_pads).item()
+        next_input = mx.random.normal((3, 1, 8))
+        expected = backbone(
+            next_input, original, position_ids=positions[:, None], pad_lengths=pads
+        )
+        actual = backbone(
+            next_input, reused, position_ids=positions[:, None], pad_lengths=pads
+        )
+        assert mx.allclose(actual, expected, atol=1e-5).item()
+
+
+@pytest.mark.parametrize("prefix_length", [0, 210])
+def test_metal_bfloat16_padding_queries_do_not_poison_valid_hidden_states(prefix_length):
     config = _config()
     config.backbone = replace(
         config.backbone,
@@ -66,11 +95,12 @@ def test_metal_bfloat16_padding_queries_do_not_poison_valid_hidden_states():
     backbone = BreezeBackbone(config)
     backbone.set_dtype(mx.bfloat16)
     speech = SimpleNamespace(config=config, backbone_model=backbone)
+    prefix = mx.random.normal((210, 128)).astype(mx.bfloat16)
     prompts = [
-        mx.random.normal((length, 128)).astype(mx.bfloat16)
-        for length in (224, 225, 220)
+        mx.concatenate([prefix, mx.random.normal((length, 128)).astype(mx.bfloat16)])
+        for length in (14, 15, 10)
     ]
-    hidden, cache, _, _ = _prefill(speech, prompts, 4)
+    hidden, cache, _, _ = _prefill(speech, prompts, 4, prefix_length=prefix_length)
     assert mx.all(mx.isfinite(hidden)).item()
     assert all(mx.all(mx.isfinite(layer.values)).item() for layer in cache)
 
