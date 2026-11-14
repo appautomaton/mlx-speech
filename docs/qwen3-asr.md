@@ -145,43 +145,20 @@ for result in results:
     print(result.language, result.text)
 ```
 
-- `audios` must be a list or tuple; an empty input returns `[]`. Results retain
-  input order. Internally, clips are sorted by sample count and processed in
-  groups to reduce padding.
-- A language string broadcasts to every clip. A language sequence must contain
-  exactly one entry per clip. `None`, `""`, and `"auto"` select auto-detection
-  for that clip.
-- Array inputs must already be **1-D mono at 16 kHz** and are **not resampled**;
-  `sample_rate` is checked and a mismatch raises. Path inputs use `load_audio`,
-  which downmixes to mono and resamples to 16 kHz; `sample_rate` does not apply
-  to paths.
-- Every path, array, language, prompt, and context-window budget is validated
-  before model inference. One bad input fails the whole call with its input
-  index, before any decoding. Batch transcription has no `context` argument;
-  single-clip `generate` still accepts it.
-- `max_new_tokens=None` means **448 tokens per clip**. `batch_size=None` means
-  **32**; an explicit batch size must be a positive integer. Output stops at
-  each clip's first EOS. Completed rows are removed together when they reach
-  one quarter of the current batch, or before growing the KV cache.
-- KV storage starts with the padded prompt plus up to 64 decode positions.
-  Decode capacity doubles only when needed, capped at `max_new_tokens`.
-  Decoding queues the next prediction before reading the current tokens back;
-  finished rows may do ignored work until compaction. Features and audio
-  encoding remain serial per clip; model math is unchanged.
+- Results keep input order. Clips are grouped by length to limit padding.
+- `language` is one string for every clip, or one entry per clip. `None`, `""`,
+  and `"auto"` auto-detect.
+- Arrays must be 1-D mono at 16 kHz and are not resampled. Paths are loaded as
+  mono and resampled to 16 kHz.
+- All inputs are validated before inference; one bad input fails the call and
+  names its index. There is no `context` argument; single-clip `generate` keeps it.
+- Defaults: `batch_size=48`, `max_new_tokens=448` per clip.
 
-On an M5 Max, one pass over 128 English crops (2–15 seconds), with the 1.7B int8
-model and a 448-token budget, measured 4.88 clips/s at B=32 versus 1.56 serial
-and 3.69 at B=64. Peak MLX allocations were 4.47 GiB at B=32 and 5.67 GiB at
-B=64, including weights. B=32 remains the default: B=64 still did not improve
-throughput and used more memory. These are single-pass measurements, not a
-threshold sweep. Leave headroom beyond these MLX allocations for retained
-buffers, CPU audio, and other applications. Longer prompts increase memory;
-longer outputs grow the cache toward the token budget. Reduce `batch_size`
-or the token budget on smaller machines. Reproduce with
-`uv run python scripts/eval/benchmark_qwen3_asr_batch.py`.
-
-Single and batch transcription share the native-projection, fused-attention
-greedy decoder. Batched output may differ slightly from single-clip output.
+On an M5 Max with the BF16 1.7B model, 256 clips of 2–15 s run at about 45
+clips/s (~245× real time) at B=48, versus 4.5 clips/s one at a time; peak
+memory is 6.7 GiB. Throughput is flat from B=40 to B=50. Lower `batch_size` on
+machines with less memory. Batched output may differ slightly from single-clip
+output.
 
 ## Language Behavior
 

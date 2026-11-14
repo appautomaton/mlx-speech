@@ -134,11 +134,11 @@ class _FakeModel:
         self.cache = None
         self.eos_token_id = eos_token_id
 
-    def get_audio_features(self, input_features, *, feature_attention_mask):
+    def get_audio_features_batch(self, input_features):
         self.audio_features_called = True
-        assert input_features.shape == (1, 8, 10)
-        assert feature_attention_mask.shape == (1, 10)
-        return mx.ones((2, 8), dtype=mx.float32) * 99.0
+        assert len(input_features) == 1
+        assert input_features[0].shape == (8, 10)
+        return [mx.ones((2, 8), dtype=mx.float32) * 99.0]
 
     def embed_input_ids(self, input_ids):
         ids = mx.where(input_ids == 10, mx.array(0, dtype=input_ids.dtype), input_ids)
@@ -146,8 +146,8 @@ class _FakeModel:
 
     def prefill(self, *, inputs_embeds, max_cache_len, attention_mask=None, position_ids=None,
                 compute=None, last_logits_only=False):
-        from mlx_speech.models.qwen3_asr.text_decoder import FAST_DECODE_COMPUTE
-        assert compute is FAST_DECODE_COMPUTE
+        from mlx_speech.models.qwen3_asr.text_decoder import NATIVE_DECODE_COMPUTE
+        assert compute is NATIVE_DECODE_COMPUTE
         assert attention_mask is None and position_ids is None
         assert last_logits_only is True
         self.prefill_inputs = inputs_embeds
@@ -163,8 +163,8 @@ class _FakeModel:
         return SimpleNamespace(logits=logits, past_key_values=self.cache)
 
     def decode_step(self, *, input_ids, kv_cache, attention_mask=None, position_ids=None, compute=None):
-        from mlx_speech.models.qwen3_asr.text_decoder import FAST_DECODE_COMPUTE
-        assert compute is FAST_DECODE_COMPUTE
+        from mlx_speech.models.qwen3_asr.text_decoder import NATIVE_DECODE_COMPUTE
+        assert compute is NATIVE_DECODE_COMPUTE
         assert attention_mask is None and position_ids is None
         assert kv_cache is self.cache
         token = int(np.array(input_ids).reshape(-1)[0])
@@ -295,6 +295,46 @@ def test_qwen3_asr_batch_matches_serial_in_input_order(tiny_transcriber, batch_s
     assert actual == expected
 
 
+def test_qwen3_asr_group_encodes_once_without_device_position_reads(tiny_transcriber, monkeypatch):
+    audios = _batch_clips()
+    expected = [tiny_transcriber.transcribe(audio, max_new_tokens=2) for audio in audios]
+    encode = tiny_transcriber.model.get_audio_features_batch
+    seen = []
+
+    def checked(features):
+        seen.append([row.shape for row in features])
+        return encode(features)
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("batch audio path used the serial encoder or read device positions")
+
+    monkeypatch.setattr(tiny_transcriber.model, "get_audio_features_batch", checked)
+    monkeypatch.setattr(tiny_transcriber.model, "get_audio_features", unexpected)
+    monkeypatch.setattr("mlx_speech.models.qwen3_asr.model._audio_token_positions", unexpected)
+    actual = tiny_transcriber.transcribe_batch(audios, batch_size=8, max_new_tokens=2)
+
+    assert seen == [[(8, length) for length in [10, 20, 30, 40, 50]]]
+    assert actual == expected
+
+
+def test_qwen3_asr_group_rejects_encoded_length_mismatch(monkeypatch):
+    runtime, model, _ = _runtime()
+    monkeypatch.setattr(model, "get_audio_features_batch", lambda features: [mx.zeros((1, 8))])
+    with pytest.raises(RuntimeError, match="encoded audio length does not match"):
+        runtime.transcribe(np.zeros(1600, dtype=np.float32), max_new_tokens=2)
+    assert model.prefill_inputs is None
+
+
+@pytest.mark.parametrize("samples", [160, 1600, 7999])
+def test_qwen3_asr_prepare_does_not_pad_sub_half_second_audio(tiny_transcriber, samples):
+    waveform, prompt = tiny_transcriber._prepare_audio(
+        np.zeros(samples, dtype=np.float32), sample_rate=16000, language=None,
+        context="", max_new_tokens=2,
+    )
+    assert len(waveform) == samples
+    assert prompt.audio_length == tiny_transcriber.processor.feature_extractor.preflight_shape(samples)[1]
+
+
 def test_qwen3_asr_batch_broadcasts_string_language(tiny_transcriber):
     audios = _batch_clips()[:3]
     expected = [tiny_transcriber.transcribe(a, language="English", max_new_tokens=2) for a in audios]
@@ -339,7 +379,7 @@ def test_qwen3_asr_batch_preflights_every_row_before_model(tiny_transcriber, mon
     def unexpected(*args, **kwargs):
         pytest.fail("model invoked before validation completed")
 
-    monkeypatch.setattr(tiny_transcriber.model, "get_audio_features", unexpected)
+    monkeypatch.setattr(tiny_transcriber.model, "get_audio_features_batch", unexpected)
     monkeypatch.setattr(tiny_transcriber.model, "prefill", unexpected)
     audios = _batch_clips()[:2]
     languages = [None, None]
@@ -464,7 +504,7 @@ def test_qwen3_asr_batch_accepts_tuple_of_numpy_and_mlx_waveforms(tiny_transcrib
     ) == [single, single]
 
 
-def test_qwen3_asr_batch_default_groups_32_clips(tiny_transcriber, monkeypatch):
+def test_qwen3_asr_batch_default_groups_48_clips(tiny_transcriber, monkeypatch):
     prefill = tiny_transcriber.model.prefill
     sizes = []
 
@@ -474,9 +514,9 @@ def test_qwen3_asr_batch_default_groups_32_clips(tiny_transcriber, monkeypatch):
 
     monkeypatch.setattr(tiny_transcriber.model, "prefill", checked)
     assert len(tiny_transcriber.transcribe_batch(
-        [_batch_clips()[1]] * 33, max_new_tokens=1
-    )) == 33
-    assert sizes == [32, 1]
+        [_batch_clips()[1]] * 49, max_new_tokens=1
+    )) == 49
+    assert sizes == [48, 1]
 
 
 

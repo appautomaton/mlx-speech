@@ -9,6 +9,9 @@ import pytest
 from mlx_speech.models.qwen3_asr.feature_extraction import (
     Qwen3ASRFeatureExtractor,
     _get_feat_extract_output_lengths,
+    _get_mel_filters,
+    _hann_window,
+    _spectrogram,
 )
 
 
@@ -118,3 +121,42 @@ def test_qwen3_asr_feature_output_length_formula_matches_reference_cases():
 
     assert _get_feat_extract_output_lengths(lengths).tolist() == [0, 1, 2, 13, 14, 130]
     assert _get_feat_extract_output_lengths(100) == 13
+
+
+def _spectrogram_loop(waveform, *, window, frame_length, hop_length, mel_filters, dither):
+    """Pre-vectorization frontend, including its per-frame dither draws."""
+    waveform = np.pad(
+        waveform.astype(np.float64), [(frame_length // 2, frame_length // 2)], mode="reflect",
+    )
+    window = window.astype(np.float64)
+    num_frames = int(1 + np.floor((waveform.size - frame_length) / hop_length))
+    spectrum = np.empty((num_frames, frame_length // 2 + 1), dtype=np.float32)
+    for frame_idx in range(num_frames):
+        start = frame_idx * hop_length
+        frame = waveform[start : start + frame_length].copy()
+        if dither != 0.0:
+            frame += dither * np.random.randn(frame_length)
+        frame *= window
+        fft = np.fft.rfft(frame)
+        spectrum[frame_idx] = (np.abs(fft, dtype=np.float64) ** 2).astype(np.float32)
+    mel_spec = np.maximum(1e-10, mel_filters.T @ spectrum.T)
+    return np.log10(mel_spec).astype(np.float32)
+
+
+@pytest.mark.parametrize("samples", [160, 1600, 1733, 128000])
+@pytest.mark.parametrize("dither", [0.0, 0.001])
+def test_qwen3_asr_vectorized_spectrogram_matches_loop(samples, dither):
+    waveform = np.random.default_rng(74).normal(0, 0.1, samples).astype(np.float32)
+    kwargs = dict(
+        window=_hann_window(400), frame_length=400, hop_length=160,
+        mel_filters=_get_mel_filters(sample_rate=16000, n_fft=400, n_mels=128), dither=dither,
+    )
+    state = np.random.get_state()
+    try:
+        np.random.seed(75)
+        expected = _spectrogram_loop(waveform, **kwargs)
+        np.random.seed(75)
+        actual = _spectrogram(waveform, **kwargs)
+    finally:
+        np.random.set_state(state)
+    np.testing.assert_array_equal(actual, expected)

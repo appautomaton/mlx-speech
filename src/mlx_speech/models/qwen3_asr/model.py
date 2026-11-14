@@ -63,6 +63,10 @@ class Qwen3ASRModel(nn.Module):
             outputs.append(encoded)
         return mx.concatenate(outputs, axis=0) if len(outputs) > 1 else outputs[0]
 
+    def get_audio_features_batch(self, input_features: list[mx.array]) -> list[mx.array]:
+        """Return per-clip audio tokens from unpadded [mel, frames] features."""
+        return self.audio_tower.encode_batch(input_features)
+
     def embed_input_ids(
         self,
         input_ids: mx.array,
@@ -168,7 +172,9 @@ def replace_audio_embeddings(
     audio_features: mx.array | list[mx.array],
     *,
     audio_token_id: int,
+    audio_token_positions: list[list[int]] | None = None,
 ) -> mx.array:
+    """Splice audio tokens; host-known positions avoid reading back input_ids."""
     if input_ids.ndim != 2:
         raise ValueError(f"Expected input_ids [B, T], got {input_ids.shape}.")
     if token_embeddings.ndim != 3:
@@ -185,6 +191,8 @@ def replace_audio_embeddings(
     else:
         raise ValueError("Batched prompts require a list of per-row audio_features arrays.")
 
+    if audio_token_positions is not None and len(audio_token_positions) != batch_size:
+        raise ValueError("Expected one audio_token_positions list per prompt row.")
     output = mx.array(token_embeddings)
     for row, row_features in enumerate(rows):
         features = mx.array(row_features)
@@ -199,7 +207,10 @@ def replace_audio_embeddings(
                 f"Audio feature width {features.shape[-1]} does not match text hidden width "
                 f"{token_embeddings.shape[-1]}."
             )
-        positions = _audio_token_positions(input_ids, audio_token_id=audio_token_id, row=row)
+        positions = (
+            audio_token_positions[row] if audio_token_positions is not None
+            else _audio_token_positions(input_ids, audio_token_id=audio_token_id, row=row)
+        )
         if len(positions) != int(features.shape[0]):
             raise ValueError(
                 "Qwen3-ASR audio placeholder count mismatch: "

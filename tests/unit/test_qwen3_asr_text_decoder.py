@@ -300,6 +300,41 @@ def test_left_padded_decoder_matches_each_row_through_decode(fast, window):
                     )
 
 
+@pytest.mark.parametrize("padded", [False, True])
+@pytest.mark.parametrize("offset", [0, 7])
+def test_native_rope_row_offsets_match_table_rope_at_valid_positions(padded, offset):
+    with mx.stream(mx.cpu):
+        mx.random.seed(29)
+        rope = Qwen3ASRTextRotaryEmbedding(_tiny_config())
+        pads = [3, 0] if padded else [0, 0]
+        slots = mx.arange(5)[None, :]
+        valid = slots >= mx.array(pads)[:, None]
+        positions = mx.where(valid, slots - mx.array(pads)[:, None] + offset, 99)
+        query = mx.random.normal((2, 4, 5, 4))
+        key = mx.random.normal((2, 2, 5, 4))
+        expected = rope.apply(query, key, position_ids=positions)
+        actual = rope.apply(query, key, position_ids=positions, native=True)
+        for left, right in zip(expected, actual, strict=True):
+            for row, pad in enumerate(pads):
+                np.testing.assert_allclose(
+                    np.asarray(right)[row, :, pad:], np.asarray(left)[row, :, pad:],
+                    rtol=1e-5, atol=1e-6,
+                )
+        if not padded:
+            scalar = rope.apply(query, key, offset=offset, native=True)
+            for left, right in zip(actual, scalar, strict=True):
+                np.testing.assert_array_equal(np.asarray(left), np.asarray(right))
+
+
+@pytest.mark.parametrize("shape", [(2, 4), (3, 5), (2, 1, 5)])
+def test_native_rope_rejects_invalid_position_shape(shape):
+    rope = Qwen3ASRTextRotaryEmbedding(_tiny_config())
+    query = mx.zeros((2, 4, 5, 4))
+    key = mx.zeros((2, 2, 5, 4))
+    with pytest.raises(ValueError, match="Expected position_ids"):
+        rope.apply(query, key, position_ids=mx.zeros(shape, dtype=mx.int32), native=True)
+
+
 def test_cache_row_selection_preserves_live_prefix_when_growing():
     config = _tiny_config()
     cache = Qwen3ASRTextKVCache.allocate(config, batch_size=3, max_length=4)

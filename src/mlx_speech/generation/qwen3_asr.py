@@ -14,7 +14,7 @@ import numpy as np
 from ..models.qwen3_asr.config import Qwen3ASRConfig
 from ..models.qwen3_asr.model import Qwen3ASRModel, replace_audio_embeddings
 from ..models.qwen3_asr.processor import Qwen3ASRProcessor, Qwen3ASRPrompt, parse_asr_output
-from ..models.qwen3_asr.text_decoder import FAST_DECODE_COMPUTE
+from ..models.qwen3_asr.text_decoder import NATIVE_DECODE_COMPUTE
 
 
 TOKENIZER_EOS_FALLBACKS = ("<|im_end|>", "<|endoftext|>")
@@ -130,14 +130,12 @@ class Qwen3ASRTranscriber:
 
         Arrays must be 1-D mono at 16 kHz; ``sample_rate`` is checked, not
         resampled. Paths are loaded as mono and resampled to 16 kHz regardless
-        of ``sample_rate``. Defaults: 32 clips/group, 448 tokens/clip. KV storage
-        starts with up to 64 decode slots and grows on demand; completed rows
-        compact together at 1/4 of the batch or before growth. All inputs are
-        validated before model inference.
+        of ``sample_rate``. Defaults: 48 clips/group, 448 tokens/clip. All inputs
+        are validated before model inference.
         """
         if not isinstance(audios, (list, tuple)):
             raise TypeError("audios must be a list or tuple of waveforms or paths.")
-        batch_size = 32 if batch_size is None else batch_size
+        batch_size = 48 if batch_size is None else batch_size
         if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0:
             raise ValueError("batch_size must be a positive int.")
         max_new_tokens = 448 if max_new_tokens is None else max_new_tokens
@@ -221,33 +219,33 @@ class Qwen3ASRTranscriber:
         *,
         max_new_tokens: int,
     ) -> list[Qwen3ASRResult]:
-        audio_rows = []
-        for waveform, prompt in zip(waveforms, prompts, strict=True):
-            # Never pad waveforms before reflect-padded STFT: that changes
-            # boundary features. Encode serially, as in the single-clip path.
+        feature_rows = []
+        for waveform in waveforms:
+            # Keep each waveform's reflect-padded STFT boundary intact.
             features = self.processor.feature_extractor(
                 waveform, sample_rate=self.processor.feature_extractor.sample_rate
             )
-            audio_features = self.model.get_audio_features(
-                mx.array(features.input_features, dtype=mx.float32),
-                feature_attention_mask=mx.array(features.feature_attention_mask, dtype=mx.int32),
-            )
-            mx.eval(audio_features)
-            if int(audio_features.shape[0]) != prompt.audio_length:
+            feature_rows.append(mx.array(features.input_features[0]))
+        audio_rows = self.model.get_audio_features_batch(feature_rows)
+        for audio_features, prompt in zip(audio_rows, prompts, strict=True):
+            if audio_features.shape[0] != prompt.audio_length:
                 raise RuntimeError("Qwen3-ASR encoded audio length does not match prompt preflight.")
-            audio_rows.append(audio_features)
 
         lengths = [len(prompt.input_ids) for prompt in prompts]
         width = max(lengths)
         pads = mx.array([width - length for length in lengths], dtype=mx.int32)
-        input_ids = mx.array(
-            [[0] * (width - length) + prompt.input_ids
-             for prompt, length in zip(prompts, lengths, strict=True)],
-            dtype=mx.int32,
-        )
+        input_rows = [
+            [0] * (width - length) + prompt.input_ids
+            for prompt, length in zip(prompts, lengths, strict=True)
+        ]
+        input_ids = mx.array(input_rows, dtype=mx.int32)
         inputs_embeds = replace_audio_embeddings(
             input_ids, self.model.embed_input_ids(input_ids), audio_rows,
             audio_token_id=self.config.audio_token_id,
+            audio_token_positions=[
+                [index for index, token in enumerate(row) if token == self.config.audio_token_id]
+                for row in input_rows
+            ],
         )
         padded = min(lengths) != width
         validity = None
@@ -265,7 +263,7 @@ class Qwen3ASRTranscriber:
             attention_mask=validity[:, :width] if padded else None,
             position_ids=positions,
             last_logits_only=True,
-            compute=FAST_DECODE_COMPUTE,
+            compute=NATIVE_DECODE_COMPUTE,
         )
         if prefill.past_key_values is None:
             raise RuntimeError("Qwen3-ASR prefill did not return a KV cache.")
@@ -298,7 +296,7 @@ class Qwen3ASRTranscriber:
                     kv_cache=cache,
                     attention_mask=validity[:, : width + step + 1] if padded else None,
                     position_ids=decode_positions[:, step : step + 1] if padded else None,
-                    compute=FAST_DECODE_COMPUTE,
+                    compute=NATIVE_DECODE_COMPUTE,
                 )
                 queued = greedy_next_token(output.logits)
                 mx.async_eval(queued)

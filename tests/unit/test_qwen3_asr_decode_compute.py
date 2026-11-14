@@ -10,6 +10,7 @@ import pytest
 from mlx_speech.models.qwen3_asr.config import Qwen3ASRTextConfig
 from mlx_speech.models.qwen3_asr.text_decoder import (
     FAST_DECODE_COMPUTE,
+    NATIVE_DECODE_COMPUTE,
     REFERENCE_DECODE_COMPUTE,
     Qwen3ASRDecodeCompute,
     Qwen3ASRTextAttention,
@@ -25,7 +26,7 @@ FUSED = Qwen3ASRDecodeCompute(fused_attention=True)
 ALL = Qwen3ASRDecodeCompute(native_linear=True, native_lm_head=True, fused_attention=True)
 
 
-def _tiny_config() -> Qwen3ASRTextConfig:
+def _tiny_config(*, window: int | None = None) -> Qwen3ASRTextConfig:
     return Qwen3ASRTextConfig(
         hidden_size=16,
         intermediate_size=32,
@@ -41,13 +42,20 @@ def _tiny_config() -> Qwen3ASRTextConfig:
         attention_bias=False,
         attention_dropout=0.0,
         use_cache=True,
-        extra={"tie_word_embeddings": True},
+        extra={
+            "tie_word_embeddings": True,
+            "use_sliding_window": window is not None,
+            "sliding_window": window,
+            "max_window_layers": 0,
+        },
     )
 
 
-def _model(seed: int = 3, dtype: mx.Dtype = mx.float32) -> Qwen3ASRTextForCausalLM:
+def _model(
+    seed: int = 3, dtype: mx.Dtype = mx.float32, *, window: int | None = None
+) -> Qwen3ASRTextForCausalLM:
     mx.random.seed(seed)
-    model = Qwen3ASRTextForCausalLM(_tiny_config())
+    model = Qwen3ASRTextForCausalLM(_tiny_config(window=window))
     model.set_dtype(dtype)
     mx.eval(model.parameters())
     return model
@@ -139,14 +147,15 @@ def test_full_forward_fast_compute_matches_reference() -> None:
     np.testing.assert_allclose(np.array(reference), np.array(fast), rtol=1e-4, atol=1e-5)
 
 
-def test_full_forward_matches_prefill_under_the_same_compute() -> None:
+@pytest.mark.parametrize("compute", [FAST_DECODE_COMPUTE, NATIVE_DECODE_COMPUTE])
+def test_full_forward_matches_prefill_under_the_same_compute(compute) -> None:
     model = _model()
     embeds = _embeds(length=12)
     cache = Qwen3ASRTextKVCache.allocate(model.config, batch_size=1, max_length=12)
     prefill = model.model.prefill(
-        inputs_embeds=embeds, kv_cache=cache, compute=FAST_DECODE_COMPUTE
+        inputs_embeds=embeds, kv_cache=cache, compute=compute
     ).last_hidden_state
-    full = model.model(inputs_embeds=embeds, compute=FAST_DECODE_COMPUTE).last_hidden_state
+    full = model.model(inputs_embeds=embeds, compute=compute).last_hidden_state
     np.testing.assert_allclose(np.array(prefill), np.array(full), rtol=1e-5, atol=1e-6)
 
 
@@ -237,6 +246,118 @@ def test_fused_attention_rejects_queries_past_the_keys() -> None:
             query_offset=2,
             use_causal_mask=True,
         )
+
+
+def _run_batch(model, compute, *, padded):
+    cache = Qwen3ASRTextKVCache.allocate(
+        model.config, batch_size=2, max_length=8, dtype=model.model.embed_tokens.weight.dtype
+    )
+    mask = mx.array([[0, 0, 0, 1, 1], [1, 1, 1, 1, 1]]) if padded else None
+    positions = mx.array([[99, 99, 99, 0, 1], [0, 1, 2, 3, 4]]) if padded else None
+    outputs = [model.prefill(
+        input_ids=mx.array([[0, 0, 0, 1, 2], [3, 4, 5, 6, 7]]),
+        attention_mask=mask, position_ids=positions, kv_cache=cache, compute=compute,
+    )]
+    # Exercise both suffix prefill and the single-token decode kernel.
+    for tokens, starts in (([[8, 9], [10, 11]], [2, 5]), ([[12], [13]], [4, 7])):
+        width = len(tokens[0])
+        if padded:
+            mask = mx.concatenate([mask, mx.ones((2, width), dtype=mx.int32)], axis=1)
+            positions = mx.array(starts)[:, None] + mx.arange(width)[None, :]
+        outputs.append(model.decode_step(
+            input_ids=mx.array(tokens), attention_mask=mask, position_ids=positions,
+            kv_cache=cache, compute=compute,
+        ))
+    mx.eval([output.logits for output in outputs], [output.last_hidden_state for output in outputs])
+    return outputs, cache
+
+
+@pytest.mark.parametrize("padded", [False, True])
+@pytest.mark.parametrize("window", [None, 3])
+def test_native_attention_matches_float32_reference_through_decode(padded, window) -> None:
+    # CPU float32 avoids Metal's batch-shape-dependent TF32 GEMM rounding.
+    with mx.stream(mx.cpu):
+        model = _model(window=window)
+        expected, _ = _run_batch(model, REFERENCE_DECODE_COMPUTE, padded=padded)
+        actual, _ = _run_batch(model, NATIVE_DECODE_COMPUTE, padded=padded)
+        for step, (reference, native) in enumerate(zip(expected, actual, strict=True)):
+            for name in ("logits", "last_hidden_state"):
+                left, right = np.asarray(getattr(reference, name)), np.asarray(getattr(native, name))
+                assert np.isfinite(right).all()
+                if padded and step == 0:
+                    # Padded-query outputs are intentionally discarded.
+                    left = np.concatenate([left[0, -2:], left[1]])
+                    right = np.concatenate([right[0, -2:], right[1]])
+                np.testing.assert_allclose(right, left, rtol=1e-5, atol=2e-6)
+
+
+@pytest.mark.parametrize("padded", [False, True])
+@pytest.mark.parametrize("window", [None, 3])
+def test_native_bf16_attention_stays_native_and_close_to_float32_oracle(
+    monkeypatch, padded, window
+) -> None:
+    # Compare identical BF16-rounded weights to a float32 CPU oracle.
+    with mx.stream(mx.cpu):
+        oracle = _model(dtype=mx.bfloat16, window=window)
+        oracle.set_dtype(mx.float32)
+        expected, _ = _run_batch(oracle, REFERENCE_DECODE_COMPUTE, padded=padded)
+    model = _model(dtype=mx.bfloat16, window=window)
+    calls = {"rms_norm": 0, "rope": 0, "scaled_dot_product_attention": 0}
+
+    def trace(name):
+        original = getattr(mx.fast, name)
+
+        def checked(*args, **kwargs):
+            count = 3 if name == "scaled_dot_product_attention" else 1
+            assert all(value.dtype == mx.bfloat16 for value in args[:count])
+            result = original(*args, **kwargs)
+            assert result.dtype == mx.bfloat16
+            calls[name] += 1
+            return result
+
+        monkeypatch.setattr(mx.fast, name, checked)
+
+    for name in calls:
+        trace(name)
+    actual, cache = _run_batch(model, NATIVE_DECODE_COMPUTE, padded=padded)
+    assert calls["rms_norm"] == 27  # Input, Q, K, post-attention, and final norms.
+    assert calls["rope"] == 12
+    assert calls["scaled_dot_product_attention"] >= 6
+    for layer in cache.layers:
+        assert layer.keys.dtype == layer.values.dtype == mx.bfloat16
+        assert bool(mx.all(mx.isfinite(layer.keys)).item())
+        assert bool(mx.all(mx.isfinite(layer.values)).item())
+    for step, (reference, native) in enumerate(zip(expected, actual, strict=True)):
+        assert native.logits.dtype == mx.float32
+        assert native.last_hidden_state.dtype == mx.bfloat16
+        for name in ("logits", "last_hidden_state"):
+            left = np.asarray(getattr(reference, name))
+            right = np.asarray(getattr(native, name).astype(mx.float32))
+            assert np.isfinite(right).all()
+            if padded and step == 0:
+                left = np.concatenate([left[0, -2:], left[1]])
+                right = np.concatenate([right[0, -2:], right[1]])
+            scale = max(1.0, float(np.max(np.abs(left))))
+            assert float(np.max(np.abs(right - left))) <= 0.03 * scale
+
+
+@pytest.mark.parametrize("compute", [REFERENCE_DECODE_COMPUTE, FAST_DECODE_COMPUTE])
+@pytest.mark.parametrize("dtype", [mx.float32, mx.bfloat16])
+def test_existing_presets_keep_float32_qkv_and_table_rope(monkeypatch, compute, dtype) -> None:
+    model = _model(dtype=dtype)
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Existing presets must not use fused norms or RoPE")
+
+    monkeypatch.setattr(mx.fast, "rms_norm", unexpected)
+    monkeypatch.setattr(mx.fast, "rope", unexpected)
+    attention = model.model.layers[0].self_attn
+    qkv = attention._project_qkv(
+        _embeds(dtype=dtype), offset=0, native=compute.native_linear,
+        position_ids=mx.array([[8, 2, 5, 1, 9, 0, 4]]),
+    )
+    assert all(value.dtype == mx.float32 for value in qkv)
+    _run_batch(model, compute, padded=True)
 
 
 def test_attention_module_accepts_compute_on_decode() -> None:
