@@ -80,3 +80,23 @@ def test_asr_cli_omits_language_by_default_and_passes_auto(monkeypatch, capsys):
     assert auto_args.language == "auto"
     assert calls == [("sample.wav", None), ("sample.wav", "auto")]
     assert output == ["language=None", "language=auto"]
+
+
+def test_qwen3_adapter_batch_forwards_controls_and_preserves_order():
+    class Runtime:
+        def transcribe_batch(self, audios, **kwargs):
+            self.call = (audios, kwargs)
+            return [SimpleNamespace(text="first", language="Chinese"),
+                    SimpleNamespace(text="second", language="English")]
+
+    runtime = Runtime()
+    adapter = Qwen3ASRAdapter(runtime)
+    audios = [np.zeros(1600), Path("sample.wav")]
+    languages = ["Chinese", None]
+    assert adapter.generate_batch(
+        audios, sample_rate=16000, language=languages, batch_size=2, max_new_tokens=17
+    ) == [ASROutput(text="first", language="Chinese"), ASROutput(text="second", language="English")]
+    assert runtime.call[0] is audios
+    assert runtime.call[1] == dict(sample_rate=16000, language=languages, batch_size=2, max_new_tokens=17)
+    adapter.generate_batch([])
+    assert runtime.call[1] == dict(sample_rate=16000, language=None, batch_size=None, max_new_tokens=None)

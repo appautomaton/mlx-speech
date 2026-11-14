@@ -65,7 +65,10 @@ class Qwen3ASRAudioAttention(nn.Module):
         hidden_states: mx.array,
         *,
         block_lengths: Sequence[int] | None = None,
+        attention_mask: mx.array | None = None,
     ) -> mx.array:
+        if hidden_states.ndim == 3:
+            return self._attend(hidden_states, attention_mask=attention_mask)
         if hidden_states.ndim != 2:
             raise ValueError(f"Expected audio attention input [T, C], got {hidden_states.shape}.")
         if hidden_states.shape[0] == 0:
@@ -80,15 +83,16 @@ class Qwen3ASRAudioAttention(nn.Module):
         return mx.concatenate(outputs, axis=0) if len(outputs) > 1 else outputs[0]
 
     def _attend_block(self, x: mx.array) -> mx.array:
-        seq_len = x.shape[0]
-        q = self.q_proj(x).reshape(seq_len, self.num_heads, self.head_dim).transpose(1, 0, 2)
-        k = self.k_proj(x).reshape(seq_len, self.num_heads, self.head_dim).transpose(1, 0, 2)
-        v = self.v_proj(x).reshape(seq_len, self.num_heads, self.head_dim).transpose(1, 0, 2)
+        return self._attend(x[None, :, :])[0]
 
-        scores = (q @ k.transpose(0, 2, 1)) * self.scale
-        weights = mx.softmax(scores.astype(mx.float32), axis=-1).astype(q.dtype)
-        out = weights @ v
-        out = out.transpose(1, 0, 2).reshape(seq_len, self.embed_dim)
+    def _attend(self, x: mx.array, *, attention_mask: mx.array | None = None) -> mx.array:
+        batch, seq_len, _ = x.shape
+        q, k, v = [
+            projection(x).reshape(batch, seq_len, self.num_heads, self.head_dim).transpose(0, 2, 1, 3)
+            for projection in (self.q_proj, self.k_proj, self.v_proj)
+        ]
+        out = mx.fast.scaled_dot_product_attention(q, k, v, scale=self.scale, mask=attention_mask)
+        out = out.transpose(0, 2, 1, 3).reshape(batch, seq_len, self.embed_dim)
         return self.out_proj(out)
 
 
@@ -107,10 +111,13 @@ class Qwen3ASRAudioEncoderLayer(nn.Module):
         hidden_states: mx.array,
         *,
         block_lengths: Sequence[int] | None = None,
+        attention_mask: mx.array | None = None,
     ) -> mx.array:
         residual = hidden_states
         hidden_states = self.self_attn_layer_norm(hidden_states)
-        hidden_states = self.self_attn(hidden_states, block_lengths=block_lengths)
+        hidden_states = self.self_attn(
+            hidden_states, block_lengths=block_lengths, attention_mask=attention_mask,
+        )
         hidden_states = residual + hidden_states
 
         residual = hidden_states
@@ -208,6 +215,64 @@ class Qwen3ASRAudioEncoder(nn.Module):
         hidden_states = self.proj2(hidden_states)
         return Qwen3ASRAudioEncoderOutput(last_hidden_state=hidden_states)
 
+    def encode_batch(self, input_features: list[mx.array]) -> list[mx.array]:
+        """Encode unpadded clips together in the tower's weight dtype, without host reads."""
+        if not input_features:
+            return []
+        chunked_clips = []
+        for input_clip in input_features:
+            features = mx.array(input_clip).astype(self.conv2d1.weight.dtype)
+            if features.ndim != 2:
+                raise ValueError(f"Expected Qwen3-ASR audio features [mel, frames], got {features.shape}.")
+            if features.shape[0] != self.num_mel_bins:
+                raise ValueError(f"Expected {self.num_mel_bins} mel bins, got {features.shape[0]}.")
+            feature_len = _coerce_single_length(
+                None, default=features.shape[1], max_value=features.shape[1],
+            )
+            chunked_clips.append(self._chunk_features(features, feature_len))
+
+        max_frames = max(clip.padded_features.shape[-1] for clip in chunked_clips)
+        padded_features = mx.concatenate([
+            mx.pad(clip.padded_features, [(0, 0), (0, 0), (0, max_frames - clip.padded_features.shape[-1])])
+            for clip in chunked_clips
+        ], axis=0)
+        aftercnn_lengths = [length for clip in chunked_clips for length in clip.aftercnn_lengths]
+        # Preserve each clip's original convolution boundary, not the group's padded width.
+        padded_lengths = [
+            clip.padded_features.shape[-1]
+            for clip in chunked_clips for _ in clip.chunk_lengths
+        ]
+        hidden_states = self._conv_forward(
+            padded_features, aftercnn_lengths,
+            padded_lengths=padded_lengths if min(padded_lengths) < max_frames else None,
+        )
+        clip_lengths = [sum(clip.aftercnn_lengths) for clip in chunked_clips]
+        block_lengths = [
+            length
+            for clip, total in zip(chunked_clips, clip_lengths, strict=True)
+            for length in _attention_block_lengths(
+                total_length=total, max_chunk_aftercnn=max(clip.aftercnn_lengths),
+                n_window=self.n_window, n_window_infer=self.n_window_infer,
+            )
+        ]
+        max_block = max(block_lengths)
+        hidden_states = mx.stack([
+            mx.pad(hidden_states[start:end], [(0, max_block - (end - start)), (0, 0)])
+            for start, end in _iter_blocks(block_lengths)
+        ])
+        # Mask keys only: even padded queries have at least one valid key, avoiding NaNs.
+        key_mask = mx.arange(max_block)[None, :] < mx.array(block_lengths)[:, None]
+        for layer in self.layers:
+            hidden_states = layer(hidden_states, attention_mask=key_mask[:, None, None, :])
+        hidden_states = mx.concatenate([
+            hidden_states[index, :length] for index, length in enumerate(block_lengths)
+        ], axis=0)
+        hidden_states = self.ln_post(hidden_states)
+        hidden_states = self.proj1(hidden_states)
+        hidden_states = _activation(hidden_states, self.activation_function)
+        hidden_states = self.proj2(hidden_states)
+        return [hidden_states[start:end] for start, end in _iter_blocks(clip_lengths)]
+
     def output_lengths(self, feature_lens: int | Sequence[int] | np.ndarray) -> int | np.ndarray:
         return _get_feat_extract_output_lengths(feature_lens)
 
@@ -239,12 +304,24 @@ class Qwen3ASRAudioEncoder(nn.Module):
         self,
         padded_features: mx.array,
         aftercnn_lengths: Sequence[int],
+        *,
+        padded_lengths: Sequence[int] | None = None,
     ) -> mx.array:
         x = padded_features[:, :, :, None]
         conv_outputs = []
+        start = 0
         for chunk in _split_first_axis(x, self.conv_chunksize):
-            chunk = nn.gelu(self.conv2d1(chunk))
-            chunk = nn.gelu(self.conv2d2(chunk))
+            lengths = (
+                mx.array(padded_lengths[start : start + chunk.shape[0]], dtype=mx.int32)
+                if padded_lengths is not None else None
+            )
+            start += chunk.shape[0]
+            for conv in (self.conv2d1, self.conv2d2):
+                chunk = nn.gelu(conv(chunk))
+                if lengths is not None:
+                    lengths = (lengths + 1) // 2
+                    valid = mx.arange(chunk.shape[2])[None, None, :, None] < lengths[:, None, None, None]
+                    chunk = mx.where(valid, chunk, mx.array(0, dtype=chunk.dtype))
             chunk = nn.gelu(self.conv2d3(chunk))
             conv_outputs.append(chunk)
         x = mx.concatenate(conv_outputs, axis=0) if len(conv_outputs) > 1 else conv_outputs[0]

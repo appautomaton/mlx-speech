@@ -73,6 +73,19 @@ def test_qwen3_asr_model_encodes_audio_features_shape():
     assert mx.all(mx.isfinite(audio_features)).item()
 
 
+def test_qwen3_asr_model_encodes_audio_batch_in_tower_dtype():
+    model = Qwen3ASRModel(_config())
+    model.audio_tower.set_dtype(mx.bfloat16)
+    features = [mx.zeros((8, length), dtype=mx.float32) for length in [10, 100, 817]]
+
+    outputs = model.get_audio_features_batch(features)
+    mx.eval(outputs)
+
+    assert [row.shape for row in outputs] == [(2, 16), (13, 16), (107, 16)]
+    assert all(row.dtype == mx.bfloat16 for row in outputs)
+    assert all(mx.all(mx.isfinite(row)).item() for row in outputs)
+
+
 def test_qwen3_asr_mask_and_count_audio_token_ids():
     input_ids = mx.array([[1, 31, 31, 2]], dtype=mx.int32)
 
@@ -144,4 +157,44 @@ def test_qwen3_asr_model_rejects_audio_text_width_mismatch():
                     audio_end_token_id=30,
                 )
             )
+        )
+
+
+def test_qwen3_asr_replace_audio_embeddings_handles_per_row_lengths():
+    ids = mx.array([[0, 1, 31, 2], [1, 31, 31, 2]])
+    embeddings = mx.zeros((2, 4, 16))
+    features = [mx.full((1, 16), 7.0), mx.full((2, 16), 8.0)]
+    actual = np.asarray(replace_audio_embeddings(ids, embeddings, features, audio_token_id=31))
+    np.testing.assert_array_equal(actual[0, 2], np.full(16, 7.0))
+    np.testing.assert_array_equal(actual[1, 1:3], np.full((2, 16), 8.0))
+    assert count_audio_tokens(ids, audio_token_id=31) == 3
+    assert not actual[0, :2].any()
+    with pytest.raises(ValueError, match="one audio_features array per prompt row"):
+        replace_audio_embeddings(ids, embeddings, features[:1], audio_token_id=31)
+    with pytest.raises(ValueError, match="list of per-row"):
+        replace_audio_embeddings(ids, embeddings, features[0], audio_token_id=31)
+
+
+def test_qwen3_asr_replace_audio_embeddings_uses_host_positions(monkeypatch):
+    def unexpected(*args, **kwargs):
+        pytest.fail("host-known positions must not read device input_ids")
+
+    monkeypatch.setattr("mlx_speech.models.qwen3_asr.model._audio_token_positions", unexpected)
+    ids = mx.array([[0, 1, 31, 2], [1, 31, 31, 2]])
+    embeddings = mx.zeros((2, 4, 16), dtype=mx.bfloat16)
+    features = [mx.full((1, 16), 7.0), mx.full((2, 16), 8.0)]
+    positions = [[2], [1, 2]]
+    actual = replace_audio_embeddings(
+        ids, embeddings, features, audio_token_id=31, audio_token_positions=positions,
+    )
+    assert actual.dtype == mx.bfloat16
+    np.testing.assert_array_equal(np.array(actual.astype(mx.float32))[0, 2], np.full(16, 7.0))
+    np.testing.assert_array_equal(np.array(actual.astype(mx.float32))[1, 1:3], np.full((2, 16), 8.0))
+    with pytest.raises(ValueError, match="placeholder count mismatch"):
+        replace_audio_embeddings(
+            ids, embeddings, features, audio_token_id=31, audio_token_positions=[[2], [1]],
+        )
+    with pytest.raises(ValueError, match="one audio_token_positions list per prompt row"):
+        replace_audio_embeddings(
+            ids, embeddings, features, audio_token_id=31, audio_token_positions=[[2]],
         )

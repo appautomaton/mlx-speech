@@ -63,6 +63,10 @@ class Qwen3ASRModel(nn.Module):
             outputs.append(encoded)
         return mx.concatenate(outputs, axis=0) if len(outputs) > 1 else outputs[0]
 
+    def get_audio_features_batch(self, input_features: list[mx.array]) -> list[mx.array]:
+        """Return per-clip audio tokens from unpadded [mel, frames] features."""
+        return self.audio_tower.encode_batch(input_features)
+
     def embed_input_ids(
         self,
         input_ids: mx.array,
@@ -79,7 +83,7 @@ class Qwen3ASRModel(nn.Module):
     def prepare_inputs_embeds(
         self,
         input_ids: mx.array,
-        audio_features: mx.array,
+        audio_features: mx.array | list[mx.array],
         *,
         replacement_id: int = 0,
     ) -> mx.array:
@@ -97,6 +101,7 @@ class Qwen3ASRModel(nn.Module):
         inputs_embeds: mx.array,
         max_cache_len: int,
         attention_mask: mx.array | None = None,
+        position_ids: mx.array | None = None,
         compute: Qwen3ASRDecodeCompute | None = None,
         last_logits_only: bool = False,
     ) -> Qwen3ASRTextCausalLMOutput:
@@ -109,6 +114,7 @@ class Qwen3ASRModel(nn.Module):
         return self.text_decoder.prefill(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
+            position_ids=position_ids,
             kv_cache=kv_cache,
             compute=compute,
             last_logits_only=last_logits_only,
@@ -119,11 +125,15 @@ class Qwen3ASRModel(nn.Module):
         *,
         input_ids: mx.array,
         kv_cache: Qwen3ASRTextKVCache,
+        attention_mask: mx.array | None = None,
+        position_ids: mx.array | None = None,
         compute: Qwen3ASRDecodeCompute | None = None,
     ) -> Qwen3ASRTextCausalLMOutput:
         return self.text_decoder.decode_step(
             input_ids=input_ids,
             kv_cache=kv_cache,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
             compute=compute,
         )
 
@@ -133,11 +143,13 @@ class Qwen3ASRModel(nn.Module):
         input_ids: mx.array | None = None,
         inputs_embeds: mx.array | None = None,
         attention_mask: mx.array | None = None,
+        position_ids: mx.array | None = None,
     ) -> Qwen3ASRTextCausalLMOutput:
         return self.text_decoder(
             input_ids=input_ids,
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
+            position_ids=position_ids,
         )
 
 
@@ -157,53 +169,72 @@ def mask_audio_token_ids(
 def replace_audio_embeddings(
     input_ids: mx.array,
     token_embeddings: mx.array,
-    audio_features: mx.array,
+    audio_features: mx.array | list[mx.array],
     *,
     audio_token_id: int,
+    audio_token_positions: list[list[int]] | None = None,
 ) -> mx.array:
+    """Splice audio tokens; host-known positions avoid reading back input_ids."""
     if input_ids.ndim != 2:
         raise ValueError(f"Expected input_ids [B, T], got {input_ids.shape}.")
     if token_embeddings.ndim != 3:
         raise ValueError(f"Expected token_embeddings [B, T, C], got {token_embeddings.shape}.")
-    if int(input_ids.shape[0]) != 1:
-        raise ValueError("Qwen3-ASR v0 supports one prompt with one audio input at a time.")
+    batch_size = int(input_ids.shape[0])
+    if token_embeddings.shape[:2] != input_ids.shape:
+        raise ValueError("token_embeddings batch/sequence shape must match input_ids.")
+    if isinstance(audio_features, list):
+        if len(audio_features) != batch_size:
+            raise ValueError("Expected one audio_features array per prompt row.")
+        rows = audio_features
+    elif batch_size == 1:
+        rows = [audio_features]
+    else:
+        raise ValueError("Batched prompts require a list of per-row audio_features arrays.")
 
-    features = mx.array(audio_features)
-    if features.ndim == 3:
-        if int(features.shape[0]) != 1:
-            raise ValueError("Qwen3-ASR v0 supports one audio feature batch at a time.")
-        features = features[0]
-    if features.ndim != 2:
-        raise ValueError(f"Expected audio_features [audio_tokens, hidden], got {features.shape}.")
-    if int(features.shape[-1]) != int(token_embeddings.shape[-1]):
-        raise ValueError(
-            f"Audio feature width {features.shape[-1]} does not match text hidden width "
-            f"{token_embeddings.shape[-1]}."
-        )
-
-    positions = _audio_token_positions(input_ids, audio_token_id=audio_token_id)
-    if len(positions) != int(features.shape[0]):
-        raise ValueError(
-            "Qwen3-ASR audio placeholder count mismatch: "
-            f"input_ids has {len(positions)}, audio_features has {features.shape[0]}."
-        )
-
+    if audio_token_positions is not None and len(audio_token_positions) != batch_size:
+        raise ValueError("Expected one audio_token_positions list per prompt row.")
     output = mx.array(token_embeddings)
-    for feature_index, token_index in enumerate(positions):
-        output[0, token_index, :] = features[feature_index]
+    for row, row_features in enumerate(rows):
+        features = mx.array(row_features)
+        if features.ndim == 3:
+            if int(features.shape[0]) != 1:
+                raise ValueError("Qwen3-ASR v0 supports one audio feature batch at a time.")
+            features = features[0]
+        if features.ndim != 2:
+            raise ValueError(f"Expected audio_features [audio_tokens, hidden], got {features.shape}.")
+        if int(features.shape[-1]) != int(token_embeddings.shape[-1]):
+            raise ValueError(
+                f"Audio feature width {features.shape[-1]} does not match text hidden width "
+                f"{token_embeddings.shape[-1]}."
+            )
+        positions = (
+            audio_token_positions[row] if audio_token_positions is not None
+            else _audio_token_positions(input_ids, audio_token_id=audio_token_id, row=row)
+        )
+        if len(positions) != int(features.shape[0]):
+            raise ValueError(
+                "Qwen3-ASR audio placeholder count mismatch: "
+                f"input_ids has {len(positions)}, audio_features has {features.shape[0]}."
+            )
+        output[row, mx.array(positions, dtype=mx.int32), :] = features
     return output
 
 
 def count_audio_tokens(input_ids: mx.array, *, audio_token_id: int) -> int:
-    return len(_audio_token_positions(input_ids, audio_token_id=audio_token_id))
-
-
-def _audio_token_positions(input_ids: mx.array, *, audio_token_id: int) -> list[int]:
     if input_ids.ndim != 2:
         raise ValueError(f"Expected input_ids [B, T], got {input_ids.shape}.")
-    if int(input_ids.shape[0]) != 1:
-        raise ValueError("Qwen3-ASR v0 supports one prompt with one audio input at a time.")
-    mask = input_ids[0] == int(audio_token_id)
+    return sum(
+        len(_audio_token_positions(input_ids, audio_token_id=audio_token_id, row=row))
+        for row in range(int(input_ids.shape[0]))
+    )
+
+
+def _audio_token_positions(
+    input_ids: mx.array, *, audio_token_id: int, row: int = 0
+) -> list[int]:
+    if input_ids.ndim != 2:
+        raise ValueError(f"Expected input_ids [B, T], got {input_ids.shape}.")
+    mask = input_ids[row] == int(audio_token_id)
     return [int(index) for index, value in enumerate(mask.tolist()) if bool(value)]
 
 

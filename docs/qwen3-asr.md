@@ -118,6 +118,48 @@ mlx-speech asr \
 A local path such as `models/qwen3_asr_1_7b/mlx-int8` works in place of the
 alias everywhere below.
 
+## Batch transcription
+
+The Qwen3-ASR adapter exposes an ordered batch API (not part of the shared ASR
+protocol):
+
+```python
+def generate_batch(
+    self,
+    audios: Sequence[np.ndarray | mx.array | str | Path],
+    *,
+    sample_rate: int = 16000,
+    language: str | None | Sequence[str | None] = None,
+    batch_size: int | None = None,
+    max_new_tokens: int | None = None,
+) -> list[ASROutput]: ...
+```
+
+```python
+asr = mlx_speech.asr.load("qwen3-asr-1.7b")
+results = asr.generate_batch(
+    ["english.wav", "chinese.wav", "unknown.wav"],
+    language=["English", "Chinese", None],
+)
+for result in results:
+    print(result.language, result.text)
+```
+
+- Results keep input order. Clips are grouped by length to limit padding.
+- `language` is one string for every clip, or one entry per clip. `None`, `""`,
+  and `"auto"` auto-detect.
+- Arrays must be 1-D mono at 16 kHz and are not resampled. Paths are loaded as
+  mono and resampled to 16 kHz.
+- All inputs are validated before inference; one bad input fails the call and
+  names its index. There is no `context` argument; single-clip `generate` keeps it.
+- Defaults: `batch_size=48`, `max_new_tokens=448` per clip.
+
+On an M5 Max with the BF16 1.7B model, 256 clips of 2–15 s run at about 45
+clips/s (~245× real time) at B=48, versus 4.5 clips/s one at a time; peak
+memory is 6.7 GiB. Throughput is flat from B=40 to B=50. Lower `batch_size` on
+machines with less memory. Batched output may differ slightly from single-clip
+output.
+
 ## Language Behavior
 
 The CLI default omits `--language`, which lets Qwen3-ASR infer the language from

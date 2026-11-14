@@ -275,17 +275,11 @@ def _spectrogram(
         mode="reflect",
     )
     window = window.astype(np.float64)
-    num_frames = int(1 + np.floor((waveform.size - frame_length) / hop_length))
-    num_frequency_bins = frame_length // 2 + 1
-    spectrum = np.empty((num_frames, num_frequency_bins), dtype=np.float32)
-    for frame_idx in range(num_frames):
-        start = frame_idx * hop_length
-        frame = waveform[start : start + frame_length].copy()
-        if dither != 0.0:
-            frame += dither * np.random.randn(frame_length)
-        frame *= window
-        fft = np.fft.rfft(frame)
-        spectrum[frame_idx] = (np.abs(fft, dtype=np.float64) ** 2).astype(np.float32)
+    frames = np.lib.stride_tricks.sliding_window_view(waveform, frame_length)[::hop_length]
+    if dither != 0.0:
+        frames = frames + dither * np.random.randn(*frames.shape)
+    fft = np.fft.rfft(frames * window, axis=-1)
+    spectrum = (np.abs(fft, dtype=np.float64) ** 2).astype(np.float32)
 
     mel_spec = np.maximum(1e-10, mel_filters.T @ spectrum.T)
     return np.log10(mel_spec).astype(np.float32)

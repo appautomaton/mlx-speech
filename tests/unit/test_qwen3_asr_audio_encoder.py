@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import mlx.core as mx
 from mlx.utils import tree_flatten
+import numpy as np
 import pytest
 
 from mlx_speech.models.qwen3_asr.audio_encoder import (
+    Qwen3ASRAudioAttention,
     Qwen3ASRAudioEncoder,
     Qwen3ASRAudioEncoderLayer,
     Qwen3ASRAudioEncoderOutput,
@@ -118,3 +120,76 @@ def test_qwen3_asr_audio_attention_block_lengths_group_infer_windows():
         n_window=50,
         n_window_infer=800,
     ) == [104, 104, 52]
+
+
+@pytest.mark.parametrize("lengths", [[7, 40, 100, 1817], [7, 19, 41]])
+def test_qwen3_asr_audio_encoder_batch_matches_per_clip(lengths, monkeypatch):
+    # CPU is the float32 oracle; Metal GEMMs may use batch-dependent TF32.
+    with mx.stream(mx.cpu):
+        mx.random.seed(71)
+        encoder = Qwen3ASRAudioEncoder(_tiny_config(output_dim=16))
+        # Nonzero biases expose artificial right-boundary activations after padding.
+        for conv in (encoder.conv2d1, encoder.conv2d2, encoder.conv2d3):
+            conv.bias = mx.full(conv.bias.shape, 0.1)
+        features = [mx.random.normal((8, length)) for length in lengths]
+        expected = [encoder(clip).last_hidden_state for clip in features]
+        layer_call = Qwen3ASRAudioEncoderLayer.__call__
+        calls = []
+
+        def checked(layer, hidden_states, **kwargs):
+            calls.append(hidden_states.shape)
+            return layer_call(layer, hidden_states, **kwargs)
+
+        monkeypatch.setattr(Qwen3ASRAudioEncoderLayer, "__call__", checked)
+        actual = encoder.encode_batch(features)
+        mx.eval(expected, actual)
+
+        assert len(calls) == len(encoder.layers)
+        assert all(len(shape) == 3 for shape in calls)
+        assert len(actual) == len(expected)
+        for batch_row, single_row in zip(actual, expected, strict=True):
+            assert batch_row.shape == single_row.shape
+            np.testing.assert_allclose(np.array(batch_row), np.array(single_row), atol=1e-5, rtol=1e-5)
+
+
+def test_qwen3_asr_audio_encoder_batch_uses_weight_dtype():
+    mx.random.seed(72)
+    encoder = Qwen3ASRAudioEncoder(_tiny_config(output_dim=16))
+    encoder.set_dtype(mx.bfloat16)
+    outputs = encoder.encode_batch([mx.random.normal((8, length)) for length in [7, 100, 817]])
+    mx.eval(outputs)
+
+    assert [row.shape for row in outputs] == [(1, 16), (13, 16), (107, 16)]
+    assert all(row.dtype == mx.bfloat16 for row in outputs)
+    assert all(mx.all(mx.isfinite(row)).item() for row in outputs)
+    # The legacy single-clip API still follows the caller's input dtype.
+    assert encoder(mx.zeros((8, 40), dtype=mx.float32)).last_hidden_state.dtype == mx.float32
+
+
+@pytest.mark.parametrize("length", [1, 7, 104])
+def test_qwen3_asr_audio_attention_sdpa_matches_eager(length):
+    mx.random.seed(73)
+    attention = Qwen3ASRAudioAttention(_tiny_config())
+    x = mx.random.normal((length, attention.embed_dim))
+    q, k, v = [
+        projection(x).reshape(length, attention.num_heads, attention.head_dim).transpose(1, 0, 2)
+        for projection in (attention.q_proj, attention.k_proj, attention.v_proj)
+    ]
+    scores = (q @ k.transpose(0, 2, 1)) * attention.scale
+    weights = mx.softmax(scores.astype(mx.float32), axis=-1).astype(q.dtype)
+    eager = attention.out_proj((weights @ v).transpose(1, 0, 2).reshape(length, attention.embed_dim))
+    actual = attention._attend_block(x)
+    mx.eval(eager, actual)
+
+    np.testing.assert_allclose(np.array(actual), np.array(eager), atol=1e-5, rtol=1e-5)
+
+
+def test_qwen3_asr_audio_encoder_batch_validates_features():
+    encoder = Qwen3ASRAudioEncoder(_tiny_config(output_dim=16))
+    assert encoder.encode_batch([]) == []
+    with pytest.raises(ValueError, match=r"\[mel, frames\]"):
+        encoder.encode_batch([mx.zeros((1, 8, 40))])
+    with pytest.raises(ValueError, match="mel bins"):
+        encoder.encode_batch([mx.zeros((7, 40))])
+    with pytest.raises(ValueError, match="positive"):
+        encoder.encode_batch([mx.zeros((8, 0))])
