@@ -17,11 +17,10 @@ from .._cache import BoundedKVCache
 from .config import FishDrama3AudioDecoderConfig, FishDrama3Config
 from .layers import ZeroCenteredRMSNorm, sigmoid_gate, swiglu
 from .sampling import (
-    RAS_TEMPERATURE,
-    RAS_TOP_K,
-    RAS_TOP_P,
-    resample_repeats,
-    sample_top_k_top_p,
+    MAIN_EPSILON_CUTOFF,
+    RESIDUAL_CODEBOOK_SIZE,
+    reference_sample,
+    replace_repeats,
 )
 
 
@@ -269,17 +268,24 @@ class FishDrama3AudioDecoder(nn.Module):
         top_k: int,
         top_p: float,
     ) -> mx.array:
-        """Sample the frame after one row: [1, 1 + num_codebooks].
+        """Sample the frame after one row under reference sampling (see sampling):
+        [1, 1 + num_codebooks].
 
         main_logits [1, len(main_candidates)] are the backbone logits of the
         candidates; hidden [1, dim] and frame [1, 1 + N] belong to the current row.
         """
         candidates = self.main_candidates
-        first = candidates[sample_top_k_top_p(main_logits, temperature, top_k, top_p)]
-        retry = candidates[
-            sample_top_k_top_p(main_logits, RAS_TEMPERATURE, RAS_TOP_K, RAS_TOP_P)
+        first = candidates[
+            reference_sample(
+                main_logits,
+                temperature,
+                top_k,
+                top_p,
+                epsilon_cutoff=MAIN_EPSILON_CUTOFF,
+            )
         ]
-        main = resample_repeats(first, retry, history, self.is_semantic(first))
+        best = candidates[mx.argmax(main_logits, axis=-1)]
+        main = replace_repeats(first, best, history)
         c0 = mx.clip(main - self.semantic_begin, 0, self.config.vocab_size - 1)
         semantic = self.is_semantic(main)
         hidden = self.run_shared(hidden, c0, semantic, frame, cache)
@@ -289,5 +295,13 @@ class FishDrama3AudioDecoder(nn.Module):
             zip(self.residual_layers, self.codebook_heads, strict=True)
         ):
             hidden = layer(hidden, codes[-1], semantic, cache[shared + index])
-            codes.append(sample_top_k_top_p(head(hidden), temperature, top_k, top_p))
+            codes.append(
+                reference_sample(
+                    head(hidden),
+                    temperature,
+                    top_k,
+                    top_p,
+                    legal_columns=RESIDUAL_CODEBOOK_SIZE,
+                )
+            )
         return mx.stack([main, *codes], axis=-1).astype(mx.int32)

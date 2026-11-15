@@ -17,13 +17,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import mlx_speech
 from mlx_speech.audio import write_wav
+from mlx_speech.generation.fish_drama_3 import (
+    DEFAULT_TEMPERATURE,
+    DEFAULT_TOP_K,
+    DEFAULT_TOP_P,
+)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--text", required=True, help="Text to synthesize.")
     parser.add_argument("--output", "-o", default="outputs/fish_drama_3.wav")
-    parser.add_argument("--model-dir", default="models/fish_drama_3/mlx-int8")
+    parser.add_argument("--model-dir", default="models/fish_drama_3/base")
     parser.add_argument("--reference-audio", action="append", default=[])
     parser.add_argument("--reference-text", action="append", default=[])
     parser.add_argument(
@@ -45,9 +50,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Frames per text chunk, about 21.5 per second (default 1024).",
     )
-    parser.add_argument("--temperature", type=float, default=0.7)
-    parser.add_argument("--top-p", type=float, default=0.7)
-    parser.add_argument("--top-k", type=int, default=30)
+    parser.add_argument("--temperature", type=float, default=DEFAULT_TEMPERATURE)
+    parser.add_argument("--top-p", type=float, default=DEFAULT_TOP_P)
+    parser.add_argument(
+        "--top-k", type=int, default=DEFAULT_TOP_K, help="0 removes the cap."
+    )
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument(
         "--single-chunk",

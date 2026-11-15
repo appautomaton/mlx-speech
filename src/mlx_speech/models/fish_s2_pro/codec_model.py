@@ -1232,8 +1232,15 @@ class FishCodecModel:
         config = FishCodecConfig(
             **json.loads((resolved / "config.json").read_text(encoding="utf-8"))
         )
+        return cls.from_weights(mx.load(str(resolved / "model.safetensors")), config)
+
+    @classmethod
+    def from_weights(
+        cls, weights: dict[str, mx.array], config: FishCodecConfig
+    ) -> "FishCodecModel":
+        """Build from raw codec weights, as stored in codec.pth or codec-mlx."""
         model = build_ae(**config.to_dict())
-        weights = model.sanitize(mx.load(str(resolved / "model.safetensors")))
+        weights = model.sanitize(weights)
         weights = _add_causal_conv_alias_weights(model, weights)
         _validate_codec_weights(model, weights)
         model.load_weights(list(weights.items()), strict=True)

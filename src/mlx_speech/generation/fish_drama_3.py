@@ -29,13 +29,14 @@ from ..models.fish_drama_3.prompt import (
     leads_with_speaker_tag,
     with_duration_hint,
 )
-from ..models.fish_drama_3.sampling import RAS_WINDOW_FRAMES
+from ..models.fish_drama_3.sampling import REPEAT_WINDOW_FRAMES
 from ..models.fish_s2_pro.codec import FishS2Codec
 
-# Upstream's reference recipe.
-DEFAULT_TEMPERATURE = 0.7
-DEFAULT_TOP_P = 0.7
-DEFAULT_TOP_K = 30
+# Fish Audio's recommendation under reference sampling: the model's own distribution,
+# trimmed only by the epsilon cutoff. top_k 0 removes the cap.
+DEFAULT_TEMPERATURE = 1.0
+DEFAULT_TOP_P = 1.0
+DEFAULT_TOP_K = 0
 # Frames per chunk, about 47 s of audio.
 DEFAULT_MAX_NEW_TOKENS = 1024
 # A take may run to about 2.5 times its expected duration (technical report, 3.3).
@@ -121,14 +122,16 @@ class FishDrama3Runtime:
 
     @classmethod
     def from_dir(cls, model_dir: str | Path, *, dense_int8: bool = False) -> FishDrama3Runtime:
-        """dense_int8 packs the dense BF16 projections as int8 once loaded,
-        for faster decoding; see load_fish_drama_3_model."""
+        """Load the upstream release as is.
+
+        dense_int8 packs the dense BF16 projections as int8 once loaded, for faster
+        decoding; see load_fish_drama_3_model."""
         resolved = Path(model_dir)
         return cls(
             model=load_fish_drama_3_model(resolved, dense_int8=dense_int8),
             tokenizer=Tokenizer.from_file(str(resolved / "tokenizer.json")),
-            # Drama 3 ships the S2 Pro codec, byte for byte.
-            codec=FishS2Codec.from_dir(resolved / "codec-mlx"),
+            # The release ships the S2 Pro codec, byte for byte, as codec.pth.
+            codec=FishS2Codec.from_codec_pth(resolved / "codec.pth"),
         )
 
     @property
@@ -199,7 +202,7 @@ class FishDrama3Runtime:
         hidden = self._prefill(rows, head_rows, prompt_rows, backbone_cache, decoder_cache)
         hidden = hidden[-1:]
         frame = rows[-1:]
-        history = rows[-RAS_WINDOW_FRAMES:, 0]
+        history = rows[-REPEAT_WINDOW_FRAMES:, 0]
         candidates = decoder.main_candidates
         frames: list[mx.array] = []
         finish_reason: FinishReason = "length"
@@ -297,10 +300,8 @@ class FishDrama3Runtime:
             single_chunk = True
             max_new_tokens = max_new_tokens or math.ceil(frames * RUNAWAY_FACTOR)
         max_new_tokens = max_new_tokens or DEFAULT_MAX_NEW_TOKENS
-        # The sampler keeps the best token whatever top_k is, so top_k < 1 would
-        # silently turn into greedy decoding.
-        if top_k < 1:
-            raise ValueError(f"top_k must be at least 1; got {top_k}")
+        if top_k < 0:
+            raise ValueError(f"top_k must be at least 0 (0: no cap); got {top_k}")
         if max_new_tokens < 1:
             raise ValueError(f"max_new_tokens must be at least 1; got {max_new_tokens}")
         texts = [reference.text for reference in references]
