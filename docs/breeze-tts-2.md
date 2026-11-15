@@ -18,11 +18,14 @@ none was installed or executed. Known hybrid PyTorch paths are excluded.
 
 ## Inference
 
-Load the gitignored `mlx-bf16/` or `mlx-int8/` package through the shared TTS
-API. The runtime family is `breeze_tts`. The codec is `audio_tokenizer`, not
-the Mimi block in `config.json`. Main weights stay BF16 and the codec stays
-FP32; `mlx-int8/` packs the backbone and depth decoder projections as affine
-int8 and is the faster choice.
+Load the upstream snapshot (`original/`) or the gitignored `mlx-int8/` package
+through the shared TTS API. The snapshot is read in memory as published, with
+nothing written to disk: main weights BF16, the codec FP32, codec kernels laid
+out for MLX, and the unused Mimi weights left unread. The `mlx-bf16/` package
+holds the same tensors bit for bit and also still loads. The runtime family is
+`breeze_tts`. The codec is `audio_tokenizer`, not the Mimi block in
+`config.json`. `mlx-int8/` packs the backbone and depth decoder projections as
+affine int8 and is the faster choice.
 `guidance_scale` and `cfg_scale` are the same control. Scale `1` keeps the
 conditional branch. Any other scale requires `instruction`. A reference clip
 requires its transcript. `max_new_tokens` is the codec-frame budget; the
@@ -36,7 +39,7 @@ and a stream keeps only that window.
 import mlx_speech
 from mlx_speech.audio import write_wav
 
-model = mlx_speech.tts.load("models/breezeblue/breeze_tts_2/mlx-bf16")
+model = mlx_speech.tts.load("models/breezeblue/breeze_tts_2/original")
 reference_text = open(
     "outputs/source/peggy_hill_ref.txt", encoding="utf-8"
 ).read().strip()
@@ -67,7 +70,7 @@ The CLI passes the reference transcript as `--reference-text`.
 
 ```bash
 USE_TORCH=0 .venv/bin/python -m mlx_speech.tts.generate \
-  --model models/breezeblue/breeze_tts_2/mlx-bf16 \
+  --model models/breezeblue/breeze_tts_2/original \
   --text "我们该把昨晚的事说清楚。" \
   --reference-audio outputs/source/peggy_hill_ref.wav \
   --reference-text "$(cat outputs/source/peggy_hill_ref.txt)" \
@@ -87,7 +90,7 @@ USE_TORCH=0 .venv/bin/python -m mlx_speech.tts.generate \
 import mlx.core as mx
 
 mx.set_cache_limit(4 * 1024**3)  # Once per process; see Memory below.
-model = mlx_speech.tts.load("models/breezeblue/breeze_tts_2/mlx-bf16")
+model = mlx_speech.tts.load("models/breezeblue/breeze_tts_2/original")
 clips = model.generate_batch(
     lines,
     reference_audio="outputs/source/peggy_hill_ref.wav",
@@ -210,7 +213,7 @@ and one Chinese take in five with 3 of 160 characters wrong in each build.
   overlap-add and attention rounding. The 32.8 s Peggy line is about 63 dB SNR
   against its offline render.
 - There is no published hub alias yet. Point the loader at the local
-  `mlx-bf16` directory.
+  `original` snapshot or a converted package.
 - The BreezeBlue non-commercial license still applies to the weights and to
   outputs made from them.
 
