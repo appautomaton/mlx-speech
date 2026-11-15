@@ -15,7 +15,13 @@ from mlx_speech.generation.fireredtts3 import (
 )
 
 from ..qwen3_asr.config import Qwen3ASRTextConfig
-from ..qwen3_asr.text_decoder import Qwen3ASRTextKVCache, Qwen3ASRTextModel
+from ..qwen3_asr.text_decoder import (
+    NATIVE_DECODE_COMPUTE,
+    Qwen3ASRDecodeCompute,
+    Qwen3ASRTextKVCache,
+    Qwen3ASRTextModel,
+)
+from .checkpoint import build_artifact_config, load_upstream_component
 from .config import FireRedTTS3Config
 from .dit import DiT
 from .patch_encoder import PatchEncoder, _linear
@@ -136,6 +142,8 @@ class FireRedTTS3Core(nn.Module):
         )
         self._compiled_dit = None
         self.stop_head = nn.Linear(config.qwen_hidden_size, 1)
+        # How the backbone computes; None is the reference path, in FP32.
+        self.backbone_compute: Qwen3ASRDecodeCompute | None = None
 
     @classmethod
     def from_dir(cls, model_dir: str | Path) -> "FireRedTTS3Core":
@@ -145,6 +153,19 @@ class FireRedTTS3Core(nn.Module):
         weights = mx.load(root / artifact.files["core"])
         model.load_weights(list(weights.items()), strict=True)
         model.eval()
+        model._compiled_dit = mx.compile(model.dit)
+        return model
+
+    @classmethod
+    def from_upstream(cls, model_dir: str | Path) -> "FireRedTTS3Core":
+        """The upstream FP32 release at upstream precision: the backbone's linear
+        weights in BF16 and computed in BF16, everything else in FP32."""
+        artifact = build_artifact_config(model_dir)
+        model = cls(FireRedTTS3CoreConfig.from_artifact(artifact))
+        weights = load_upstream_component(model_dir, "core")
+        model.load_weights(list(weights.items()), strict=True)
+        model.eval()
+        model.backbone_compute = NATIVE_DECODE_COMPUTE
         model._compiled_dit = mx.compile(model.dit)
         return model
 
@@ -250,11 +271,13 @@ class FireRedTTS3Core(nn.Module):
                 output = self.backbone_llm.prefill(
                     inputs_embeds=input_embeddings,
                     kv_cache=cache,
+                    compute=self.backbone_compute,
                 )
             else:
                 output = self.backbone_llm.decode_step(
                     inputs_embeds=input_embeddings,
                     kv_cache=cache,
+                    compute=self.backbone_compute,
                 )
             hidden_states = output.last_hidden_state
             stop_score = float(

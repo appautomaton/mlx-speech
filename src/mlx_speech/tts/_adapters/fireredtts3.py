@@ -9,6 +9,10 @@ import mlx.core as mx
 import numpy as np
 
 from ...audio import load_audio
+from ...models.fireredtts3.checkpoint import (
+    is_upstream_release,
+    require_upstream_release,
+)
 from ...models.fireredtts3.core import FireRedTTS3Core
 from ...models.fireredtts3.redae import RedAE
 from ...models.fireredtts3.speaker import (
@@ -35,11 +39,26 @@ class FireRedTTS3Adapter:
 
     @classmethod
     def from_dir(cls, model_dir: Path) -> "FireRedTTS3Adapter":
+        """An MLX artifact, or the upstream release (FireRedTeam/FireRedTTS3)
+        read in RAM at upstream precision."""
+        if is_upstream_release(model_dir):
+            return cls.from_upstream(model_dir)
         return cls(
             core=FireRedTTS3Core.from_dir(model_dir),
             redae=RedAE.from_dir(model_dir),
             speaker=FireRedSpeakerEncoder.from_dir(model_dir),
             tokenizer=FireRedTTS3Tokenizer.from_dir(model_dir),
+        )
+
+    @classmethod
+    def from_upstream(cls, model_dir: Path) -> "FireRedTTS3Adapter":
+        root = Path(model_dir)
+        require_upstream_release(root)
+        return cls(
+            core=FireRedTTS3Core.from_upstream(root),
+            redae=RedAE.from_upstream(root),
+            speaker=FireRedSpeakerEncoder.from_upstream(root),
+            tokenizer=FireRedTTS3Tokenizer.from_dir(root / "text_tokenizer"),
         )
 
     @property

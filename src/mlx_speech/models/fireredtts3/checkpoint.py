@@ -310,6 +310,78 @@ def convert_component_arrays(
     return converted
 
 
+# Upstream runs its FP32 release with the backbone and the RedAE encoder under BF16
+# autocast and everything else in FP32. Autocast rounds these linear weights and
+# biases to BF16; every other tensor stays FP32.
+_UPSTREAM_BF16 = {
+    "core": re.compile(r"backbone_llm\.layers\.\d+\.(self_attn|mlp)\.\w+_proj\.weight"),
+    "redae": re.compile(
+        r"encoder\.(in_proj\.\d+|out_proj"
+        r"|(downsample\.)?qwen3\.layers\.\d+\.(self_attn|mlp)\.\w+_proj)\.(weight|bias)"
+    ),
+}
+# The Qwen3 towers inside RedAE take embeddings, never token ids.
+_UNUSED_REDAE = re.compile(r"(encoder\.(downsample\.)?|decoder\.)qwen3\.embed_tokens\.weight")
+
+
+def upstream_dtype(component: str, name: str) -> mx.Dtype:
+    """The dtype upstream computes this tensor in."""
+    pattern = _UPSTREAM_BF16.get(component)
+    return mx.bfloat16 if pattern is not None and pattern.fullmatch(name) else mx.float32
+
+
+def is_upstream_release(model_dir: str | Path) -> bool:
+    """Whether model_dir holds the upstream release rather than an MLX artifact."""
+    root = Path(model_dir)
+    return not (root / "config.json").is_file() and (
+        root / _SOURCE_FILES["core_config"]
+    ).is_file()
+
+
+def require_upstream_release(model_dir: str | Path) -> None:
+    _require_source_files(Path(model_dir))
+
+
+def load_upstream_component(
+    model_dir: str | Path,
+    component: str,
+) -> dict[str, mx.array]:
+    """One component of the upstream FP32 release in RAM, laid out for MLX and at
+    the precision upstream computes it in.
+
+    Tensors are read, cast and evaluated one at a time, so the FP32 file is never
+    resident at once. Nothing is written to disk.
+    """
+
+    path = Path(model_dir) / _SOURCE_FILES[component]
+    if component == "speaker":
+        source = {
+            name: mx.array(value)
+            for name, value in load_torch_zip_state_dict(path).items()
+        }
+    else:
+        source = mx.load(str(path))
+    expected = EXPECTED_SOURCE_TENSORS[component]
+    if len(source) != expected:
+        raise ValueError(
+            f"FireRedTTS3 {component} expected {expected} tensors, got {len(source)}"
+        )
+    weights: dict[str, mx.array] = {}
+    for name in sorted(source):
+        value = source.pop(name)
+        if component == "redae" and _UNUSED_REDAE.fullmatch(name):
+            continue
+        artifact_name = _speaker_artifact_name(name) if component == "speaker" else name
+        if artifact_name is None:
+            continue
+        value = _convert_layout(component, artifact_name, value)
+        value = value.astype(upstream_dtype(component, artifact_name))
+        mx.eval(value)
+        weights[artifact_name] = value
+    mx.clear_cache()
+    return weights
+
+
 def _save_component(
     path: Path,
     component: str,
@@ -424,5 +496,9 @@ __all__ = [
     "build_artifact_config",
     "convert_component_arrays",
     "convert_fireredtts3",
+    "is_upstream_release",
     "load_torch_zip_state_dict",
+    "load_upstream_component",
+    "require_upstream_release",
+    "upstream_dtype",
 ]
