@@ -139,6 +139,33 @@ def read_quantization(model_dir: Path) -> BreezeQuantization | None:
     return None if block is None else BreezeQuantization.from_dict(block)
 
 
+def is_original_snapshot(model_dir: Path) -> bool:
+    """Whether model_dir holds the upstream snapshot rather than an MLX package."""
+
+    payload = json.loads((model_dir / "config.json").read_text(encoding="utf-8"))
+    return "mlx_speech" not in payload
+
+
+def load_original(
+    model_dir: Path,
+) -> tuple[dict[str, Any], dict[str, mx.array], dict[str, mx.array]]:
+    """The upstream snapshot in RAM as the MLX package would hold it: its runtime
+    config, main weights and codec weights.
+
+    Nothing is cast: main tensors stay BF16 and codec tensors FP32, as published.
+    Codec kernels take the MLX layout. The Mimi tensors are dropped unread.
+    """
+
+    payload = json.loads((model_dir / "config.json").read_text(encoding="utf-8"))
+    payload["mlx_speech"] = _runtime_marker()
+    main = select_main_weights(_load_weights(model_dir))
+    codec = {
+        key: mlx_codec_weight(key, value)[0]
+        for key, value in _load_weights(model_dir / "audio_tokenizer").items()
+    }
+    return payload, main, codec
+
+
 @dataclass(frozen=True)
 class BreezeConversion:
     output_dir: Path
@@ -265,16 +292,20 @@ def _load_weights(model_dir: Path) -> dict[str, mx.array]:
     return weights
 
 
-def _write_config(
-    source: Path, destination: Path, quantization: BreezeQuantization | None = None
-) -> None:
-    payload = json.loads(source.read_text(encoding="utf-8"))
-    payload["mlx_speech"] = {
+def _runtime_marker() -> dict[str, Any]:
+    return {
         "family": FAMILY,
         "main_dtype": MAIN_DTYPE,
         "codec_dtype": CODEC_DTYPE,
         "codec": "audio_tokenizer",
     }
+
+
+def _write_config(
+    source: Path, destination: Path, quantization: BreezeQuantization | None = None
+) -> None:
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    payload["mlx_speech"] = _runtime_marker()
     if quantization is not None:
         payload["mlx_speech"]["quantization"] = quantization.to_dict()
     destination.write_text(

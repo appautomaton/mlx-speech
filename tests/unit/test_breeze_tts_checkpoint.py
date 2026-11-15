@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import mlx.core as mx
 import pytest
 
@@ -7,6 +9,8 @@ from mlx_speech.models.breeze_tts.checkpoint import (
     BACKBONE_AUDIO_EMBED,
     DEPTH_AUDIO_EMBED,
     BreezeQuantization,
+    is_original_snapshot,
+    load_original,
     mlx_codec_weight,
     quantization_paths,
     quantize_main_weights,
@@ -122,3 +126,37 @@ def test_int8_metadata_rejects_a_path_outside_the_layers() -> None:
         BreezeQuantization.from_dict(
             {"bits": 4, "group_size": 64, "mode": "affine", "paths": ["backbone_model.layers.0.mlp.up_proj"]}
         )
+
+
+def test_the_upstream_snapshot_loads_as_the_package_would_hold_it(tmp_path) -> None:
+    (tmp_path / "audio_tokenizer").mkdir()
+    (tmp_path / "config.json").write_text(json.dumps({"model_type": "breeze"}))
+    depth = mx.arange(8, dtype=mx.bfloat16).reshape(4, 2)
+    mx.save_safetensors(
+        str(tmp_path / "model-00001-of-00002.safetensors"),
+        {"codec_model.decoder.weight": mx.zeros((2, 2), dtype=mx.bfloat16)},
+    )
+    mx.save_safetensors(
+        str(tmp_path / "model-00002-of-00002.safetensors"), {DEPTH_AUDIO_EMBED: depth}
+    )
+    conv = mx.arange(24, dtype=mx.float32).reshape(2, 3, 4)
+    mx.save_safetensors(
+        str(tmp_path / "audio_tokenizer" / "model.safetensors"),
+        {"decoder.pre_conv.conv.weight": conv},
+    )
+
+    assert is_original_snapshot(tmp_path)
+    payload, main, codec = load_original(tmp_path)
+
+    assert payload["model_type"] == "breeze"
+    assert payload["mlx_speech"]["codec"] == "audio_tokenizer"
+    assert set(main) == {DEPTH_AUDIO_EMBED, BACKBONE_AUDIO_EMBED}
+    assert main[BACKBONE_AUDIO_EMBED].dtype == mx.bfloat16
+    assert mx.array_equal(main[BACKBONE_AUDIO_EMBED], depth)
+    assert mx.array_equal(
+        codec["decoder.pre_conv.conv.weight"], conv.transpose(0, 2, 1)
+    )
+
+    payload["mlx_speech"]["family"] = "breeze_tts"
+    (tmp_path / "config.json").write_text(json.dumps(payload))
+    assert not is_original_snapshot(tmp_path)

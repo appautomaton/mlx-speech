@@ -29,7 +29,12 @@ from mlx_speech.models.breeze_tts.codec import (
     SpeechCodec,
     codec_parameter_key,
 )
-from mlx_speech.models.breeze_tts.checkpoint import is_quantizable, read_quantization
+from mlx_speech.models.breeze_tts.checkpoint import (
+    is_original_snapshot,
+    is_quantizable,
+    load_original,
+    read_quantization,
+)
 from mlx_speech.models.breeze_tts.config import BreezeRuntimeConfig, load_runtime_config
 from mlx_speech.models.breeze_tts.depth import BreezeDepthDecoder
 from mlx_speech.models.breeze_tts.text_encoder import BreezeTextEncoder
@@ -65,10 +70,18 @@ class BreezeSpeech(nn.Module):
 
 
 def load_breeze_speech(model_dir: Path) -> tuple[BreezeSpeech, SpeechCodec, Tokenizer]:
+    """An MLX package, or the upstream snapshot read in RAM at its own precision."""
     model_dir = model_dir.expanduser().resolve()
-    config = load_runtime_config(model_dir)
+    if is_original_snapshot(model_dir):
+        payload, main, codec_weights = load_original(model_dir)
+        config = BreezeRuntimeConfig.from_runtime(payload)
+        quantization = None
+    else:
+        config = load_runtime_config(model_dir)
+        quantization = read_quantization(model_dir)
+        main = mx.load(str(model_dir / "model.safetensors"))
+        codec_weights = mx.load(str(model_dir / "audio_tokenizer" / "model.safetensors"))
     speech = BreezeSpeech(config)
-    quantization = read_quantization(model_dir)
     if quantization is not None:
         eligible = tuple(
             sorted(
@@ -87,10 +100,8 @@ def load_breeze_speech(model_dir: Path) -> tuple[BreezeSpeech, SpeechCodec, Toke
             mode=quantization.mode,
             class_predicate=lambda path, module: path in selected,
         )
-    main = mx.load(str(model_dir / "model.safetensors"))
     speech.load_weights(list(main.items()), strict=True)
     codec = SpeechCodec()
-    codec_weights = mx.load(str(model_dir / "audio_tokenizer" / "model.safetensors"))
     codec_parameters = [
         (codec_parameter_key(key), value) for key, value in codec_weights.items()
     ]
