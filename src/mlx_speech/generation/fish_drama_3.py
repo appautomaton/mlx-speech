@@ -531,8 +531,7 @@ class FishDrama3Runtime:
             if frames.shape[1] == 0:
                 continue  # the model stopped before any audio frame
             history.push(chunk, frames)
-            waveform = self.codec.decode(mx.array(frames)).reshape(-1)
-            yield Drama3Chunk(chunk, frames, waveform, finish_reason)
+            yield Drama3Chunk(chunk, frames, self._waveform(frames), finish_reason)
 
     def synthesize_batch(
         self,
@@ -600,12 +599,21 @@ class FishDrama3Runtime:
             mx.clear_cache()
             for i, (codes, finish_reason) in zip(group, decoded, strict=True):
                 waveform = (
-                    self.codec.decode(mx.array(codes)).reshape(-1)
+                    self._waveform(codes)
                     if codes.shape[1]
                     else mx.zeros((0,), dtype=mx.float32)
                 )
                 lines[i] = Drama3Chunk(texts[i], codes, waveform, finish_reason)
         return lines
+
+    def _waveform(self, codes: np.ndarray) -> mx.array:
+        """The codec's waveform of codes [num_codebooks, frames], its activations
+        released afterwards. Lines of different lengths cannot reuse each other's
+        buffers, and MLX would keep every one cached: tens of GiB over a batch."""
+        waveform = self.codec.decode(mx.array(codes)).reshape(-1)
+        mx.eval(waveform)
+        mx.clear_cache()
+        return waveform
 
     def _timed(
         self, text: str, duration_seconds: float, max_new_tokens: int | None
