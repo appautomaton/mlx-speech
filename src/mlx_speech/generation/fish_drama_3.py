@@ -43,9 +43,13 @@ DEFAULT_MAX_NEW_TOKENS = 1024
 RUNAWAY_FACTOR = 2.5
 PREFILL_CHUNK_ROWS = 128
 # Lines decoded together by synthesize_batch. Each decode step reads the experts
-# its rows route to; by 48 to 64 rows that is nearly all of them, so a step costs
-# about what it would with fewer rows. Each line adds about 75 MB of state.
-DEFAULT_BATCH_SIZE = 64
+# its rows route to; by 48 to 64 rows that is nearly all of them, so further rows
+# cost little more per step. Each line adds about 75 MB of state.
+DEFAULT_BATCH_SIZE = 128
+# Each decode step's attention reads one more cached row than the last, so its
+# buffers never match a later step's and pile up in MLX's cache (about 0.2 GiB a
+# step at 128 rows); it is cleared every this many steps.
+_CLEAR_CACHE_STEPS = 16
 # Finished rows leave a decoding batch once they are this fraction of it.
 _COMPACT_FINISHED_FRACTION = 0.25
 
@@ -441,6 +445,8 @@ class FishDrama3Runtime:
                 _cache_arrays(backbone_cache),
                 _cache_arrays(decoder_cache),
             )
+            if step % _CLEAR_CACHE_STEPS == _CLEAR_CACHE_STEPS - 1:
+                mx.clear_cache()
         results = []
         for request in range(count):
             codes = np.array(generated[request, : produced[request], 1:], dtype=np.int32)
