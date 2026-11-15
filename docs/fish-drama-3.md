@@ -15,30 +15,35 @@ mono audio.
 | Experts | 256 per layer, 8 routed per token, plus a gated shared expert |
 | Audio decoder | 4 shared + 9 residual layers that complete the 10 codebooks of each frame |
 | Codec | Fish S2 Pro codec, byte-identical: 10 codebooks, 2048 samples per frame (21.5 frames/s) |
-| MLX checkpoint | Routed experts affine 8-bit (group 64); every other weight bf16, as released |
-| Memory | About 41 GiB of weights (38.4 GiB with `dense_int8`); 44–46 GiB peak while generating |
+| Weights in memory | Routed experts affine 8-bit (group 64); every other weight bf16, as released |
+| Memory | About 39 GiB once loaded, about 2.5 GiB less with `dense_int8`; 44–46 GiB peak while generating |
 
-## Converting the Release
+## Weights
 
-The upstream release stores its routed experts as block FP8, which MLX does not run.
-Convert it once; nothing here needs PyTorch:
+The upstream release loads as is; there is no conversion step and nothing needs
+PyTorch:
 
 ```bash
-hf download fishaudio/drama-3 --local-dir /tmp/drama-3
-python scripts/convert/fish_drama_3.py --input-dir /tmp/drama-3 \
-    --output-dir models/fish_drama_3/mlx-int8
+hf download fishaudio/drama-3 --local-dir models/fish_drama_3/base
 ```
 
-The converter dequantizes each FP8 block exactly, requantizes the experts to MLX
-8-bit (0.76% relative error against the FP8 values), copies every other tensor bit
-for bit, and converts the codec. It holds one layer at a time, under 7 GB of memory.
+Its routed experts are block FP8, which MLX does not run. Loading requantizes them
+in memory to MLX 8-bit, one projection at a time, in about 20 seconds; the peak is
+the loaded model itself, and nothing is written to disk. Each group of 64 takes its
+own minimum and maximum as its range, fitted to the exact FP8 values in fp32, which
+leaves 0.57% relative error against them (`mx.quantize` on their bf16 rounding leaves
+0.76%). Every other tensor is
+used as released, and the codec is built from the release's `codec.pth`.
+
+Fish Audio re-uploaded the weights on 2026-10-29 (revision `78e5ab7`), replacing the
+preview weights of 2026-10-13; the measurements below are on the re-upload.
 
 ## Quick Start
 
 ```python
 import mlx_speech
 
-model = mlx_speech.tts.load("models/fish_drama_3/mlx-int8")
+model = mlx_speech.tts.load("models/fish_drama_3/base")
 result = model.generate(
     "Hello from Drama 3.",
     reference_audio="voice.wav",
@@ -122,13 +127,7 @@ sentences by one speaker stalled in 3 of 4 takes.
 
 - Pass `duration_seconds`. With it, two-speaker dialogue with references completed
   4 of 4 takes, against 1 of 4 without it.
-- Check each take and regenerate the ones that fail, as the technical report does:
-  for example transcribe it with Qwen3-ASR and compare against the script.
-
-On an 80-line Mandarin drama scene (six characters, references cut from the source
-video), durations from the source timing gave 70 of 78 lines at ≥ 0.9 ASR similarity
-on the first take, and 78 of 78 after regenerating the weak ones with a longer
-duration or another seed.
+- Check each take and regenerate the ones that fail, as the technical report does.
 
 ## Generation Parameters
 
@@ -161,7 +160,7 @@ same rows reuses it and prefills only its own turn: same reference, same history
 new line. Reuse gives the same frames as a fresh prefill, bit for bit.
 
 `FishDrama3Runtime.from_dir(path, dense_int8=True)` packs the dense bf16
-projections as affine int8 once loaded; the checkpoint is unchanged. That is
+projections as affine int8 once loaded. That is
 every backbone attention, Gated DeltaNet and shared-expert projection, and every
 audio-decoder tower layer. The routers, the DeltaNet decay gates (`in_proj_a`,
 `in_proj_b`), embeddings, `lm_head` and the codebook heads stay bf16.
@@ -175,15 +174,13 @@ with the same reference and history, three lines by five seeds:
 | Shared head reused | 0.453 | 1.86 s | 40.5 GiB |
 | Shared head reused, `dense_int8` | 0.381 | 1.58 s | 38.4 GiB |
 
-Audio8 ASR heard the same words from both precisions: over twenty seeds of the one
-line where it ever erred, it heard 估 as 雇 in 13 BF16 takes and 11 int8 takes.
-
 ## Validation
 
 No PyTorch parity. Every layer is checked against float64 numpy oracles written
-from the upstream math; on real weights, teacher-forced decoding of real speech
-predicts 93% of main tokens and 55–86% of residual codes, and Qwen3-ASR transcribes
-generated speech.
+from the upstream math. On the release, every dense tensor loads bit for bit as
+released. Teacher-forced on 1143 frames of real speech in three voiced dialogues,
+the int8 experts stay within 0.005 nats of exact FP8 experts on the main token and
+0.002 on the residual codes (mean KL per frame).
 
 ## License
 

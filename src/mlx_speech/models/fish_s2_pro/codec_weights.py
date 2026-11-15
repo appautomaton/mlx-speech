@@ -116,6 +116,11 @@ def _rebuild_tensor_v2(
 
 
 def convert_codec_pth_to_assets(codec_pth: str | Path, output_dir: str | Path) -> None:
+    save_codec_assets(output_dir, read_codec_pth(codec_pth), FishCodecConfig())
+
+
+def read_codec_pth(codec_pth: str | Path) -> dict[str, mx.array]:
+    """The raw weights of a Fish codec.pth, read without torch."""
     resolved = Path(codec_pth)
     if not resolved.is_file():
         raise FileNotFoundError(f"Missing Fish codec checkpoint: {resolved}")
@@ -166,5 +171,4 @@ def convert_codec_pth_to_assets(codec_pth: str | Path, output_dir: str | Path) -
                 return storages[storage_key]
 
         state = _ArchiveUnpickler(io.BytesIO(raw)).load()
-        weights = {key: mx.array(np.array(tensor)) for key, tensor in state.items()}
-        save_codec_assets(output_dir, weights, FishCodecConfig())
+        return {key: mx.array(np.array(tensor)) for key, tensor in state.items()}

@@ -1,16 +1,17 @@
-"""Drama 3 model: the text backbone and the audio decoder, loaded from a converted
-MLX checkpoint (scripts/convert/fish_drama_3.py)."""
+"""Drama 3 model: the text backbone and the audio decoder, loaded from the upstream
+release as is."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import mlx.core as mx
 import mlx.nn as nn
 
-from ...checkpoints.sharded import load_state_dict
 from .audio_decoder import FishDrama3AudioDecoder
 from .backbone import FishDrama3Backbone
+from .checkpoint import UPSTREAM_EXPERT_QUANTIZATION, upstream_weights
 from .config import FishDrama3Config
 
 
@@ -57,8 +58,8 @@ class FishDrama3Model(nn.Module):
         super().__init__()
         if config.expert_quantization is None:
             raise ValueError(
-                "Drama 3 runs from a converted MLX checkpoint; convert the upstream "
-                "release with scripts/convert/fish_drama_3.py"
+                "Drama 3 experts must be MLX-quantized; load the upstream release "
+                "with load_fish_drama_3_model, which requantizes them"
             )
         self.config = config
         self.backbone = FishDrama3Backbone(config.text, config.expert_quantization)
@@ -68,12 +69,25 @@ class FishDrama3Model(nn.Module):
 def load_fish_drama_3_model(
     model_dir: str | Path, *, materialize: bool = True, dense_int8: bool = False
 ):
-    """Load every weight strictly; materialize reads them all into memory now
-    rather than on first use. dense_int8 packs the dense BF16 projections as
-    affine int8 (groups of 64) once loaded: the checkpoint is unchanged."""
+    """Load the upstream release as is, every weight strictly.
+
+    The release's block-FP8 experts are requantized in memory to MLX int8, one
+    projection at a time; nothing is written. materialize reads every weight into
+    memory now rather than on first use. dense_int8 packs the dense BF16 projections
+    as affine int8 (groups of 64) once loaded."""
+    model_dir = Path(model_dir)
     config = FishDrama3Config.from_path(model_dir)
+    if not config.fp8_experts:
+        raise ValueError(
+            f"{model_dir} is not the upstream Drama 3 release: its config declares "
+            "no block-FP8 experts"
+        )
+    weights = list(upstream_weights(model_dir, config, UPSTREAM_EXPERT_QUANTIZATION))
+    config = replace(
+        config, fp8_experts=False, expert_quantization=UPSTREAM_EXPERT_QUANTIZATION
+    )
     model = FishDrama3Model(config)
-    model.load_weights(list(load_state_dict(model_dir).weights.items()), strict=True)
+    model.load_weights(weights, strict=True)
     if dense_int8:
         nn.quantize(
             model,

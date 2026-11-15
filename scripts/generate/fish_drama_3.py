@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--text", required=True, help="Text to synthesize.")
     parser.add_argument("--output", "-o", default="outputs/fish_drama_3.wav")
-    parser.add_argument("--model-dir", default="models/fish_drama_3/mlx-int8")
+    parser.add_argument("--model-dir", default="models/fish_drama_3/base")
     parser.add_argument("--reference-audio", action="append", default=[])
     parser.add_argument("--reference-text", action="append", default=[])
     parser.add_argument(

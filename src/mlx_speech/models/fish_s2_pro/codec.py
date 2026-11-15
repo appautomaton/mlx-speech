@@ -43,6 +43,16 @@ class FishS2Codec:
         )
         return instance
 
+    @classmethod
+    def from_codec_pth(cls, codec_pth: str | Path) -> "FishS2Codec":
+        """Build from the codec.pth an upstream release ships, in memory."""
+        from .codec_config import FishCodecConfig
+        from .codec_model import FishCodecModel
+        from .codec_weights import read_codec_pth
+
+        model = FishCodecModel.from_weights(read_codec_pth(codec_pth), FishCodecConfig())
+        return cls(model=model, sample_rate=model.sample_rate)
+
     def _load_model(self, codec_dir: Path):
         from .codec_model import FishCodecModel
 

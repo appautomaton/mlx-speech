@@ -1,8 +1,8 @@
 """Fish Audio Drama 3 configuration (``model_type: fish_omni``).
 
-One parser covers both the upstream release, whose routed experts are block FP8
-(``quantization_config``), and the converted MLX checkpoint, whose routed experts
-are affine-quantized (``quantization``). Every other weight is bfloat16 in both.
+The upstream release stores its routed experts as block FP8 (``quantization_config``)
+and every other weight as bfloat16. The loaded model holds the experts
+affine-quantized; ``quantization`` describes that form, as tests build it directly.
 """
 
 from __future__ import annotations
@@ -210,7 +210,7 @@ class FishDrama3AudioDecoderConfig:
 
 @dataclass(frozen=True)
 class ExpertQuantization:
-    """MLX quantization of the routed experts in a converted checkpoint."""
+    """MLX quantization the routed experts are held in."""
 
     bits: int
     group_size: int
@@ -229,7 +229,7 @@ class FishDrama3Config:
     eos_token_id: int
     # Upstream release: routed experts are block FP8 with fp32 128x128 scales.
     fp8_experts: bool = False
-    # Converted MLX checkpoint: routed experts are MLX-quantized.
+    # In memory: routed experts are MLX-quantized.
     expert_quantization: ExpertQuantization | None = None
 
     def __post_init__(self) -> None:
