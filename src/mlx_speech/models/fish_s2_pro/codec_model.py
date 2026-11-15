@@ -20,6 +20,31 @@ def _normalize_weight(x: mx.array, except_dim: int = 0) -> mx.array:
     return mx.sqrt(mx.sum(mx.power(x, 2), axis=axes, keepdims=True))
 
 
+def _folded_weight(module: nn.Module) -> mx.array:
+    """weight_g * weight_v / ||weight_v||, computed once per pair of source arrays
+    rather than on every call. Kept outside the module tree, so it is never a
+    parameter; loading new weights replaces the sources and refolds."""
+    source = (module.weight_g, module.weight_v)
+    cached = module.__dict__.get("_folded")
+    if cached is None or cached[0] is not source[0] or cached[1] is not source[1]:
+        weight = source[0] * source[1] / _normalize_weight(source[1], except_dim=0)
+        cached = (*source, weight)
+        object.__setattr__(module, "_folded", cached)
+    return cached[2]
+
+
+def _stride_phase_transpose(x: mx.array, matrix: mx.array, stride: int) -> mx.array:
+    """conv_transpose1d of x [batch, steps, in] for a kernel of two strides, as one
+    matmul: output n * stride + r is x[n] @ w[..., r] + x[n - 1] @ w[..., r + stride].
+    Returns [batch, (steps + 1) * stride, out], the full transposed-conv length,
+    without the scattered writes of a general transposed convolution."""
+    batch, steps, _ = x.shape
+    current = mx.pad(x, [(0, 0), (0, 1), (0, 0)])
+    previous = mx.pad(x, [(0, 0), (1, 0), (0, 0)])
+    y = mx.concatenate([current, previous], axis=-1) @ matrix
+    return y.reshape(batch, (steps + 1) * stride, -1)
+
+
 def _conv1d_torch_to_mlx(weight: mx.array) -> mx.array:
     return weight.transpose(0, 2, 1)
 
@@ -125,17 +150,44 @@ class ConvTranspose1dTorch(nn.Module):
 
     def __call__(self, x: mx.array) -> mx.array:
         x_nlc = x.swapaxes(1, 2)
-        y = mx.conv_transpose1d(
-            x_nlc,
-            _conv_transpose1d_torch_to_mlx(self.weight),
-            stride=self.stride,
-            padding=self.padding,
-            dilation=self.dilation,
-            groups=self.groups,
-        )
+        if self._stride_phases():
+            y = _stride_phase_transpose(x_nlc, self._phase_matrix(), self.stride)
+        else:
+            y = mx.conv_transpose1d(
+                x_nlc,
+                _conv_transpose1d_torch_to_mlx(self.weight),
+                stride=self.stride,
+                padding=self.padding,
+                dilation=self.dilation,
+                groups=self.groups,
+            )
         if self.bias is not None:
             y = y + self.bias
         return y.swapaxes(1, 2)
+
+    def _stride_phases(self) -> bool:
+        """The codec's upsamplers: a kernel of two strides, nothing else."""
+        return (
+            self.kernel_size == 2 * self.stride
+            and self.padding == 0
+            and self.dilation == 1
+            and self.groups == 1
+        )
+
+    def _phase_matrix(self) -> mx.array:
+        """weight [in, out, 2 * stride] as one [2 * in, stride * out] matrix: rows
+        for x[n], then for x[n - 1]; columns for each output phase. Built once per
+        weight array."""
+        cached = self.__dict__.get("_phases")
+        if cached is None or cached[0] is not self.weight:
+            stride = self.stride
+            stacked = mx.concatenate(
+                [self.weight[..., :stride], self.weight[..., stride:]], axis=0
+            )
+            matrix = stacked.transpose(0, 2, 1).reshape(stacked.shape[0], -1)
+            cached = (self.weight, matrix)
+            object.__setattr__(self, "_phases", cached)
+        return cached[1]
 
 
 class WNConv1d(nn.Module):
@@ -169,11 +221,7 @@ class WNConv1d(nn.Module):
         self.bias = mx.zeros((out_channels,)) if bias else None
 
     def _weight(self) -> mx.array:
-        return (
-            self.weight_g
-            * self.weight_v
-            / _normalize_weight(self.weight_v, except_dim=0)
-        )
+        return _folded_weight(self)
 
     def __call__(self, x: mx.array) -> mx.array:
         x_nlc = x.swapaxes(1, 2)
@@ -221,11 +269,7 @@ class WNConvTranspose1d(nn.Module):
         self.bias = mx.zeros((out_channels,)) if bias else None
 
     def _weight(self) -> mx.array:
-        return (
-            self.weight_g
-            * self.weight_v
-            / _normalize_weight(self.weight_v, except_dim=0)
-        )
+        return _folded_weight(self)
 
     def __call__(self, x: mx.array) -> mx.array:
         x_nlc = x.swapaxes(1, 2)
@@ -242,7 +286,10 @@ class WNConvTranspose1d(nn.Module):
         return y.swapaxes(1, 2)
 
 
+@mx.compile
 def snake(x: mx.array, alpha: mx.array) -> mx.array:
+    # Compiled into one kernel: unfused, each of its five elementwise steps reads
+    # and writes the whole activation.
     return x + mx.reciprocal(alpha + 1e-9) * mx.power(mx.sin(alpha * x), 2)
 
 
@@ -335,11 +382,7 @@ class CausalWNConv1d(nn.Module):
         self.conv.conv.bias = self.bias
 
     def __call__(self, x: mx.array) -> mx.array:
-        self.conv.conv.weight = (
-            self.weight_g
-            * self.weight_v
-            / _normalize_weight(self.weight_v, except_dim=0)
-        )
+        self.conv.conv.weight = _folded_weight(self)
         self.conv.conv.bias = self.bias
         return self.conv(x)
 
@@ -356,11 +399,7 @@ class CausalWNConvTranspose1d(nn.Module):
         self.conv.conv.bias = self.bias
 
     def __call__(self, x: mx.array) -> mx.array:
-        self.conv.conv.weight = (
-            self.weight_g
-            * self.weight_v
-            / _normalize_weight(self.weight_v, except_dim=0)
-        )
+        self.conv.conv.weight = _folded_weight(self)
         self.conv.conv.bias = self.bias
         return self.conv(x)
 
