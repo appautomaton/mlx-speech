@@ -320,6 +320,8 @@ class FishDrama3Runtime:
                 )
                 mx.eval(_cache_arrays(self._head.backbone), _cache_arrays(self._head.decoder))
         hidden = self._prefill(rows, head_rows, prompt_rows, backbone_cache, decoder_cache)
+        # Prompts differ in length, so their freed buffers rarely fit the next one.
+        mx.clear_cache()
         return _Prefilled(
             rows=prompt_rows,
             hidden=hidden[-1:],
@@ -369,6 +371,7 @@ class FishDrama3Runtime:
         hidden = mx.concatenate([request.hidden for request in requests])
         frame = mx.concatenate([request.frame for request in requests])
         history = mx.stack([request.history for request in requests])
+        mx.clear_cache()  # the per-request caches, now consumed
         candidates = decoder.main_candidates
         eos = self.config.eos_token_id
         generated = mx.zeros((count, most, 1 + num_codebooks), dtype=mx.int32)
@@ -419,6 +422,7 @@ class FishDrama3Runtime:
                 active = [active[row] for row in keep]
                 pads = [pads[row] for row in keep]
                 pad_rows = mx.array(pads)
+                mx.clear_cache()  # the wider caches the batch no longer uses
             frame = sampled
             history = mx.concatenate([history[:, 1:], sampled[:, :1]], axis=1)
             embeddings = decoder.embed_backbone(
