@@ -66,6 +66,36 @@ Convert the pinned official files already staged under `models/`:
 The converter reads the CAM++ PyTorch zip format with a restricted local
 decoder. It does not import or require PyTorch.
 
+## Upstream weights
+
+The loader also reads the upstream release (the `FireRedTeam/FireRedTTS3`
+layout: `fireredtts3_base/`, `redae/`, `campp/`, `text_tokenizer/`) without
+conversion and without writing anything to disk:
+
+```python
+model = load_tts("models/firered/firered_tts3/original")
+```
+
+Upstream runs its FP32 weights with the backbone and the RedAE encoder under
+BF16 autocast and everything else in FP32. Each tensor is read, cast to that
+precision and evaluated before the next, so the 11 GB FP32 release loads into
+about 6.8 GiB of memory.
+
+| Component | Weights | Compute |
+| --- | --- | --- |
+| Qwen backbone linears | BF16 | BF16 |
+| Backbone embeddings and norms | FP32 | FP32 |
+| RedAE encoder linears | BF16 | FP32 |
+| Patch encoder, projections, stop and DiT heads, DiT | FP32 | FP32 |
+| RedAE decoder, CAM++ | FP32 | FP32 |
+
+Backbone attention and the RedAE encoder compute in FP32, where upstream uses
+BF16. RedAE's Qwen towers take embeddings, so their unused token embeddings are
+not loaded. The FP32 DiT is the main difference from the BF16 artifact: its
+flow output differs by 1 to 3 percent per patch. On one local 8-second line,
+generation took about a quarter longer: 1.55 seconds per second of audio,
+against 1.23.
+
 ## Voice cloning
 
 The reference transcript must exactly describe the reference recording. Use a
@@ -145,8 +175,8 @@ upstream-compatible soft limits are not a recommended production scheduler.
 RedAE uses its official 64-token encoder and decoder sliding windows through a
 window-bounded MLX attention path; the three-token CLS downsampler keeps full
 attention. The Base core performs one Qwen prompt prefill followed by cached
-one-token continuation. DiT uses BF16 linear compute and compiles only its
-fixed 12-frame tensor region. Variable KV-cache tensors, stop-score host
+one-token continuation. With the BF16 artifact, DiT uses BF16 linear compute.
+It compiles only its fixed 12-frame tensor region. Variable KV-cache tensors, stop-score host
 synchronization, and request cleanup remain outside compiled code.
 
 On the local golden request shown above, after one excluded warmup, three runs

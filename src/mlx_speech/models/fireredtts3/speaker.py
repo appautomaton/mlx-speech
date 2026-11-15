@@ -13,6 +13,7 @@ from ..dots_tts.speaker import (
     SpeakerFrontend,
     _sinc_resample,
 )
+from .checkpoint import build_artifact_config, load_upstream_component
 from .config import FireRedTTS3Config
 
 
@@ -30,18 +31,16 @@ class FireRedSpeakerEncoder:
     def from_dir(cls, model_dir: str | Path) -> "FireRedSpeakerEncoder":
         root = Path(model_dir)
         artifact = FireRedTTS3Config.from_dir(root)
-        source = artifact.speaker
-        model = CAMPPlus(
-            CAMPPlusConfig(
-                feature_dim=int(source["feature_dim"]),
-                embedding_size=int(source["embedding_size"]),
-                growth_rate=int(source["growth_rate"]),
-                bottleneck_size=4,
-                initial_channels=int(source["init_channels"]),
-                block_layers=tuple(int(value) for value in source["block_layers"]),
-            )
-        )
+        model = _campplus(artifact.speaker)
         weights = mx.load(root / artifact.files["speaker"])
+        model.load_weights(list(weights.items()), strict=True)
+        return cls(model)
+
+    @classmethod
+    def from_upstream(cls, model_dir: str | Path) -> "FireRedSpeakerEncoder":
+        """CAM++ from the upstream release, in FP32 as upstream runs it."""
+        model = _campplus(build_artifact_config(model_dir).speaker)
+        weights = load_upstream_component(model_dir, "speaker")
         model.load_weights(list(weights.items()), strict=True)
         return cls(model)
 
@@ -56,6 +55,19 @@ class FireRedSpeakerEncoder:
             mx.array(features[None], dtype=mx.float32),
             lengths=mx.array([length], dtype=mx.int32),
         )
+
+
+def _campplus(source: dict) -> CAMPPlus:
+    return CAMPPlus(
+        CAMPPlusConfig(
+            feature_dim=int(source["feature_dim"]),
+            embedding_size=int(source["embedding_size"]),
+            growth_rate=int(source["growth_rate"]),
+            bottleneck_size=4,
+            initial_channels=int(source["init_channels"]),
+            block_layers=tuple(int(value) for value in source["block_layers"]),
+        )
+    )
 
 
 def resample_mono_audio(

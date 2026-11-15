@@ -12,6 +12,7 @@ import numpy as np
 
 from ..qwen3_asr.config import Qwen3ASRTextConfig
 from ..qwen3_asr.text_decoder import Qwen3ASRTextModel
+from .checkpoint import build_artifact_config, load_upstream_component
 from .config import FireRedTTS3Config
 
 
@@ -298,6 +299,22 @@ class RedAE(nn.Module):
         artifact = FireRedTTS3Config.from_dir(root)
         model = cls(RedAEConfig.from_artifact(artifact))
         weights = mx.load(root / artifact.files["redae"])
+        model.load_weights(list(weights.items()), strict=True)
+        return model
+
+    @classmethod
+    def from_upstream(cls, model_dir: str | Path) -> "RedAE":
+        """The upstream FP32 release at upstream precision: the encoder's linear
+        weights in BF16, everything else in FP32. The Qwen3 towers take
+        embeddings, so their token embeddings are not loaded."""
+        model = cls(RedAEConfig.from_artifact(build_artifact_config(model_dir)))
+        for tower in (
+            model.encoder.qwen3,
+            model.encoder.downsample.qwen3,
+            model.decoder.qwen3,
+        ):
+            tower.embed_tokens = None
+        weights = load_upstream_component(model_dir, "redae")
         model.load_weights(list(weights.items()), strict=True)
         return model
 

@@ -10,6 +10,8 @@ def _resolve_tts_family(model_dir: Path) -> str:
     """Determine the TTS model family from config.json on disk."""
     config_path = model_dir / "config.json"
     if not config_path.exists():
+        if (model_dir / "fireredtts3_base" / "config.json").is_file():
+            return "fireredtts3"  # the upstream FireRedTTS3 release
         raise FileNotFoundError(
             f"No config.json found at {model_dir}. Cannot auto-detect model type."
         )
