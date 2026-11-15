@@ -32,8 +32,8 @@ in memory to MLX 8-bit, one projection at a time, in about 20 seconds; the peak 
 the loaded model itself, and nothing is written to disk. Each group of 64 takes its
 own minimum and maximum as its range, fitted to the exact FP8 values in fp32, which
 leaves 0.57% relative error against them (`mx.quantize` on their bf16 rounding leaves
-0.76%). Every other tensor is
-used as released, and the codec is built from the release's `codec.pth`.
+0.76%). Every other tensor is used as released, and the codec is built from the
+release's `codec.pth`.
 
 Fish Audio re-uploaded the weights on 2026-10-29 (revision `78e5ab7`), replacing the
 preview weights of 2026-10-13; the measurements below are on the re-upload.
@@ -121,9 +121,10 @@ caps it at 2.5 times the requested length.
 
 Without a duration, some takes finish a sentence and then emit silence until
 `max_new_tokens`; vLLM-Omni lists this as model behaviour, more frequent after
-leading fillers or tags and with pause-heavy references. In this port it showed up
-mainly at sentence boundaries: single sentences completed 12 of 12 times, while two
-sentences by one speaker stalled in 3 of 4 takes.
+leading fillers or tags and with pause-heavy references. The reference sampling
+below was released to reduce it. With the preview weights and the previous
+sampler, it showed up mainly at sentence boundaries: single sentences completed 12
+of 12 times, while two sentences by one speaker stalled in 3 of 4 takes.
 
 - Pass `duration_seconds`. With it, two-speaker dialogue with references completed
   4 of 4 takes, against 1 of 4 without it.
@@ -133,15 +134,19 @@ sentences by one speaker stalled in 3 of 4 takes.
 
 | Parameter | Default | Notes |
 | --- | --- | --- |
-| `temperature` | 0.7 | upstream evaluation recipe |
-| `top_p` | 0.7 | cumulative probability over the full vocabulary |
-| `top_k` | 30 | |
+| `temperature` | 1.0 | Fish Audio's recommendation for reference sampling |
+| `top_p` | 1.0 | cumulative probability over the full vocabulary; 1.0 turns it off |
+| `top_k` | 0 | 0 removes the cap |
 | `max_new_tokens` | 1024 per chunk | about 47 s; 2.5 × the duration when one is given |
 | `single_chunk` | False | long text is split into ~300-byte chunks of at most three speakers |
 | `seed` | None | |
 
-The main token is drawn only from `<|im_end|>` and the 4096 semantic tokens, with
-upstream's repetition-aware resampling. Long text keeps the first chunk and the
+Sampling is Fish Audio's reference sampling, released with the weights of
+2026-10-29 (fish-speech #1368). The main token is drawn only from `<|im_end|>` and
+the 4096 semantic tokens, never from those below 0.1% probability, and a draw that
+repeats one of the last 16 main tokens, `<|im_end|>` included, becomes the most
+probable one. Residual codes are drawn only among the 1024 codes the codec's
+codebooks hold; the heads are 4096 wide. Long text keeps the first chunk and the
 latest one as context, as upstream does.
 
 ## Performance

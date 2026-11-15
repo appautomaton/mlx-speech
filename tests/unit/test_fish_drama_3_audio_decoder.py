@@ -14,8 +14,9 @@ from mlx_speech.models.fish_drama_3.audio_decoder import (
     TowerLayer,
 )
 from mlx_speech.models.fish_drama_3.sampling import (
-    resample_repeats,
-    top_k_top_p_candidates,
+    reference_candidates,
+    reference_sample,
+    replace_repeats,
 )
 from tests.unit.test_fish_drama_3_config import tiny_payload
 from tests.unit.test_fish_drama_3_layers import (
@@ -40,54 +41,80 @@ def on_cpu():
     mx.set_default_device(previous)
 
 
-def upstream_kept(logits, temperature, top_k, top_p):
-    """Ids and renormalized probabilities upstream may draw, best first."""
+def upstream_kept(logits, temperature, top_k, top_p, epsilon_cutoff, legal_columns):
+    """Ids and renormalized probabilities upstream's reference_sample may draw, best
+    first (fish_omni/tower.py, reference_candidates)."""
     scaled = logits / max(temperature, 1e-5)
     order = np.argsort(-scaled, kind="stable")
     probabilities = softmax(scaled[order])
-    dropped = (np.cumsum(probabilities) > top_p) | (np.arange(len(order)) >= top_k)
-    dropped[0] = False
-    kept = probabilities[~dropped]
-    return order[~dropped], kept / kept.sum()
+    ranks = np.arange(len(order))
+    kept = (ranks < top_k) | (top_k < 1)
+    kept &= (np.cumsum(probabilities) <= top_p) | (top_p >= 1.0)
+    kept &= probabilities >= epsilon_cutoff
+    if legal_columns is None:
+        kept[0] = True
+    else:
+        legal = order < legal_columns
+        kept &= legal
+        kept[np.argmax(legal)] = True
+    return order[kept], probabilities[kept] / probabilities[kept].sum()
 
 
 @pytest.mark.parametrize(
-    ("temperature", "top_k", "top_p"),
+    ("temperature", "top_k", "top_p", "epsilon_cutoff", "legal_columns"),
     [
-        (0.7, 30, 0.7),
-        (1.0, 30, 0.95),
-        (0.7, 5, 0.99),
-        (1.0, 4097, 0.5),
-        (1e-9, 30, 0.7),
+        (1.0, 0, 1.0, 1e-3, None),  # the main token, recommended parameters
+        (1.0, 0, 1.0, 0.0, 1024),  # a residual code, recommended parameters
+        (0.7, 30, 0.7, 1e-3, None),
+        (0.7, 5, 0.9, 0.0, 1024),
+        (1.0, 0, 0.5, 1e-3, None),
+        (1e-9, 0, 1.0, 1e-3, None),
     ],
 )
-def test_top_k_top_p_keeps_exactly_what_upstream_keeps(temperature, top_k, top_p):
+def test_reference_sampling_keeps_exactly_what_upstream_keeps(
+    temperature, top_k, top_p, epsilon_cutoff, legal_columns
+):
     rng = np.random.default_rng(0)
-    logits = rng.normal(0, 3, 4097)
+    logits = rng.normal(0, 3, 4096)
 
-    ids, values = top_k_top_p_candidates(
-        mx.array(logits[None], dtype=mx.float32), temperature, top_k, top_p
+    ids, values = reference_candidates(
+        mx.array(logits[None], dtype=mx.float32),
+        temperature,
+        top_k,
+        top_p,
+        epsilon_cutoff,
+        legal_columns,
     )
 
     ids, values = np.array(ids[0]), as_np(values[0])
     kept = np.isfinite(values)
     expected_ids, expected_probabilities = upstream_kept(
-        logits, temperature, top_k, top_p
+        logits, temperature, top_k, top_p, epsilon_cutoff, legal_columns
     )
     np.testing.assert_array_equal(ids[kept], expected_ids)
     np.testing.assert_allclose(softmax(values[kept]), expected_probabilities, rtol=1e-4)
 
 
-def test_repeated_semantic_draws_are_redrawn_but_a_stop_is_not():
+def test_residual_codes_stay_inside_the_codec_codebook():
+    logits = mx.concatenate(
+        [mx.zeros((64, 1024)), mx.full((64, 3072), 20.0)], axis=-1
+    )  # every illegal column far more probable
+
+    codes = reference_sample(logits, 1.0, 0, 1.0, legal_columns=1024)
+
+    assert int(codes.max().item()) < 1024
+
+
+def test_a_repeated_main_draw_becomes_the_most_probable_one_eos_included():
     eos, semantic = 150, 210
-    history = mx.array([eos] + [semantic] * 15 + [205])
+    # 17 tokens: the 230 at the front is outside the 16-token window.
+    history = mx.array([230, eos] + [semantic] * 14 + [205])
     first = mx.array([semantic, eos, 230])
-    retry = mx.array([999, 998, 997])
-    is_semantic = (first >= 200) & (first <= 263)
+    best = mx.array([220, 221, 222])
 
-    chosen = resample_repeats(first, retry, history, is_semantic)
+    chosen = replace_repeats(first, best, history)
 
-    assert chosen.tolist() == [999, eos, 230]
+    assert chosen.tolist() == [220, 221, 230]
 
 
 def zero_centered(x, norm):
