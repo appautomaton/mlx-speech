@@ -109,11 +109,13 @@ def _copy_layer(
 
 
 def _batched_caches(
-    caches: Sequence[Sequence[BoundedKVCache | DeltaNetState]],
+    caches: Sequence[list[BoundedKVCache | DeltaNetState | None]],
     lengths: Sequence[int],
     capacity: int,
 ) -> list[BoundedKVCache | DeltaNetState]:
-    """One batch-wide cache per layer from single-sequence caches.
+    """One batch-wide cache per layer from single-sequence caches, which it
+    consumes: each layer's sources are dropped as soon as it is built, so the two
+    copies never coexist beyond one layer.
 
     Recurrent state stacks as is. Attention caches are right-aligned: sequence i,
     of lengths[i] rows, fills the slots up to the longest, after pads of
@@ -121,7 +123,10 @@ def _batched_caches(
     """
     longest = max(lengths)
     batched = []
-    for layer in zip(*caches, strict=True):
+    for index in range(len(caches[0])):
+        layer = [sequence[index] for sequence in caches]
+        for sequence in caches:
+            sequence[index] = None
         if isinstance(layer[0], DeltaNetState):
             batched.append(
                 DeltaNetState(
@@ -129,6 +134,7 @@ def _batched_caches(
                     recurrent=mx.concatenate([state.recurrent for state in layer]),
                 )
             )
+            mx.eval(batched[-1].conv, batched[-1].recurrent)
             continue
         keys, values = [], []
         for state, length in zip(layer, lengths, strict=True):
@@ -143,6 +149,7 @@ def _batched_caches(
                 offset=longest,
             )
         )
+        mx.eval(batched[-1].keys, batched[-1].values)
     return batched
 
 
@@ -343,6 +350,7 @@ class FishDrama3Runtime:
         own key, whatever the requests beside it. Prompts of
         different lengths share right-aligned caches: request i's cached rows start
         at slot pads[i]. Finished rows leave the batch once enough of them have.
+        The requests' caches are consumed into the batch's.
         """
         backbone, decoder = self.model.backbone, self.model.audio_decoder
         num_codebooks = self.config.audio_decoder.num_codebooks
