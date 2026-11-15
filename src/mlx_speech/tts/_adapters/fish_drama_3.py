@@ -119,7 +119,7 @@ class FishDrama3Adapter:
         The voice references are shared by every line, and each line is one pass,
         as with single_chunk. duration_seconds and max_new_tokens are one value or
         one per line. Seeds default to seed + line index; each line draws with its
-        own seed, whatever the lines beside it. batch_size lines decode together, 64 by
+        own seed, whatever the lines beside it. batch_size lines decode together, 128 by
         default. A warning names the lines that reached their frame budget before
         ending, whose speech may be cut off, and those that produced no audio.
         """

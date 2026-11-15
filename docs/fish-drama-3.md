@@ -151,7 +151,7 @@ lines beside it. A warning names the lines that reached their frame budget befor
 ending.
 
 Each prompt is prefilled on its own, reusing the shared system turn; the decode
-steps run `batch_size` lines together (64 by default), grouped by frame budget. A
+steps run `batch_size` lines together (128 by default), grouped by frame budget. A
 decode step reads the experts its rows route to, so one line reads 8 per layer and
 48 to 64 lines read nearly all 256: past that point a step costs about the same
 whatever the number of lines. Each line adds about 75 MB of state.
@@ -165,9 +165,12 @@ produced:
 | 32 | 255 | 125 | 5.8 | 2.4 GiB |
 | 48 | 260 | 184 | 8.5 | 3.6 GiB |
 | 64 | 303 | 211 | 9.8 | 4.8 GiB |
+| 128 | 370–430 | 298–347 | 13.8–16.1 | 10.7 GiB |
 
-Prefill (about 0.3 s per line) and the codec (0.5–1.3 s per 10 s of audio) still
-run one line at a time, so whole lines come out slower than these steps suggest.
+Prefill (about 0.2 s per line) and the codec (about 0.6 s per 10 s of audio) still
+run one line at a time, so whole lines come out slower than these steps suggest:
+128 lines of about 10 s took 212 s end to end, 6.0 times real time (decode 48%,
+codec 38%, prefill 14%), with a process footprint of at most 61 GiB.
 
 ## Generation Parameters
 
