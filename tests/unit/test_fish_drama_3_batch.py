@@ -145,3 +145,23 @@ def test_adapter_seeds_lines_in_order_and_warns_about_cut_lines():
 def test_adapter_refuses_a_single_string():
     with pytest.raises(TypeError, match="sequence of strings"):
         FishDrama3Adapter(FakeRuntime([])).generate_batch("one line")
+
+
+@pytest.mark.parametrize(
+    ("count", "batch_size", "sizes"),
+    [(130, 128, [65, 65]), (128, 128, [128]), (5, 2, [1, 2, 2]), (1, 128, [1])],
+)
+def test_lines_split_into_the_fewest_even_groups(monkeypatch, count, batch_size, sizes):
+    rt = runtime(Codec())
+    monkeypatch.setattr(generation, "build_prompt", lambda *a, **k: PROMPTS[0])
+    seen = []
+    monkeypatch.setattr(rt, "_prefill_prompt", lambda rows: None)
+
+    def decode(requests, budgets, keys, **kwargs):
+        seen.append(len(requests))
+        return [(np.zeros((3, 0), np.int32), "eos")] * len(requests)
+
+    monkeypatch.setattr(rt, "_decode", decode)
+    rt.synthesize_batch(["x"] * count, seeds=list(range(count)), batch_size=batch_size)
+
+    assert sorted(seen) == sorted(sizes)

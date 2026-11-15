@@ -560,8 +560,9 @@ class FishDrama3Runtime:
 
         Every line shares the references and is one pass, as with single_chunk.
         duration_seconds and max_new_tokens are one value for every line or one per
-        line. Lines decode batch_size at a time, grouped by frame budget so short
-        lines do not wait for long ones. A line draws with its own seed, whatever
+        line. Lines decode in as few groups of at most batch_size as can hold
+        them, of even size, grouped by frame budget so short lines do not wait for
+        long ones. A line draws with its own seed, whatever
         the lines beside it; only rounding in batched bf16 matmuls can make a draw
         differ from the line generated alone.
         """
@@ -596,8 +597,12 @@ class FishDrama3Runtime:
 
         lines: list[Drama3Chunk | None] = [None] * count
         order = sorted(range(count), key=budgets.__getitem__)
-        for start in range(0, count, batch_size):
-            group = order[start : start + batch_size]
+        # As few groups as batch_size allows, as even as can be: 130 lines run as
+        # 65 and 65, not as 128 and a nearly empty 2.
+        groups = math.ceil(count / batch_size) if count else 0
+        bounds = [count * g // groups for g in range(groups + 1)]
+        for start, end in zip(bounds, bounds[1:]):
+            group = order[start:end]
             decoded = self._decode(
                 [self._prefill_prompt(prompts[i]) for i in group],
                 [budgets[i] for i in group],

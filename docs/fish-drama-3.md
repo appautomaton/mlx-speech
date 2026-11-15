@@ -151,7 +151,9 @@ lines beside it. A warning names the lines that reached their frame budget befor
 ending.
 
 Each prompt is prefilled on its own, reusing the shared system turn; the decode
-steps run `batch_size` lines together (128 by default), grouped by frame budget. A
+steps run up to `batch_size` lines together (128 by default), in as few groups as
+that allows, of even size and grouped by frame budget: 130 lines run as 65 and 65.
+One line runs alone, as `generate` does. A
 decode step reads the experts its rows route to, so one line reads 8 per layer and
 48 to 64 lines read nearly all 256: past that point a step costs about the same
 whatever the number of lines. Each line adds about 75 MB of state.
