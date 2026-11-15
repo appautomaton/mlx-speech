@@ -229,7 +229,7 @@ class FishDrama3Runtime:
 
     @classmethod
     def from_dir(cls, model_dir: str | Path, *, dense_int8: bool = False) -> FishDrama3Runtime:
-        """Load the upstream release as is.
+        """Load the upstream release as is, or MLX-format weights.
 
         dense_int8 packs the dense BF16 projections as int8 once loaded, for faster
         decoding; see load_fish_drama_3_model."""
@@ -237,7 +237,7 @@ class FishDrama3Runtime:
         return cls(
             model=load_fish_drama_3_model(resolved, dense_int8=dense_int8),
             tokenizer=Tokenizer.from_file(str(resolved / "tokenizer.json")),
-            # The release ships the S2 Pro codec, byte for byte, as codec.pth.
+            # Both ship the S2 Pro codec as the release does, codec.pth.
             codec=FishS2Codec.from_codec_pth(resolved / "codec.pth"),
         )
 

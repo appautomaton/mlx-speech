@@ -35,6 +35,10 @@ leaves 0.57% relative error against them (`mx.quantize` on their bf16 rounding l
 0.76%). Every other tensor is used as released, and the codec is built from the
 release's `codec.pth`.
 
+A directory of MLX-format weights, in this port's own layout with a `quantization`
+entry in its `config.json`, loads as that entry records, whatever its bits and
+group size; anything else is refused. This port writes no such weights itself.
+
 Fish Audio re-uploaded the weights on 2026-10-29 (revision `78e5ab7`), replacing the
 preview weights of 2026-10-13; the measurements below are on the re-upload.
 

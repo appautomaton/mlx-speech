@@ -167,13 +167,6 @@ def test_release_loads_dense_weights_as_released_and_experts_near_fp8(tmp_path):
             assert np.linalg.norm(got - exact) / np.linalg.norm(exact) < 1e-2, prefix
 
 
-def test_loader_refuses_a_checkpoint_without_fp8_experts(tmp_path):
-    (tmp_path / "config.json").write_text(json.dumps(tiny_payload(fp8=False)))
-
-    with pytest.raises(ValueError, match="block-FP8"):
-        load_fish_drama_3_model(tmp_path)
-
-
 def test_upstream_reader_refuses_a_release_missing_an_expert_tensor(tmp_path):
     release = tmp_path / "drama-3"
     write_tiny_release(release)
@@ -200,14 +193,13 @@ def test_upstream_reader_checks_the_mode_before_reading_any_tensor(tmp_path):
         next(weights)
 
 
-def test_runtime_builds_the_codec_from_the_release_codec_pth(tmp_path, monkeypatch):
+def test_runtime_builds_the_codec_from_codec_pth(tmp_path, monkeypatch):
     calls = []
-
-    def from_codec_pth(path):
-        calls.append(Path(path))
-        return "codec"
-
-    monkeypatch.setattr(generation.FishS2Codec, "from_codec_pth", from_codec_pth)
+    monkeypatch.setattr(
+        generation.FishS2Codec,
+        "from_codec_pth",
+        lambda path: calls.append(Path(path)) or "codec",
+    )
     monkeypatch.setattr(
         generation, "load_fish_drama_3_model", lambda path, dense_int8: "model"
     )
@@ -217,6 +209,43 @@ def test_runtime_builds_the_codec_from_the_release_codec_pth(tmp_path, monkeypat
 
     assert calls == [tmp_path / "codec.pth"]
     assert runtime.codec == "codec"
+
+
+@pytest.mark.parametrize(("bits", "group_size"), [(8, 64), (5, 64), (4, 32)])
+def test_mlx_format_weights_load_as_their_config_records(tmp_path, bits, group_size):
+    """Whatever quantization the weights record, they load as stored."""
+    quantization = {"bits": bits, "group_size": group_size, "mode": "affine"}
+    config = FishDrama3Config.from_dict(
+        tiny_payload(fp8=False) | {"quantization": quantization}
+    )
+    mx.random.seed(bits)
+    stored = FishDrama3Model(config)
+    for proj in EXPERT_PROJECTIONS:  # real packed experts, not the zero placeholders
+        linear = getattr(stored.backbone.layers[0].mlp.experts, proj)
+        dense = mx.random.normal(
+            (linear.weight.shape[0], linear.weight.shape[1], linear.scales.shape[2] * group_size)
+        )
+        linear.weight, linear.scales, linear.biases = mx.quantize(
+            dense, group_size=group_size, bits=bits
+        )
+    weights = dict(tree_flatten(stored.parameters()))
+    mx.save_safetensors(str(tmp_path / "model.safetensors"), weights)
+    (tmp_path / "config.json").write_text(
+        json.dumps(tiny_payload(fp8=False) | {"quantization": quantization})
+    )
+
+    loaded = load_fish_drama_3_model(tmp_path)
+
+    assert loaded.config.expert_quantization == ExpertQuantization(bits, group_size)
+    for name, value in tree_flatten(loaded.parameters()):
+        assert mx.array_equal(value, weights[name]).item(), name
+
+
+def test_loader_refuses_weights_that_are_neither_release_nor_mlx(tmp_path):
+    (tmp_path / "config.json").write_text(json.dumps(tiny_payload(fp8=False)))
+
+    with pytest.raises(ValueError, match="neither"):
+        load_fish_drama_3_model(tmp_path)
 
 
 @pytest.mark.parametrize("bits", [8, 4])
