@@ -42,6 +42,12 @@ DEFAULT_MAX_NEW_TOKENS = 1024
 # A take may run to about 2.5 times its expected duration (technical report, 3.3).
 RUNAWAY_FACTOR = 2.5
 PREFILL_CHUNK_ROWS = 128
+# Lines decoded together by synthesize_batch. Each decode step reads the experts
+# its rows route to; by 48 to 64 rows that is nearly all of them, so a step costs
+# about what it would with fewer rows. Each line adds about 75 MB of state.
+DEFAULT_BATCH_SIZE = 64
+# Finished rows leave a decoding batch once they are this fraction of it.
+_COMPACT_FINISHED_FRACTION = 0.25
 
 FinishReason = Literal["eos", "length"]
 
@@ -102,6 +108,91 @@ def _copy_layer(
     return BoundedKVCache.from_values(keys, values, capacity=capacity)
 
 
+def _batched_caches(
+    caches: Sequence[list[BoundedKVCache | DeltaNetState | None]],
+    lengths: Sequence[int],
+    capacity: int,
+) -> list[BoundedKVCache | DeltaNetState]:
+    """One batch-wide cache per layer from single-sequence caches, which it
+    consumes: each layer's sources are dropped as soon as it is built, so the two
+    copies never coexist beyond one layer.
+
+    Recurrent state stacks as is. Attention caches are right-aligned: sequence i,
+    of lengths[i] rows, fills the slots up to the longest, after pads of
+    longest - lengths[i] empty slots that attention masks.
+    """
+    longest = max(lengths)
+    batched = []
+    for index in range(len(caches[0])):
+        layer = [sequence[index] for sequence in caches]
+        for sequence in caches:
+            sequence[index] = None
+        if isinstance(layer[0], DeltaNetState):
+            batched.append(
+                DeltaNetState(
+                    conv=mx.concatenate([state.conv for state in layer]),
+                    recurrent=mx.concatenate([state.recurrent for state in layer]),
+                )
+            )
+            mx.eval(batched[-1].conv, batched[-1].recurrent)
+            continue
+        keys, values = [], []
+        for state, length in zip(layer, lengths, strict=True):
+            stored_keys, stored_values = state.fetch()
+            padding = [(0, 0), (longest - length, capacity - longest), (0, 0), (0, 0)]
+            keys.append(mx.pad(stored_keys[:, :length], padding))
+            values.append(mx.pad(stored_values[:, :length], padding))
+        batched.append(
+            BoundedKVCache(
+                keys=mx.concatenate(keys),
+                values=mx.concatenate(values),
+                offset=longest,
+            )
+        )
+        mx.eval(batched[-1].keys, batched[-1].values)
+    return batched
+
+
+def _select_rows(cache: BoundedKVCache | DeltaNetState, rows: mx.array) -> None:
+    if isinstance(cache, DeltaNetState):
+        cache.conv, cache.recurrent = cache.conv[rows], cache.recurrent[rows]
+    else:
+        cache.keys, cache.values = cache.keys[rows], cache.values[rows]
+
+
+@mx.compile
+def _split_keys(keys: mx.array, count: int) -> mx.array:
+    """Each row's key split into count keys: [rows, count]."""
+    return mx.vmap(lambda key: mx.random.split(key, num=count))(keys)
+
+
+def _seed_key(seed: int) -> mx.array:
+    if not 0 <= seed < 2**32:
+        raise ValueError(f"a seed must be an unsigned 32-bit integer; got {seed}")
+    return mx.random.key(seed)
+
+
+def _per_line(value, count: int, name: str) -> list:
+    """value as one entry per line: a sequence of count, or one value for all."""
+    if isinstance(value, (list, tuple)):
+        if len(value) != count:
+            raise ValueError(f"{name} needs one entry per line; got {len(value)} for {count}")
+        return list(value)
+    return [value] * count
+
+
+def _check_sampling(top_k: int, max_new_tokens: int) -> None:
+    if top_k < 0:
+        raise ValueError(f"top_k must be at least 0 (0: no cap); got {top_k}")
+    if max_new_tokens < 1:
+        raise ValueError(f"max_new_tokens must be at least 1; got {max_new_tokens}")
+
+
+def _random_key() -> mx.array:
+    """A key drawn from the global generator, which mx.random.seed controls."""
+    return mx.random.key(int(mx.random.randint(0, 2**31 - 1, ()).item()))
+
+
 def _cache_arrays(caches: Sequence[BoundedKVCache | DeltaNetState]) -> list[mx.array]:
     arrays = []
     for cache in caches:
@@ -110,6 +201,18 @@ def _cache_arrays(caches: Sequence[BoundedKVCache | DeltaNetState]) -> list[mx.a
         else:
             arrays += [cache.keys, cache.values]
     return arrays
+
+
+@dataclass
+class _Prefilled:
+    """One prompt run through the model, ready for its first decode step."""
+
+    rows: int
+    hidden: mx.array  # [1, hidden]: the last prompt row's
+    frame: mx.array  # [1, 1 + num_codebooks]: the last prompt row
+    history: mx.array  # [REPEAT_WINDOW_FRAMES]: the latest main tokens
+    backbone: list[BoundedKVCache | DeltaNetState]
+    decoder: list[BoundedKVCache]
 
 
 @dataclass
@@ -171,26 +274,43 @@ class FishDrama3Runtime:
         temperature: float,
         top_k: int,
         top_p: float,
+        key: mx.array | None = None,
     ) -> tuple[np.ndarray, FinishReason]:
         """Sample frames after the prompt rows: codes [num_codebooks, frames].
 
+        key seeds the draws; None takes one from the global generator. Everything
+        before the current user turn is prefilled apart and kept: a later prompt
+        that starts with the same rows reuses it, with the same result.
+        """
+        key = _random_key() if key is None else key
+        return self._decode(
+            [self._prefill_prompt(prompt)],
+            [max_new_tokens],
+            key[None],
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+        )[0]
+
+    def _prefill_prompt(self, prompt: np.ndarray) -> _Prefilled:
+        """Run one prompt through the model, reusing the kept head when it matches.
+
         The audio decoder cache of prompt row p is filled with frame p + 1 as its
         label; the last prompt row has none yet, so the first decode step writes it.
-        Everything before the current user turn is prefilled apart and kept: a
-        later prompt that starts with the same rows reuses it, with the same result.
         """
         backbone, decoder = self.model.backbone, self.model.audio_decoder
         rows = mx.array(prompt)
         prompt_rows = len(prompt)
-        capacity = prompt_rows + max_new_tokens
         head_rows = _head_length(prompt, self._turn_start_id)
         head = self._head
         if head_rows and head is not None and len(head.rows) == head_rows + 1 and head.matches(prompt):
-            backbone_cache = [_copy_layer(state, capacity) for state in head.backbone]
-            decoder_cache = [_copy_layer(state, capacity) for state in head.decoder]
+            backbone_cache = [_copy_layer(state, prompt_rows) for state in head.backbone]
+            decoder_cache = [_copy_layer(state, prompt_rows) for state in head.decoder]
         else:
-            backbone_cache = backbone.make_cache(capacity=capacity)
-            decoder_cache = decoder.make_cache(capacity=capacity)
+            # The caches hold activations, in the weights' dtype.
+            dtype = backbone.embed_tokens.weight.dtype
+            backbone_cache = backbone.make_cache(capacity=prompt_rows, dtype=dtype)
+            decoder_cache = decoder.make_cache(capacity=prompt_rows, dtype=dtype)
             if head_rows:
                 self._prefill(rows, 0, head_rows, backbone_cache, decoder_cache)
                 self._head = _PromptHead(
@@ -200,13 +320,66 @@ class FishDrama3Runtime:
                 )
                 mx.eval(_cache_arrays(self._head.backbone), _cache_arrays(self._head.decoder))
         hidden = self._prefill(rows, head_rows, prompt_rows, backbone_cache, decoder_cache)
-        hidden = hidden[-1:]
-        frame = rows[-1:]
-        history = rows[-REPEAT_WINDOW_FRAMES:, 0]
+        return _Prefilled(
+            rows=prompt_rows,
+            hidden=hidden[-1:],
+            frame=rows[-1:],
+            # A short prompt's window starts with ids no token has.
+            history=mx.pad(
+                rows[-REPEAT_WINDOW_FRAMES:, 0],
+                [(max(0, REPEAT_WINDOW_FRAMES - prompt_rows), 0)],
+                constant_values=-1,
+            ),
+            backbone=backbone_cache,
+            decoder=decoder_cache,
+        )
+
+    def _decode(
+        self,
+        requests: Sequence[_Prefilled],
+        budgets: Sequence[int],
+        keys: mx.array,
+        *,
+        temperature: float,
+        top_k: int,
+        top_p: float,
+    ) -> list[tuple[np.ndarray, FinishReason]]:
+        """Decode prefilled prompts together, one frame of each per step.
+
+        Each request stops at its eos or after budgets[i] frames and draws with its
+        own key, whatever the requests beside it. Prompts of
+        different lengths share right-aligned caches: request i's cached rows start
+        at slot pads[i]. Finished rows leave the batch once enough of them have.
+        The requests' caches are consumed into the batch's.
+        """
+        backbone, decoder = self.model.backbone, self.model.audio_decoder
+        num_codebooks = self.config.audio_decoder.num_codebooks
+        count = len(requests)
+        lengths = [request.rows for request in requests]
+        longest, most = max(lengths), max(budgets)
+        pads = [longest - length for length in lengths]
+        backbone_cache = _batched_caches(
+            [request.backbone for request in requests], lengths, longest + most
+        )
+        decoder_cache = _batched_caches(
+            [request.decoder for request in requests],
+            [length - 1 for length in lengths],
+            longest - 1 + most,
+        )
+        hidden = mx.concatenate([request.hidden for request in requests])
+        frame = mx.concatenate([request.frame for request in requests])
+        history = mx.stack([request.history for request in requests])
         candidates = decoder.main_candidates
-        frames: list[mx.array] = []
-        finish_reason: FinishReason = "length"
-        for step in range(max_new_tokens):
+        eos = self.config.eos_token_id
+        generated = mx.zeros((count, most, 1 + num_codebooks), dtype=mx.int32)
+        produced = [0] * count
+        reasons: list[FinishReason] = ["length"] * count
+        active = list(range(count))
+        finished: set[int] = set()
+        for step in range(most):
+            pad_rows = mx.array(pads)
+            draws = _split_keys(keys, num_codebooks + 1)
+            keys = draws[:, 0]
             sampled = decoder.decode_step(
                 backbone.logits(hidden, candidates),
                 hidden,
@@ -216,24 +389,59 @@ class FishDrama3Runtime:
                 temperature=temperature,
                 top_k=top_k,
                 top_p=top_p,
+                # One unpadded sequence runs as the single-sequence tower does.
+                pads=pad_rows if len(active) > 1 or any(pads) else None,
+                keys=draws[:, 1:],
             )
-            if sampled[0, 0].item() == self.config.eos_token_id:
-                finish_reason = "eos"
+            generated[mx.array(active), step] = sampled
+            keep = []
+            # One host read per step, for each request's own eos.
+            for row, main in enumerate(sampled[:, 0].tolist()):
+                request = active[row]
+                if request in finished:
+                    continue
+                if main == eos:
+                    reasons[request] = "eos"
+                    finished.add(request)
+                    continue
+                produced[request] += 1
+                if produced[request] == budgets[request]:
+                    finished.add(request)
+                else:
+                    keep.append(row)
+            if not keep:
                 break
-            frames.append(sampled)
+            if len(active) - len(keep) >= len(active) * _COMPACT_FINISHED_FRACTION:
+                rows = mx.array(keep)
+                for cache in (*backbone_cache, *decoder_cache):
+                    _select_rows(cache, rows)
+                sampled, history, keys = sampled[rows], history[rows], keys[rows]
+                active = [active[row] for row in keep]
+                pads = [pads[row] for row in keep]
+                pad_rows = mx.array(pads)
             frame = sampled
-            history = mx.concatenate([history[1:], sampled[:, 0]])
-            if step + 1 < max_new_tokens:
-                embeddings = decoder.embed_backbone(
-                    sampled, backbone.embed_tokens(sampled[:, 0])
-                )
-                hidden = backbone(embeddings[None], backbone_cache)[0]
-
-        num_codebooks = self.config.audio_decoder.num_codebooks
-        if not frames:
-            return np.zeros((num_codebooks, 0), dtype=np.int32), finish_reason
-        codes = np.array(mx.concatenate(frames)[:, 1:], dtype=np.int32).T
-        return np.ascontiguousarray(codes), finish_reason
+            history = mx.concatenate([history[:, 1:], sampled[:, :1]], axis=1)
+            embeddings = decoder.embed_backbone(
+                sampled, backbone.embed_tokens(sampled[:, 0])
+            )
+            hidden = backbone(
+                embeddings[:, None],
+                backbone_cache,
+                pad_rows if any(pads) else None,
+            )[:, 0]
+            mx.eval(
+                generated,
+                hidden,
+                keys,
+                history,
+                _cache_arrays(backbone_cache),
+                _cache_arrays(decoder_cache),
+            )
+        results = []
+        for request in range(count):
+            codes = np.array(generated[request, : produced[request], 1:], dtype=np.int32)
+            results.append((np.ascontiguousarray(codes.T), reasons[request]))
+        return results
 
     @property
     def _turn_start_id(self) -> int:
@@ -278,6 +486,7 @@ class FishDrama3Runtime:
         top_k: int = DEFAULT_TOP_K,
         top_p: float = DEFAULT_TOP_P,
         single_chunk: bool = False,
+        seed: int | None = None,
     ) -> Iterator[Drama3Chunk]:
         """Generate text chunk by chunk, each chunk's audio as soon as it is done.
 
@@ -288,22 +497,15 @@ class FishDrama3Runtime:
         duration_seconds asks for audio of that length and generates the text in
         one pass; it also keeps takes from stalling in silence after a sentence.
         max_new_tokens caps the frames of each chunk: 1024 by default, or 2.5 times
-        the requested duration.
+        the requested duration. seed fixes the draws of a line, as in
+        synthesize_batch; None takes them from the global generator.
         """
         if duration_seconds is not None:
-            if duration_seconds <= 0:
-                raise ValueError(
-                    f"duration_seconds must be positive; got {duration_seconds}"
-                )
-            frames = max(1, round(duration_seconds * self.frame_rate))
-            text = with_duration_hint(text, frames)
+            text, max_new_tokens = self._timed(text, duration_seconds, max_new_tokens)
             single_chunk = True
-            max_new_tokens = max_new_tokens or math.ceil(frames * RUNAWAY_FACTOR)
         max_new_tokens = max_new_tokens or DEFAULT_MAX_NEW_TOKENS
-        if top_k < 0:
-            raise ValueError(f"top_k must be at least 0 (0: no cap); got {top_k}")
-        if max_new_tokens < 1:
-            raise ValueError(f"max_new_tokens must be at least 1; got {max_new_tokens}")
+        _check_sampling(top_k, max_new_tokens)
+        key = _random_key() if seed is None else _seed_key(seed)
         texts = [reference.text for reference in references]
         codes = [reference.codes for reference in references]
         chunks = [text] if single_chunk else split_text(text) or [text]
@@ -315,12 +517,15 @@ class FishDrama3Runtime:
         history = ChunkHistory()
         for chunk in chunks:
             prompt = self._chunk_prompt(chunk, texts, codes, history)
+            # The first chunk draws with the line's key, as a batched line does.
+            chunk_key, key = key, mx.random.split(key, 1)[0]
             frames, finish_reason = self.generate_frames(
                 prompt,
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
                 top_k=top_k,
                 top_p=top_p,
+                key=chunk_key,
             )
             mx.clear_cache()
             if frames.shape[1] == 0:
@@ -328,6 +533,92 @@ class FishDrama3Runtime:
             history.push(chunk, frames)
             waveform = self.codec.decode(mx.array(frames)).reshape(-1)
             yield Drama3Chunk(chunk, frames, waveform, finish_reason)
+
+    def synthesize_batch(
+        self,
+        texts: Sequence[str],
+        references: Sequence[Drama3Reference] = (),
+        *,
+        seeds: Sequence[int],
+        duration_seconds: float | Sequence[float | None] | None = None,
+        max_new_tokens: int | Sequence[int | None] | None = None,
+        temperature: float = DEFAULT_TEMPERATURE,
+        top_k: int = DEFAULT_TOP_K,
+        top_p: float = DEFAULT_TOP_P,
+        batch_size: int = DEFAULT_BATCH_SIZE,
+    ) -> list[Drama3Chunk]:
+        """Generate independent lines together; results keep input order.
+
+        Every line shares the references and is one pass, as with single_chunk.
+        duration_seconds and max_new_tokens are one value for every line or one per
+        line. Lines decode batch_size at a time, grouped by frame budget so short
+        lines do not wait for long ones. A line draws with its own seed, whatever
+        the lines beside it; only rounding in batched bf16 matmuls can make a draw
+        differ from the line generated alone.
+        """
+        if isinstance(texts, str):
+            raise TypeError("texts must be a sequence of strings, not one string")
+        count = len(texts)
+        durations = _per_line(duration_seconds, count, "duration_seconds")
+        caps = _per_line(max_new_tokens, count, "max_new_tokens")
+        if len(seeds) != count:
+            raise ValueError(f"seeds needs one entry per line; got {len(seeds)} for {count}")
+        if batch_size < 1:
+            raise ValueError(f"batch_size must be at least 1; got {batch_size}")
+        reference_texts = [reference.text for reference in references]
+        reference_codes = [reference.codes for reference in references]
+        prompts, budgets = [], []
+        # Every line is checked before any is generated.
+        for index, (text, duration, cap) in enumerate(zip(texts, durations, caps)):
+            if duration is not None:
+                text, cap = self._timed(text, duration, cap)
+            budget = cap or DEFAULT_MAX_NEW_TOKENS
+            _check_sampling(top_k, budget)
+            try:
+                prompts.append(
+                    build_prompt(
+                        text, self.tokenizer, self.config, reference_texts, reference_codes
+                    )
+                )
+            except ValueError as error:
+                raise ValueError(f"line {index}: {error}") from error
+            budgets.append(budget)
+        keys = [_seed_key(seed) for seed in seeds]
+
+        lines: list[Drama3Chunk | None] = [None] * count
+        order = sorted(range(count), key=budgets.__getitem__)
+        for start in range(0, count, batch_size):
+            group = order[start : start + batch_size]
+            decoded = self._decode(
+                [self._prefill_prompt(prompts[i]) for i in group],
+                [budgets[i] for i in group],
+                mx.stack([keys[i] for i in group]),
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+            )
+            mx.clear_cache()
+            for i, (codes, finish_reason) in zip(group, decoded, strict=True):
+                waveform = (
+                    self.codec.decode(mx.array(codes)).reshape(-1)
+                    if codes.shape[1]
+                    else mx.zeros((0,), dtype=mx.float32)
+                )
+                lines[i] = Drama3Chunk(texts[i], codes, waveform, finish_reason)
+        return lines
+
+    def _timed(
+        self, text: str, duration_seconds: float, max_new_tokens: int | None
+    ) -> tuple[str, int]:
+        """text with its duration hint, and its frame budget: max_new_tokens or 2.5
+        times the requested frames."""
+        if duration_seconds <= 0:
+            raise ValueError(f"duration_seconds must be positive; got {duration_seconds}")
+        frames = max(1, round(duration_seconds * self.frame_rate))
+        return (
+            with_duration_hint(text, frames),
+            max_new_tokens or math.ceil(frames * RUNAWAY_FACTOR),
+        )
 
     def _chunk_prompt(
         self,

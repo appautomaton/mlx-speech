@@ -43,12 +43,18 @@ class FishDrama3Backbone(nn.Module):
             for layer in self.layers
         ]
 
-    def __call__(self, inputs_embeds: mx.array, cache: list[LayerCache]) -> mx.array:
+    def __call__(
+        self,
+        inputs_embeds: mx.array,
+        cache: list[LayerCache],
+        pads: mx.array | None = None,
+    ) -> mx.array:
         """Final-norm hidden states [batch, rows, hidden] of rows that continue the
-        cached sequence."""
+        cached sequence. pads [batch] are the empty attention-cache slots before
+        each row's sequence, when batched rows have different lengths."""
         hidden = inputs_embeds
         for layer, layer_cache in zip(self.layers, cache, strict=True):
-            hidden = layer(hidden, layer_cache)
+            hidden = layer(hidden, layer_cache, pads)
         return self.norm(hidden)
 
     def logits(self, hidden: mx.array, token_ids: mx.array) -> mx.array:

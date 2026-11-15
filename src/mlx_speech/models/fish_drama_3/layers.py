@@ -113,6 +113,25 @@ def add_gated_shared(routed: mx.array, gate: mx.array, shared: mx.array) -> mx.a
     return routed + mx.sigmoid(gate) * shared
 
 
+def padded_mask(
+    pads: mx.array | None, length: int, slots: int
+) -> mx.array | str | None:
+    """Attention mask for length new rows over slots cached positions.
+
+    Batched rows of different lengths share one cache: row b's sequence starts at
+    slot pads[b], and the slots before it are masked. Without pads, every row starts
+    at slot 0 and only causality matters.
+    """
+    if pads is None:
+        return "causal" if length > 1 else None
+    slot = mx.arange(slots)
+    query = mx.arange(slots - length, slots)
+    allowed = (slot[None, :] <= query[:, None])[None] & (
+        slot[None, None, :] >= pads[:, None, None]
+    )
+    return allowed[:, None]  # [batch, 1, length, slots]
+
+
 class ZeroCenteredRMSNorm(nn.Module):
     """RMSNorm scaling by 1 + weight, computed in fp32."""
 
@@ -159,7 +178,7 @@ class GatedAttention(nn.Module):
         self.q_norm = ZeroCenteredRMSNorm(self.head_dim, config.rms_norm_eps)
         self.k_norm = ZeroCenteredRMSNorm(self.head_dim, config.rms_norm_eps)
 
-    def rope(self, x: mx.array, offset: int) -> mx.array:
+    def rope(self, x: mx.array, offset: int | mx.array) -> mx.array:
         return mx.fast.rope(
             x,
             self.rotary_dim,
@@ -169,9 +188,13 @@ class GatedAttention(nn.Module):
             offset=offset,
         )
 
-    def __call__(self, x: mx.array, cache: BoundedKVCache) -> mx.array:
+    def __call__(
+        self, x: mx.array, cache: BoundedKVCache, pads: mx.array | None = None
+    ) -> mx.array:
+        """pads [batch]: empty cache slots before each row's sequence (see
+        padded_mask); None when every row starts at slot 0."""
         batch, length, _ = x.shape
-        offset = cache.offset
+        offset = cache.offset if pads is None else cache.offset - pads
         query, gate = mx.split(
             self.q_proj(x).reshape(batch, length, self.num_heads, 2 * self.head_dim),
             2,
@@ -195,7 +218,7 @@ class GatedAttention(nn.Module):
             keys.transpose(0, 2, 1, 3),
             values.transpose(0, 2, 1, 3),
             scale=self.head_dim**-0.5,
-            mask="causal" if length > 1 else None,
+            mask=padded_mask(pads, length, keys.shape[1]),
         )
         attended = attended.transpose(0, 2, 1, 3).reshape(
             batch, length, self.num_heads * self.head_dim
@@ -435,7 +458,16 @@ class DecoderLayer(nn.Module):
             config.hidden_size, config.rms_norm_eps
         )
 
-    def __call__(self, x: mx.array, cache: BoundedKVCache | DeltaNetState) -> mx.array:
-        mixer = self.linear_attn if self.is_linear else self.self_attn
-        x = x + mixer(self.input_layernorm(x), cache)
+    def __call__(
+        self,
+        x: mx.array,
+        cache: BoundedKVCache | DeltaNetState,
+        pads: mx.array | None = None,
+    ) -> mx.array:
+        normed = self.input_layernorm(x)
+        if self.is_linear:
+            # Recurrent state is per row, so rows need no alignment.
+            x = x + self.linear_attn(normed, cache)
+        else:
+            x = x + self.self_attn(normed, cache, pads)
         return x + self.mlp(self.post_attention_layernorm(x))

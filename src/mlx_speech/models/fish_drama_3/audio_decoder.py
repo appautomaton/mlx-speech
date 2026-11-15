@@ -15,7 +15,7 @@ import mlx.nn as nn
 
 from .._cache import BoundedKVCache
 from .config import FishDrama3AudioDecoderConfig, FishDrama3Config
-from .layers import ZeroCenteredRMSNorm, sigmoid_gate, swiglu
+from .layers import ZeroCenteredRMSNorm, padded_mask, sigmoid_gate, swiglu
 from .sampling import (
     MAIN_EPSILON_CUTOFF,
     RESIDUAL_CODEBOOK_SIZE,
@@ -55,7 +55,7 @@ class TowerAttention(nn.Module):
         self.q_norm = ZeroCenteredRMSNorm(config.head_dim, config.norm_eps)
         self.k_norm = ZeroCenteredRMSNorm(config.head_dim, config.norm_eps)
 
-    def rope(self, x: mx.array, offset: int) -> mx.array:
+    def rope(self, x: mx.array, offset: int | mx.array) -> mx.array:
         return mx.fast.rope(
             x,
             self.rotary_dim,
@@ -65,18 +65,24 @@ class TowerAttention(nn.Module):
             offset=offset,
         )
 
-    def __call__(self, x: mx.array, cache: BoundedKVCache) -> mx.array:
-        """x [rows, dim] at the frame positions that follow the cache."""
-        length = x.shape[0]
-        offset = cache.offset
+    def __call__(
+        self, x: mx.array, cache: BoundedKVCache, pads: mx.array | None = None
+    ) -> mx.array:
+        """x [rows, dim]: without pads, one sequence of rows frames that follows
+        the cache; with pads, one frame for each of rows batched sequences, whose
+        cached frames start at slot pads[row]."""
+        batch, length = (1, x.shape[0]) if pads is None else (x.shape[0], 1)
+        offset = cache.offset if pads is None else cache.offset - pads
         query, gate, key, value = mx.split(
             self.wqkv(x),
             [self.q_width, 2 * self.q_width, 2 * self.q_width + self.kv_width],
             axis=-1,
         )
-        query = self.q_norm(query.reshape(1, length, self.n_head, self.head_dim))
-        key = self.k_norm(key.reshape(1, length, self.n_local_heads, self.head_dim))
-        value = value.reshape(1, length, self.n_local_heads, self.head_dim)
+        query = self.q_norm(query.reshape(batch, length, self.n_head, self.head_dim))
+        key = self.k_norm(
+            key.reshape(batch, length, self.n_local_heads, self.head_dim)
+        )
+        value = value.reshape(batch, length, self.n_local_heads, self.head_dim)
         query = self.rope(query.transpose(0, 2, 1, 3), offset)
         key = self.rope(key.transpose(0, 2, 1, 3), offset)
         cache.append(key.transpose(0, 2, 1, 3), value)
@@ -86,9 +92,11 @@ class TowerAttention(nn.Module):
             keys.transpose(0, 2, 1, 3),
             values.transpose(0, 2, 1, 3),
             scale=self.head_dim**-0.5,
-            mask="causal" if length > 1 else None,
+            mask=padded_mask(pads, length, keys.shape[1]),
         )
-        attended = attended.transpose(0, 2, 1, 3).reshape(length, self.q_width)
+        attended = attended.transpose(0, 2, 1, 3).reshape(
+            batch * length, self.q_width
+        )
         return self.wo(sigmoid_gate(attended, gate))
 
 
@@ -111,8 +119,10 @@ class TowerTransformerLayer(nn.Module):
         self.ffn_norm = ZeroCenteredRMSNorm(config.dim, config.norm_eps)
         self.feed_forward = TowerMLP(config)
 
-    def __call__(self, x: mx.array, cache: BoundedKVCache) -> mx.array:
-        x = x + self.attention(self.attention_norm(x), cache)
+    def __call__(
+        self, x: mx.array, cache: BoundedKVCache, pads: mx.array | None = None
+    ) -> mx.array:
+        x = x + self.attention(self.attention_norm(x), cache, pads)
         return x + self.feed_forward(self.ffn_norm(x))
 
 
@@ -141,6 +151,7 @@ class TowerLayer(nn.Module):
         semantic: mx.array,
         cache: BoundedKVCache,
         shared_input: mx.array | None = None,
+        pads: mx.array | None = None,
     ) -> mx.array:
         embedding = self.semantic_embedding if self.shared else self.codebook_embedding
         embedded = code_embedding(embedding.weight, codes, semantic, hidden)
@@ -149,7 +160,7 @@ class TowerLayer(nn.Module):
         mixed = self.eh_proj(
             mx.concatenate([self.enorm(embedded), self.hnorm(hidden)], axis=-1)
         )
-        return self.final_layernorm(self.transformer_layer(mixed, cache))
+        return self.final_layernorm(self.transformer_layer(mixed, cache, pads))
 
 
 class FishDrama3AudioDecoder(nn.Module):
@@ -227,6 +238,7 @@ class FishDrama3AudioDecoder(nn.Module):
         semantic: mx.array,
         frames: mx.array,
         cache: list[BoundedKVCache],
+        pads: mx.array | None = None,
     ) -> mx.array:
         # The first shared layer also sees the codes of the input row that the
         # backbone did not.
@@ -236,7 +248,12 @@ class FishDrama3AudioDecoder(nn.Module):
         unseen = mx.where(self.is_semantic(frames[:, 0])[:, None], unseen, 0.0)
         for index, layer in enumerate(self.shared_layers):
             hidden = layer(
-                hidden, c0, semantic, cache[index], unseen if index == 0 else None
+                hidden,
+                c0,
+                semantic,
+                cache[index],
+                unseen if index == 0 else None,
+                pads,
             )
         return hidden
 
@@ -267,14 +284,21 @@ class FishDrama3AudioDecoder(nn.Module):
         temperature: float,
         top_k: int,
         top_p: float,
+        pads: mx.array | None = None,
+        keys: mx.array | None = None,
     ) -> mx.array:
-        """Sample the frame after one row under reference sampling (see sampling):
-        [1, 1 + num_codebooks].
+        """Sample the frame after the current row of each sequence under reference
+        sampling (see sampling): [rows, 1 + num_codebooks].
 
-        main_logits [1, len(main_candidates)] are the backbone logits of the
-        candidates; hidden [1, dim] and frame [1, 1 + N] belong to the current row.
+        main_logits [rows, len(main_candidates)] are the backbone logits of the
+        candidates; hidden [rows, dim], frame [rows, 1 + N] and history
+        [rows, frames] belong to each sequence's current row. One sequence needs no
+        pads; batched ones pass theirs (see TowerAttention). keys [rows,
+        num_codebooks] draw each sequence's codes; None draws from the global
+        generator.
         """
         candidates = self.main_candidates
+        draw = [None] * self.config.num_codebooks if keys is None else keys.swapaxes(0, 1)
         first = candidates[
             reference_sample(
                 main_logits,
@@ -282,19 +306,22 @@ class FishDrama3AudioDecoder(nn.Module):
                 top_k,
                 top_p,
                 epsilon_cutoff=MAIN_EPSILON_CUTOFF,
+                keys=draw[0],
             )
         ]
         best = candidates[mx.argmax(main_logits, axis=-1)]
         main = replace_repeats(first, best, history)
         c0 = mx.clip(main - self.semantic_begin, 0, self.config.vocab_size - 1)
         semantic = self.is_semantic(main)
-        hidden = self.run_shared(hidden, c0, semantic, frame, cache)
+        hidden = self.run_shared(hidden, c0, semantic, frame, cache, pads)
         codes = [c0]
         shared = len(self.shared_layers)
         for index, (layer, head) in enumerate(
             zip(self.residual_layers, self.codebook_heads, strict=True)
         ):
-            hidden = layer(hidden, codes[-1], semantic, cache[shared + index])
+            hidden = layer(
+                hidden, codes[-1], semantic, cache[shared + index], pads=pads
+            )
             codes.append(
                 reference_sample(
                     head(hidden),
@@ -302,6 +329,7 @@ class FishDrama3AudioDecoder(nn.Module):
                     top_k,
                     top_p,
                     legal_columns=RESIDUAL_CODEBOOK_SIZE,
+                    keys=draw[index + 1],
                 )
             )
         return mx.stack([main, *codes], axis=-1).astype(mx.int32)
