@@ -130,6 +130,45 @@ of 12 times, while two sentences by one speaker stalled in 3 of 4 takes.
   4 of 4 takes, against 1 of 4 without it.
 - Check each take and regenerate the ones that fail, as the technical report does.
 
+## Batch Generation
+
+`generate_batch` voices many independent lines together, as for a dubbing script,
+and returns them in input order:
+
+```python
+outputs = model.generate_batch(
+    ["First line.", "Second line.", "Third line."],
+    reference_audio=voice,
+    duration_seconds=[2.8, 3.1, 1.9],
+    seed=0,
+)
+```
+
+Every line shares the references and is one pass, as with `single_chunk`.
+`duration_seconds` and `max_new_tokens` are one value or one per line; seeds default
+to `seed` plus the line index, and each line draws with its own seed whatever the
+lines beside it. A warning names the lines that reached their frame budget before
+ending.
+
+Each prompt is prefilled on its own, reusing the shared system turn; the decode
+steps run `batch_size` lines together (64 by default), grouped by frame budget. A
+decode step reads the experts its rows route to, so one line reads 8 per layer and
+48 to 64 lines read nearly all 256: past that point a step costs about the same
+whatever the number of lines. Each line adds about 75 MB of state.
+
+Decode throughput on an M5 Max in Low Power Mode, real-time factor of the frames
+produced:
+
+| Lines | ms per step | Frames/s | × real time | Extra memory |
+| --- | --- | --- | --- | --- |
+| 1 | 75 | 13 | 0.6 | — |
+| 32 | 255 | 125 | 5.8 | 2.4 GiB |
+| 48 | 260 | 184 | 8.5 | 3.6 GiB |
+| 64 | 303 | 211 | 9.8 | 4.8 GiB |
+
+Prefill (about 0.3 s per line) and the codec (0.5–1.3 s per 10 s of audio) still
+run one line at a time, so whole lines come out slower than these steps suggest.
+
 ## Generation Parameters
 
 | Parameter | Default | Notes |

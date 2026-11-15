@@ -8,12 +8,15 @@ speaker 0. The text addresses speakers with the same tags.
 
 from __future__ import annotations
 
+import warnings
+from collections.abc import Sequence
 from pathlib import Path
 
 import mlx.core as mx
 
 from .._adapter import TTSOutput
 from ...generation.fish_drama_3 import (
+    DEFAULT_BATCH_SIZE,
     DEFAULT_TEMPERATURE,
     DEFAULT_TOP_K,
     DEFAULT_TOP_P,
@@ -75,8 +78,6 @@ class FishDrama3Adapter:
         references = self._references(
             reference_audio, reference_text, reference_speaker
         )
-        if seed is not None:
-            mx.random.seed(seed)
         chunks = list(
             self._runtime.synthesize(
                 text,
@@ -87,6 +88,7 @@ class FishDrama3Adapter:
                 top_k=top_k,
                 top_p=top_p,
                 single_chunk=single_chunk,
+                seed=seed,
             )
         )
         if not chunks:
@@ -95,6 +97,67 @@ class FishDrama3Adapter:
             waveform=mx.concatenate([chunk.waveform for chunk in chunks]),
             sample_rate=self._runtime.sample_rate,
         )
+
+    def generate_batch(
+        self,
+        texts: Sequence[str],
+        *,
+        reference_audio=None,
+        reference_text=None,
+        reference_speaker=None,
+        duration_seconds: float | Sequence[float | None] | None = None,
+        max_new_tokens: int | Sequence[int | None] | None = None,
+        temperature: float = DEFAULT_TEMPERATURE,
+        top_k: int = DEFAULT_TOP_K,
+        top_p: float = DEFAULT_TOP_P,
+        seed: int = 0,
+        seeds: Sequence[int] | None = None,
+        batch_size: int | None = None,
+    ) -> list[TTSOutput]:
+        """Generate independent lines together, in input order.
+
+        The voice references are shared by every line, and each line is one pass,
+        as with single_chunk. duration_seconds and max_new_tokens are one value or
+        one per line. Seeds default to seed + line index; each line draws with its
+        own seed, whatever the lines beside it. batch_size lines decode together, 64 by
+        default. A warning names the lines that reached their frame budget before
+        ending, whose speech may be cut off, and those that produced no audio.
+        """
+        if isinstance(texts, str):
+            raise TypeError("texts must be a sequence of strings, not one string")
+        references = self._references(
+            reference_audio, reference_text, reference_speaker
+        )
+        lines = self._runtime.synthesize_batch(
+            texts,
+            references,
+            seeds=list(seeds) if seeds is not None else [seed + i for i in range(len(texts))],
+            duration_seconds=duration_seconds,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            batch_size=DEFAULT_BATCH_SIZE if batch_size is None else batch_size,
+        )
+        capped = [i for i, line in enumerate(lines) if line.finish_reason == "length"]
+        silent = [i for i, line in enumerate(lines) if line.codes.shape[1] == 0]
+        if capped:
+            warnings.warn(
+                f"Drama 3 lines {capped} reached their frame budget before ending; "
+                "their speech may be cut off.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        if silent:
+            warnings.warn(
+                f"Drama 3 lines {silent} stopped before generating any audio.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        return [
+            TTSOutput(waveform=line.waveform, sample_rate=self._runtime.sample_rate)
+            for line in lines
+        ]
 
     def _references(self, audio, text, speaker) -> list[Drama3Reference]:
         if audio is None:

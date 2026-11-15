@@ -61,16 +61,24 @@ def reference_sample(
     *,
     epsilon_cutoff: float = 0.0,
     legal_columns: int | None = None,
+    keys: mx.array | None = None,
 ) -> mx.array:
-    """One id per row of logits [..., columns]."""
+    """One id per row of logits [rows, columns]; keys [rows] give each row its own
+    draw, independent of the rows beside it. None draws from the global generator."""
     ids, values = reference_candidates(
         logits, temperature, top_k, top_p, epsilon_cutoff, legal_columns
     )
-    choice = mx.random.categorical(values, axis=-1)
+    if keys is None:
+        choice = mx.random.categorical(values, axis=-1)
+    else:
+        choice = mx.vmap(lambda row, key: mx.random.categorical(row, key=key))(
+            values, keys
+        )
     return mx.take_along_axis(ids, choice[..., None], axis=-1)[..., 0]
 
 
 def replace_repeats(first: mx.array, best: mx.array, history: mx.array) -> mx.array:
-    """best where the first draw is among the last REPEAT_WINDOW_FRAMES main tokens."""
-    repeated = (history[-REPEAT_WINDOW_FRAMES:] == first[..., None]).any(axis=-1)
+    """best where the first draw is among the last REPEAT_WINDOW_FRAMES main tokens
+    of its row's history [..., frames]."""
+    repeated = (history[..., -REPEAT_WINDOW_FRAMES:] == first[..., None]).any(axis=-1)
     return mx.where(repeated, best, first)
