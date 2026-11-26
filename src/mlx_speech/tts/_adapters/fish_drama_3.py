@@ -93,6 +93,14 @@ class FishDrama3Adapter:
         )
         if not chunks:
             raise ValueError("Drama 3 stopped before generating any audio")
+        capped = [i for i, chunk in enumerate(chunks) if chunk.finish_reason == "length"]
+        if capped:
+            warnings.warn(
+                f"Drama 3 chunk(s) {capped} reached max_new_tokens before ending; "
+                "speech may be cut off.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         return TTSOutput(
             waveform=mx.concatenate([chunk.waveform for chunk in chunks]),
             sample_rate=self._runtime.sample_rate,

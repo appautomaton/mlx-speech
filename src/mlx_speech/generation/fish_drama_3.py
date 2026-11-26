@@ -25,8 +25,10 @@ from ..models.fish_drama_3.model import FishDrama3Model, load_fish_drama_3_model
 from ..models.fish_drama_3.prompt import (
     MAX_SPEAKER_ID,
     PromptTooLongError,
+    build_infill_prompt,
     build_prompt,
     leads_with_speaker_tag,
+    validate_text,
     with_duration_hint,
 )
 from ..models.fish_drama_3.sampling import REPEAT_WINDOW_FRAMES
@@ -185,11 +187,25 @@ def _per_line(value, count: int, name: str) -> list:
     return [value] * count
 
 
-def _check_sampling(top_k: int, max_new_tokens: int) -> None:
-    if top_k < 0:
+def _check_sampling(
+    temperature: float, top_k: int, top_p: float, max_new_tokens: int
+) -> None:
+    if isinstance(temperature, bool) or not math.isfinite(temperature) or temperature < 0:
+        raise ValueError(f"temperature must be finite and >= 0; got {temperature}")
+    if isinstance(top_p, bool) or not math.isfinite(top_p) or not (0.0 < top_p <= 1.0):
+        raise ValueError(f"top_p must be finite in (0, 1]; got {top_p}")
+    if isinstance(top_k, bool) or top_k < 0:
         raise ValueError(f"top_k must be at least 0 (0: no cap); got {top_k}")
-    if max_new_tokens < 1:
+    if isinstance(max_new_tokens, bool) or max_new_tokens < 1:
         raise ValueError(f"max_new_tokens must be at least 1; got {max_new_tokens}")
+
+
+def _check_sequence_limit(prompt_rows: int, max_new_tokens: int, limit: int) -> None:
+    if prompt_rows + max_new_tokens > limit:
+        raise ValueError(
+            f"prompt ({prompt_rows} rows) + max_new_tokens ({max_new_tokens}) "
+            f"exceeds max_position_embeddings ({limit})"
+        )
 
 
 def _random_key() -> mx.array:
@@ -254,6 +270,13 @@ class FishDrama3Runtime:
         """Codec frames per second of audio."""
         return self.sample_rate / self.codec.model.model.frame_length
 
+    def encode_codes(self, audio: str | Path) -> np.ndarray:
+        """Load mono audio at the codec sample rate and return int32 [num_codebooks, frames]."""
+        waveform, _ = load_audio(audio, sample_rate=self.sample_rate, mono=True)
+        codes = np.array(self.codec.encode(waveform), dtype=np.int32)
+        mx.clear_cache()
+        return codes
+
     def encode_reference(
         self, audio: str | Path, text: str, *, speaker: int | None = None
     ) -> Drama3Reference:
@@ -264,8 +287,7 @@ class FishDrama3Runtime:
         """
         if speaker is not None and not 0 <= speaker <= MAX_SPEAKER_ID:
             raise ValueError(f"speaker must be 0..{MAX_SPEAKER_ID}; got {speaker}")
-        waveform, _ = load_audio(audio, sample_rate=self.sample_rate, mono=True)
-        codes = np.array(self.codec.encode(waveform), dtype=np.int32)
+        codes = self.encode_codes(audio)
         if speaker is not None and not leads_with_speaker_tag(text):
             text = f"<|speaker:{speaker}|> {text}"
         return Drama3Reference(codes=codes, text=text)
@@ -286,6 +308,10 @@ class FishDrama3Runtime:
         before the current user turn is prefilled apart and kept: a later prompt
         that starts with the same rows reuses it, with the same result.
         """
+        _check_sampling(temperature, top_k, top_p, max_new_tokens)
+        _check_sequence_limit(
+            len(prompt), max_new_tokens, self.config.text.max_position_embeddings
+        )
         key = _random_key() if key is None else key
         return self._decode(
             [self._prefill_prompt(prompt)],
@@ -514,7 +540,7 @@ class FishDrama3Runtime:
             text, max_new_tokens = self._timed(text, duration_seconds, max_new_tokens)
             single_chunk = True
         max_new_tokens = max_new_tokens or DEFAULT_MAX_NEW_TOKENS
-        _check_sampling(top_k, max_new_tokens)
+        _check_sampling(temperature, top_k, top_p, max_new_tokens)
         key = _random_key() if seed is None else _seed_key(seed)
         texts = [reference.text for reference in references]
         codes = [reference.codes for reference in references]
@@ -549,6 +575,7 @@ class FishDrama3Runtime:
         references: Sequence[Drama3Reference] = (),
         *,
         seeds: Sequence[int],
+        history: Sequence[tuple[str, np.ndarray]] = (),
         duration_seconds: float | Sequence[float | None] | None = None,
         max_new_tokens: int | Sequence[int | None] | None = None,
         temperature: float = DEFAULT_TEMPERATURE,
@@ -558,13 +585,13 @@ class FishDrama3Runtime:
     ) -> list[Drama3Chunk]:
         """Generate independent lines together; results keep input order.
 
-        Every line shares the references and is one pass, as with single_chunk.
-        duration_seconds and max_new_tokens are one value for every line or one per
-        line. Lines decode in as few groups of at most batch_size as can hold
-        them, of even size, grouped by frame budget so short lines do not wait for
-        long ones. A line draws with its own seed, whatever
-        the lines beside it; only rounding in batched bf16 matmuls can make a draw
-        differ from the line generated alone.
+        Every line shares the references and history and is one pass, as with
+        single_chunk. duration_seconds and max_new_tokens are one value for every
+        line or one per line. Lines decode in as few groups of at most batch_size
+        as can hold them, of even size, grouped by frame budget so short lines do
+        not wait for long ones. A line draws with its own seed, whatever the lines
+        beside it; only rounding in batched bf16 matmuls can make a draw differ
+        from the line generated alone.
         """
         if isinstance(texts, str):
             raise TypeError("texts must be a sequence of strings, not one string")
@@ -582,14 +609,23 @@ class FishDrama3Runtime:
         for index, (text, duration, cap) in enumerate(zip(texts, durations, caps)):
             if duration is not None:
                 text, cap = self._timed(text, duration, cap)
-            budget = cap or DEFAULT_MAX_NEW_TOKENS
-            _check_sampling(top_k, budget)
+            budget = DEFAULT_MAX_NEW_TOKENS if cap is None else cap
+            _check_sampling(temperature, top_k, top_p, budget)
             try:
-                prompts.append(
-                    build_prompt(
-                        text, self.tokenizer, self.config, reference_texts, reference_codes
-                    )
+                prompt = build_prompt(
+                    text,
+                    self.tokenizer,
+                    self.config,
+                    reference_texts,
+                    reference_codes,
+                    history=history,
                 )
+                _check_sequence_limit(
+                    len(prompt), budget, self.config.text.max_position_embeddings
+                )
+                prompts.append(prompt)
+            except PromptTooLongError as error:
+                raise PromptTooLongError(f"line {index}: {error}") from error
             except ValueError as error:
                 raise ValueError(f"line {index}: {error}") from error
             budgets.append(budget)
@@ -621,6 +657,65 @@ class FishDrama3Runtime:
                 lines[i] = Drama3Chunk(texts[i], codes, waveform, finish_reason)
         return lines
 
+    def infill(
+        self,
+        text: str,
+        prefix_codes: np.ndarray,
+        suffix_codes: np.ndarray,
+        *,
+        duration_seconds: float | None = None,
+        max_new_tokens: int | None = None,
+        temperature: float = DEFAULT_TEMPERATURE,
+        top_k: int = DEFAULT_TOP_K,
+        top_p: float = DEFAULT_TOP_P,
+        seed: int | None = None,
+    ) -> Drama3Chunk:
+        """Fill a missing span between prefix_codes and suffix_codes (technical
+        report, Section 5.5 and Figure 14).
+
+        text is the full target transcript after the edit; duration_seconds asks
+        for a filled span of about that length. Generates the middle frames,
+        concatenates [prefix_codes, mid_codes, suffix_codes], and decodes the whole
+        sequence through the codec once. When generation stops before any frame,
+        returns empty codes and an empty waveform without calling the codec.
+        """
+        validate_text(text, "text")
+        prompt_text = text
+        if duration_seconds is not None:
+            prompt_text, max_new_tokens = self._timed(
+                text, duration_seconds, max_new_tokens
+            )
+        budget = DEFAULT_MAX_NEW_TOKENS if max_new_tokens is None else max_new_tokens
+        _check_sampling(temperature, top_k, top_p, budget)
+        key = _random_key() if seed is None else _seed_key(seed)
+        prompt = build_infill_prompt(
+            prompt_text, prefix_codes, suffix_codes, self.tokenizer, self.config
+        )
+        mid_codes, finish_reason = self.generate_frames(
+            prompt,
+            max_new_tokens=budget,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            key=key,
+        )
+        mx.clear_cache()
+        if mid_codes.shape[1] == 0:
+            return Drama3Chunk(
+                text, mid_codes, mx.zeros((0,), dtype=mx.float32), finish_reason
+            )
+        full_codes = np.ascontiguousarray(
+            np.concatenate(
+                [
+                    prefix_codes.astype(np.int32, copy=False),
+                    mid_codes,
+                    suffix_codes.astype(np.int32, copy=False),
+                ],
+                axis=1,
+            )
+        )
+        return Drama3Chunk(text, full_codes, self._waveform(full_codes), finish_reason)
+
     def _waveform(self, codes: np.ndarray) -> mx.array:
         """The codec's waveform of codes [num_codebooks, frames], its activations
         released afterwards. Lines of different lengths cannot reuse each other's
@@ -640,7 +735,9 @@ class FishDrama3Runtime:
         frames = max(1, round(duration_seconds * self.frame_rate))
         return (
             with_duration_hint(text, frames),
-            max_new_tokens or math.ceil(frames * RUNAWAY_FACTOR),
+            max_new_tokens
+            if max_new_tokens is not None
+            else math.ceil(frames * RUNAWAY_FACTOR),
         )
 
     def _chunk_prompt(

@@ -20,9 +20,6 @@ from .prompt import SPEAKER_TAG_PATTERN, UNICODE_WHITE_SPACE
 # A threshold, not a hard cap: a protected span longer than this stays whole.
 CHUNK_BYTES = 300
 CHUNK_MAX_SPEAKERS = 3
-# Frames per chunk when max_new_tokens is unset: about 27.9 s at 2048 samples per
-# frame and 44.1 kHz.
-CHUNK_MAX_NEW_TOKENS = 600
 # History besides the pinned first chunk.
 HISTORY_RECENT_TURNS = 1
 
