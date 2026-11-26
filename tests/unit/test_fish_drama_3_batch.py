@@ -1,14 +1,25 @@
 """Drama 3 batched decoding: each line decodes as it would alone, whatever its
 neighbours, prompt length and frame budget."""
 
+from types import SimpleNamespace
+
 import mlx.core as mx
 import numpy as np
 import pytest
 
 import mlx_speech.generation.fish_drama_3 as generation
-from mlx_speech.generation.fish_drama_3 import Drama3Chunk, FishDrama3Runtime
+from mlx_speech.generation.fish_drama_3 import (
+    Drama3Chunk,
+    Drama3Reference,
+    FishDrama3Runtime,
+)
 from mlx_speech.models.fish_drama_3 import FishDrama3Config
 from mlx_speech.models.fish_drama_3.model import FishDrama3Model
+from mlx_speech.models.fish_drama_3.prompt import (
+    MAX_PROMPT_ROWS,
+    PromptTooLongError,
+    build_prompt,
+)
 from mlx_speech.tts._adapters.fish_drama_3 import FishDrama3Adapter
 from tests.unit.test_fish_drama_3_config import tiny_payload
 from tests.unit.test_fish_drama_3_prompt_head import StubTokenizer, prompt
@@ -165,3 +176,91 @@ def test_lines_split_into_the_fewest_even_groups(monkeypatch, count, batch_size,
     rt.synthesize_batch(["x"] * count, seeds=list(range(count)), batch_size=batch_size)
 
     assert sorted(seen) == sorted(sizes)
+
+
+class PromptTokenizer:
+    """Deterministic stub tokenizer whose ids fit the tiny 300-token vocabulary."""
+
+    def __init__(self) -> None:
+        self._ids: dict[str, int] = {}
+
+    def token_to_id(self, token: str) -> int | None:
+        return {
+            "<|im_start|>": 7,
+            "<|im_end|>": 150,
+            "<|semantic:0|>": 200,
+            "<|semantic:63|>": 263,
+        }.get(token)
+
+    def encode(self, text: str) -> SimpleNamespace:
+        if text.startswith("<|im_start|>"):
+            return SimpleNamespace(ids=[7, self._id(text[len("<|im_start|>") :])])
+        if text.startswith("<|im_end|>"):
+            return SimpleNamespace(ids=[150, 8])
+        token_id = self._id(text)
+        return SimpleNamespace(ids=[token_id, token_id + 1])
+
+    def _id(self, text: str) -> int:
+        if text not in self._ids:
+            self._ids[text] = 10 + (len(self._ids) * 2) % 128
+        return self._ids[text]
+
+
+def prompt_runtime(codec=None) -> FishDrama3Runtime:
+    rt = runtime(codec)
+    rt.tokenizer = PromptTokenizer()
+    return rt
+
+
+def test_synthesize_batch_forwards_history_reuses_head_and_matches_alone():
+    rt = prompt_runtime(Codec())
+    ref = Drama3Reference(codes=np.array([[1, 2], [3, 4], [5, 6]], np.int32), text="ref")
+    history = [("prior turn", np.array([[7, 8, 9], [1, 2, 3], [4, 5, 6]], np.int32))]
+    prefill_spans: list[tuple[int, int]] = []
+    original_prefill = rt._prefill
+
+    def track_prefill(rows, start, end, backbone_cache, decoder_cache):
+        prefill_spans.append((start, end))
+        return original_prefill(rows, start, end, backbone_cache, decoder_cache)
+
+    rt._prefill = track_prefill  # type: ignore[method-assign]
+
+    lines = rt.synthesize_batch(
+        ["first line", "second line"],
+        [ref],
+        seeds=[3, 4],
+        history=history,
+        max_new_tokens=5,
+        batch_size=2,
+    )
+
+    # Line 0 prefills head (start=0) + tail; line 1 reuses the cached head (start > 0).
+    assert len(prefill_spans) == 3
+    assert prefill_spans[0][0] == 0
+    assert prefill_spans[1][0] == prefill_spans[0][1] > 0
+    assert prefill_spans[2][0] == prefill_spans[0][1]
+
+    cold = prompt_runtime(Codec())
+    for text, seed, line in zip(["first line", "second line"], [3, 4], lines):
+        rows = build_prompt(
+            text, cold.tokenizer, cold.config, [ref.text], [ref.codes], history=history
+        )
+        alone, alone_reason = cold.generate_frames(
+            rows,
+            max_new_tokens=5,
+            temperature=1.0,
+            top_k=0,
+            top_p=1.0,
+            key=mx.random.key(seed),
+        )
+        assert line.finish_reason == alone_reason
+        np.testing.assert_array_equal(line.codes, alone)
+
+
+def test_synthesize_batch_preserves_prompt_too_long_error(monkeypatch):
+    rt = prompt_runtime(Codec())
+    monkeypatch.setattr(rt, "_decode", lambda *a, **k: pytest.fail("generated"))
+    oversized = np.ones((3, MAX_PROMPT_ROWS), dtype=np.int32)
+
+    with pytest.raises(PromptTooLongError, match="line 0"):
+        rt.synthesize_batch(["hello"], seeds=[0], history=[("prior", oversized)])

@@ -721,9 +721,23 @@ class Transformer(nn.Module):
     def __call__(
         self, x: mx.array, input_pos: mx.array, mask: mx.array | None = None
     ) -> mx.array:
-        freqs_cis = self.freqs_cis[input_pos] if self.freqs_cis is not None else None
+        needed = int(mx.max(input_pos).item()) + 1 if input_pos.size > 0 else 0
+        if self.freqs_cis is None:
+            freqs_cis = None
+        elif needed <= int(self.freqs_cis.shape[0]):
+            freqs_cis = self.freqs_cis[input_pos]
+        else:
+            freqs_cis = precompute_freqs_cis(
+                needed,
+                self.config.head_dim,
+                int(self.config.rope_base),
+                dtype=mx.float32,
+            )[input_pos]
         if mask is None:
-            local_mask = self.causal_mask[input_pos][:, input_pos]
+            if needed <= int(self.causal_mask.shape[0]):
+                local_mask = self.causal_mask[input_pos][:, input_pos]
+            else:
+                local_mask = input_pos[:, None] >= input_pos[None, :]
             mask = local_mask[None, None, :, :]
         if mask.dtype == mx.bool_:
             mask = mx.where(mask, 0.0, -1e9).astype(x.dtype)

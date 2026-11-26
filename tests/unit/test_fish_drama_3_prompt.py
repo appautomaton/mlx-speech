@@ -14,7 +14,16 @@ from mlx_speech.models.fish_drama_3.chunking import (
     split_text,
     utf8_len,
 )
-from mlx_speech.models.fish_drama_3.prompt import build_prompt, with_duration_hint
+from mlx_speech.models.fish_drama_3.prompt import (
+    FIM_PREFIX,
+    FIM_SUFFIX,
+    INFILL_INSTRUCTION,
+    MAX_PROMPT_ROWS,
+    PromptTooLongError,
+    build_infill_prompt,
+    build_prompt,
+    with_duration_hint,
+)
 from tests.unit.test_fish_drama_3_config import tiny_payload
 
 CONFIG = FishDrama3Config.from_dict(tiny_payload())  # band 200..263, 3 codebooks
@@ -181,3 +190,90 @@ def test_duration_hint_closes_the_text_and_survives_validation():
     build_prompt(text, RecordingTokenizer(), CONFIG)
     with pytest.raises(ValueError, match="at least one frame"):
         with_duration_hint("hi", 0)
+
+
+def test_build_infill_prompt_tokenizes_each_literal_and_orders_suffix_before_prefix():
+    tokenizer = RecordingTokenizer()
+    prefix = np.array([[1, 2], [3, 4], [5, 6]], dtype=np.int32)
+    suffix = np.array([[7, 8, 9], [10, 11, 12], [13, 14, 15]], dtype=np.int32)
+
+    rows = build_infill_prompt("hello", prefix, suffix, tokenizer, CONFIG)
+
+    assert tokenizer.parts == [
+        "<|im_start|>system\n",
+        INFILL_INSTRUCTION,
+        "<|im_end|>\n",
+        "<|im_start|>user\n",
+        "<|speaker:0|> hello",
+        "\n",
+        FIM_SUFFIX,
+        FIM_PREFIX,
+        "<|im_end|>\n",
+        "<|im_start|>assistant\n<|voice|>",
+    ]
+    assert rows.dtype == np.int32
+    assert rows.shape == (10 * 2 + 3 + 2, 4)
+    # 7 text literals (14 rows) precede suffix_codes (3 rows), then FIM_PREFIX (2 rows),
+    # then prefix_codes (2 rows).
+    suffix_rows = rows[14:17]
+    prefix_rows = rows[19:21]
+    np.testing.assert_array_equal(suffix_rows[:, 0], suffix[0] + 200)
+    np.testing.assert_array_equal(suffix_rows[:, 1:].T, suffix)
+    np.testing.assert_array_equal(prefix_rows[:, 0], prefix[0] + 200)
+    np.testing.assert_array_equal(prefix_rows[:, 1:].T, prefix)
+    text_mask = np.ones(len(rows), dtype=bool)
+    text_mask[14:17] = False
+    text_mask[19:21] = False
+    assert not rows[text_mask, 1:].any()
+
+
+def test_build_infill_prompt_preserves_speaker_tag_and_duration_hint():
+    tokenizer = RecordingTokenizer()
+    codes = np.array([[1], [2], [3]], dtype=np.int32)
+    text = with_duration_hint("<|speaker:2|> hello", 12)
+
+    build_infill_prompt(text, codes, codes, tokenizer, CONFIG)
+
+    assert text in tokenizer.parts
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["<|fim_prefix|>", "<|fim_suffix|>", "<|fim_middle|>", "<|fim_pad|>"],
+)
+def test_rejects_fim_structural_tokens_in_caller_text(token):
+    codes = np.array([[1], [2], [3]], dtype=np.int32)
+    with pytest.raises(ValueError, match="prompt builder"):
+        build_prompt(f"hello {token}", RecordingTokenizer(), CONFIG)
+    with pytest.raises(ValueError, match="prompt builder"):
+        build_infill_prompt(f"hello {token}", codes, codes, RecordingTokenizer(), CONFIG)
+
+
+@pytest.mark.parametrize(
+    "bad_codes",
+    [
+        np.zeros((3, 0), dtype=np.int32),
+        np.zeros((2, 2), dtype=np.int32),
+        np.full((3, 2), 64, dtype=np.int32),
+        np.full((3, 2), -1, dtype=np.int32),
+        np.zeros((3, 2), dtype=np.float32),
+    ],
+)
+def test_build_infill_prompt_rejects_invalid_codes(bad_codes):
+    good = np.ones((3, 2), dtype=np.int32)
+    with pytest.raises(ValueError, match="prefix_codes"):
+        build_infill_prompt("hi", bad_codes, good, RecordingTokenizer(), CONFIG)
+    with pytest.raises(ValueError, match="suffix_codes"):
+        build_infill_prompt("hi", good, bad_codes, RecordingTokenizer(), CONFIG)
+
+
+def test_build_infill_prompt_checks_tokenizer_and_max_rows():
+    good = np.ones((3, 2), dtype=np.int32)
+    with pytest.raises(ValueError, match="tokenizer/config"):
+        build_infill_prompt(
+            "hi", good, good, RecordingTokenizer(), replace(CONFIG, eos_token_id=151)
+        )
+
+    huge = np.ones((3, MAX_PROMPT_ROWS // 2), dtype=np.int32)
+    with pytest.raises(PromptTooLongError, match=str(MAX_PROMPT_ROWS)):
+        build_infill_prompt("hi", huge, huge, RecordingTokenizer(), CONFIG)

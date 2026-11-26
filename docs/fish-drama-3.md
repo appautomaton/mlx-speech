@@ -149,10 +149,12 @@ outputs = model.generate_batch(
 ```
 
 Every line shares the references and is one pass, as with `single_chunk`.
-`duration_seconds` and `max_new_tokens` are one value or one per line; seeds default
-to `seed` plus the line index, and each line draws with its own seed whatever the
-lines beside it. A warning names the lines that reached their frame budget before
-ending.
+`FishDrama3Runtime.synthesize_batch` also accepts `history` (completed
+`(text, codes)` turns shared by every line and kept in the prefilled prompt
+head). `duration_seconds` and `max_new_tokens` are one value or one per line;
+seeds default to `seed` plus the line index, and each line draws with its own
+seed whatever the lines beside it. A warning names the lines that reached their
+frame budget before ending.
 
 Each prompt is prefilled on its own, reusing the shared system turn; the decode
 steps run up to `batch_size` lines together (128 by default), in as few groups as
@@ -177,6 +179,34 @@ Prefill (about 0.2 s per line) and the codec (about 0.6 s per 10 s of audio) sti
 run one line at a time, so whole lines come out slower than these steps suggest:
 128 lines of about 10 s took 212 s end to end, 6.0 times real time (decode 48%,
 codec 38%, prefill 14%), with a process footprint of at most 61 GiB.
+
+## Audio Infilling
+
+`FishDrama3Runtime.infill` replaces a middle span of an existing clip while
+keeping its surrounding audio and voice (technical report, Section 5.5 and
+Figure 14):
+
+```python
+from mlx_speech.generation.fish_drama_3 import FishDrama3Runtime
+
+rt = FishDrama3Runtime.from_dir("models/fish_drama_3/base")
+codes = rt.encode_codes("take.wav")  # int32 [10, frames], 2048 samples/frame
+chunk = rt.infill(
+    "In the nineteen fifties, European bankers held dollars abroad.",
+    prefix_codes=codes[:, :prefix_frames],
+    suffix_codes=codes[:, suffix_frames:],
+    seed=0,
+)
+```
+
+Pass the full edited transcript as `text` and non-empty codec code slices for
+the kept prefix and suffix. The model generates the missing middle frames
+conditioned on `<|fim_suffix|>` followed by `<|fim_prefix|>`, splices
+`[prefix_codes, mid_codes, suffix_codes]`, and decodes the whole sequence once
+through the codec to avoid waveform splice clicks. Pass `duration_seconds` to
+hint the filled span length. If generation stops before emitting any frame,
+`infill` skips codec decoding and returns empty codes (`codes.shape[1] == 0`)
+and an empty waveform so callers can retry with another seed.
 
 ## Generation Parameters
 
